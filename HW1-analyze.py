@@ -19,6 +19,17 @@ show_map_button = st.sidebar.button("顯示地圖")
 # 在左侧栏添加颜色选项
 color_options = ['藍色', '綠色', '紅色']
 selected_color = st.sidebar.selectbox("選擇顏色", color_options)
+if selected_color:
+    if selected_color == '藍色':
+        st.write("你選擇了藍色")
+        # 在此处绘制相应的图表或进行其他操作
+    elif selected_color == '綠色':
+        st.write("你選擇了綠色")
+        # 在此处绘制相应的图表或进行其他操作
+    elif selected_color == '紅色':
+        st.write("你選擇了紅色")
+        # 在此处绘制相应的图表或进行其他操作
+
 
 # 左侧栏表单提交按钮
 with st.sidebar.form(key='color_form'):
@@ -102,14 +113,3 @@ if uploaded_file is not None:
 else:
     st.write("請上傳一個 CSV 或 JSON 檔案。")
 
-# 根据用户选择的颜色显示相应的信息
-if submit_button:
-    if selected_color == '藍色':
-        st.write("你選擇了藍色")
-        # 在此处绘制相应的图表或进行其他操作
-    elif selected_color == '綠色':
-        st.write("你選擇了綠色")
-        # 在此处绘制相应的图表或进行其他操作
-    elif selected_color == '紅色':
-        st.write("你選擇了紅色")
-        # 在此处绘制相应的图表或进行其他操作
