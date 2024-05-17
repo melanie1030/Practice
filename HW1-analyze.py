@@ -1,13 +1,12 @@
 import time
 import streamlit as st
-import numpy as np
 import pandas as pd
 
 # 標題
 st.title('我的第一個應用程式')
 
-# 上傳 CSV 或 JSON 檔案
-uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 檔案", type=["csv", "json"])
+# 上傳任何類型的檔案
+uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 檔案")
 
 # 選擇要繪製的圖表類型
 chart_type_options = ['折線圖', '長條圖', '盒鬚圖', '散點圖']
@@ -19,6 +18,9 @@ if uploaded_file is not None:
         df = pd.read_csv(uploaded_file)
     elif uploaded_file.name.endswith('.json'):
         df = pd.read_json(uploaded_file)
+    else:
+        st.error("請上傳 CSV 或 JSON 檔案。")
+        st.stop()  # 中止程式執行
     
     # 顯示數據表格
     st.write("上傳的數據表格：")
@@ -28,10 +30,8 @@ if uploaded_file is not None:
     with st.sidebar:
         # 表單選擇框
         with st.form(key='my_form'):
-            x_option = st.selectbox('選擇 X 軸資料', 
-                                      ['交易日期', '種類代碼', '作物代號', '作物名稱', '市場代號', '市場名稱'])
-            y_option = st.selectbox('選擇 Y 軸資料', 
-                                    ['交易量', '上價', '中價', '下價', '平均價'])
+            x_option = st.selectbox('選擇 X 軸資料', df.columns)
+            y_option = st.selectbox('選擇 Y 軸資料', df.columns)
             submit_button = st.form_submit_button(label='提交')
         
         if submit_button:
@@ -56,9 +56,10 @@ if uploaded_file is not None:
         elif chart_type == '長條圖':
             st.bar_chart(chart_data.set_index(x_option))
         elif chart_type == '盒鬚圖':
-            st.boxplot(chart_data.groupby(x_option))
+            st.box_chart(chart_data.set_index(x_option))
         elif chart_type == '散點圖':
             st.scatter_chart(chart_data, x=x_option, y=y_option)
+
     
     # 進度條
     bar = st.progress(0)
