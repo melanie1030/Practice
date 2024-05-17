@@ -12,7 +12,13 @@ df = pd.DataFrame({
     'second column': [10, 20, 30, 40]
 })
 df
+#繪製圖表
 chart_data = pd.DataFrame(
     np.random.randn(20, 3),
     columns=['a', 'b', 'c'])
 st.line_chart(chart_data)
+#繪製地圖
+map_data = pd.DataFrame(
+    np.random.randn(100, 2) / [50, 50] + [22.6, 120.4],
+    columns=['lat', 'lon'])
+st.map(map_data)
