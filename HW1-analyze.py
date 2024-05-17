@@ -6,12 +6,15 @@ import pandas as pd
 # 標題
 st.title('我的第一個應用程式')
 
-# 上傳 CSV 文件
-uploaded_file = st.file_uploader("上傳一個 CSV 文件", type="csv")
+# 上傳 CSV 或 JSON 文件
+uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 文件", type=["csv", "json"])
 
 if uploaded_file is not None:
-    # 讀取 CSV 文件
-    df = pd.read_csv(uploaded_file)
+    # 根據文件類型讀取數據
+    if uploaded_file.name.endswith('.csv'):
+        df = pd.read_csv(uploaded_file)
+    elif uploaded_file.name.endswith('.json'):
+        df = pd.read_json(uploaded_file)
     
     # 顯示數據表格
     st.write("上傳的數據表格：")
@@ -37,8 +40,8 @@ if uploaded_file is not None:
     
     # 提供選擇框-側邊欄
     option = st.sidebar.selectbox(
-        '選擇哪筆資料?',
-        ['交易日期', '種類代碼', '作物代號', '市場代號', '市場名稱', '上價', '中價', '下價'])
+        '你喜歡哪種動物？',
+        ['狗', '貓', '鸚鵡', '天竺鼠'])
     st.sidebar.text(f'你的答案：{option}')
     
     # 進度條
@@ -61,4 +64,4 @@ if uploaded_file is not None:
     if submit_button:
         st.write(f'hello {form_name}, 性別:{form_gender}, 生日:{form_birthday}')
 else:
-    st.write("請上傳一個 CSV 文件。")
+    st.write("請上傳一個 CSV 或 JSON 文件。")
