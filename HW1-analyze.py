@@ -26,8 +26,12 @@ if st.checkbox('顯示地圖圖表'):
 #繪製按鈕
 if st.button('不要按!'):
     st.text("不是叫你不要按了嗎！")
-#提供選擇框
+#提供選擇框-側邊欄
 option = st.sidebar.selectbox(
     '你喜歡哪種動物？',
     ['狗', '貓', '鸚鵡', '天竺鼠'])
 st.sidebar.text(f'你的答案：{option}')
+#列容器
+left_column, right_column = st.columns(2)
+left_column.write("這是左邊欄位。")
+right_column.write("這是右邊欄位。")
