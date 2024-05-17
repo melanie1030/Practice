@@ -9,6 +9,10 @@ st.title('我的第一個應用程式')
 # 上傳 CSV 或 JSON 檔案
 uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 檔案", type=["csv", "json"])
 
+# 選擇要繪製的圖表類型
+chart_type_options = ['折線圖', '長條圖', '盒鬚圖', '圓餅圖']
+chart_type = st.sidebar.radio("選擇圖表類型", chart_type_options)
+
 if uploaded_file is not None:
     # 根據檔案類型讀取數據
     if uploaded_file.name.endswith('.csv'):
@@ -44,9 +48,17 @@ if uploaded_file is not None:
 
     # 中間位置繪製圖表
     if submit_button:
-        st.write("繪製散點圖")
+        st.write(f"繪製{chart_type}")
         chart_data = df[[x_option, y_option]].dropna()
-        st.scatter_chart(chart_data.set_index(x_option))
+        
+        if chart_type == '折線圖':
+            st.line_chart(chart_data.set_index(x_option))
+        elif chart_type == '長條圖':
+            st.bar_chart(chart_data.set_index(x_option))
+        elif chart_type == '盒鬚圖':
+            st.box_chart(chart_data.set_index(x_option))
+        elif chart_type == '圓餅圖':
+            st.write("暫不支援圓餅圖")
     
     # 進度條
     bar = st.progress(0)
