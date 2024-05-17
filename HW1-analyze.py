@@ -9,7 +9,7 @@ st.title('我的第一個應用程式')
 uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 檔案")
 
 # 選擇要繪製的圖表類型
-chart_type_options = ['折線圖', '長條圖', '盒鬚圖', '散點圖']
+chart_type_options = ['折線圖', '長條圖', '散點圖']
 chart_type = st.sidebar.radio("選擇圖表類型", chart_type_options)
 
 # 新增地圖選項
@@ -58,14 +58,6 @@ if uploaded_file is not None:
             st.line_chart(chart_data.set_index(x_option))
         elif chart_type == '長條圖':
             st.bar_chart(chart_data.set_index(x_option))
-        elif chart_type == '盒鬚圖':
-            try:
-                st.altair_chart(alt.Chart(chart_data).mark_boxplot().encode(
-                    x=x_option,
-                    y=y_option
-                ), use_container_width=True)
-            except ValueError:
-                st.error("此資料無法顯示盒鬚圖")
         elif chart_type == '散點圖':
             st.scatter_chart(chart_data, x=x_option, y=y_option)
     
