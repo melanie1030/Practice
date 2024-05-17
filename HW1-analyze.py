@@ -1,7 +1,6 @@
 import time
 import streamlit as st
 import pandas as pd
-import altair as alt  # 導入Altair庫
 
 # 標題
 st.title('我的第一個應用程式')
@@ -66,14 +65,17 @@ if uploaded_file is not None:
                     y=y_option
                 ), use_container_width=True)
             except ValueError:
-                st.write("此資料無法顯示盒鬚圖")
+                st.error("此資料無法顯示盒鬚圖")
         elif chart_type == '散點圖':
             st.scatter_chart(chart_data, x=x_option, y=y_option)
     
     # 按下按鈕才顯示地圖
     if show_map_button:
-        st.write("顯示地圖：")
-        st.map(df)
+        if uploaded_file.name.endswith('.json'):
+            st.write("顯示地圖：")
+            st.map(df)
+        else:
+            st.write("資料無法使用地圖")
     
     # 進度條
     bar = st.progress(0)
