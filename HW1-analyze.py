@@ -79,7 +79,7 @@ if uploaded_file is not None:
             st.write("顯示地圖：")
             st.map(df)
         else:
-            st.write("資料無法使用地圖")
+            st.write("此資料「無法」使用地圖")
     
     # 進度條
     bar = st.progress(0)
