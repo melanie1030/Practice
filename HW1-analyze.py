@@ -2,6 +2,7 @@ import time
 import streamlit as st
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # 標題
 st.title('我的第一個應用程式')
@@ -52,13 +53,28 @@ if uploaded_file is not None:
         chart_data = df[[x_option, y_option]].dropna()
         
         if chart_type == '折線圖':
-            st.line_chart(chart_data.set_index(x_option))
+            fig, ax = plt.subplots()
+            ax.plot(chart_data[x_option], chart_data[y_option], color='blue', linestyle='-')
+            ax.set_xlabel(x_option)
+            ax.set_ylabel(y_option)
+            st.pyplot(fig)
         elif chart_type == '長條圖':
-            st.bar_chart(chart_data.set_index(x_option))
+            fig, ax = plt.subplots()
+            ax.bar(chart_data[x_option], chart_data[y_option], color='green')
+            ax.set_xlabel(x_option)
+            ax.set_ylabel(y_option)
+            st.pyplot(fig)
         elif chart_type == '盒鬚圖':
-            st.boxplot(chart_data.groupby(x_option))
+            fig, ax = plt.subplots()
+            ax.boxplot([chart_data[y_option].values], labels=[x_option], patch_artist=True)
+            ax.set_ylabel(y_option)
+            st.pyplot(fig)
         elif chart_type == '散點圖':
-            st.scatter_chart(chart_data, x=x_option, y=y_option)
+            fig, ax = plt.subplots()
+            ax.scatter(chart_data[x_option], chart_data[y_option], color='red')
+            ax.set_xlabel(x_option)
+            ax.set_ylabel(y_option)
+            st.pyplot(fig)
     
     # 進度條
     bar = st.progress(0)
