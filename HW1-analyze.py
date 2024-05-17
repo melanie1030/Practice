@@ -10,7 +10,7 @@ st.title('我的第一個應用程式')
 uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 檔案", type=["csv", "json"])
 
 # 選擇要繪製的圖表類型
-chart_type_options = ['折線圖', '長條圖', '盒鬚圖', '圓餅圖']
+chart_type_options = ['折線圖', '長條圖', '盒鬚圖', '散點圖']
 chart_type = st.sidebar.radio("選擇圖表類型", chart_type_options)
 
 if uploaded_file is not None:
@@ -57,8 +57,7 @@ if uploaded_file is not None:
             st.bar_chart(chart_data.set_index(x_option))
         elif chart_type == '盒鬚圖':
             st.boxplot(chart_data.groupby(x_option))
-        elif chart_type == '圓餅圖':
-            st.write("暫不支援圓餅圖")
+        elif chart_type == '散點圖':
     
     # 進度條
     bar = st.progress(0)
