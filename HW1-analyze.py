@@ -41,7 +41,12 @@ bar.progress(100, '載入完成！')
 #消息通知
 if st.button('儲存', type="primary"):
     st.toast(':rainbow[你編輯的內容已經保存]', icon='💾')
-    st.success('Success!')
-    st.info('Info!')
-    st.warning('Warning!')
-    st.error('Error!', icon='🚨')
+
+with st.form(key='my_form'):
+    form_name = st.text_input(label='姓名', placeholder='請輸入姓名')
+    form_gender = st.selectbox('性別', ['男', '女', '其他'])
+    form_birthday = st.date_input("生日")
+    submit_button = st.form_submit_button(label='Submit')
+
+if submit_button:
+    st.write(f'hello {form_name}, 性別:{form_gender}, 生日:{form_birthday}')
