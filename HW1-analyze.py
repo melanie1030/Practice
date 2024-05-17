@@ -41,3 +41,7 @@ bar.progress(100, '載入完成！')
 #消息通知
 if st.button('儲存', type="primary"):
     st.toast(':rainbow[你編輯的內容已經保存]', icon='💾')
+    st.success('Success!')
+    st.info('Info!')
+    st.warning('Warning!')
+    st.error('Error!', icon='🚨')
