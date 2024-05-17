@@ -37,8 +37,8 @@ if uploaded_file is not None:
     
     # 提供選擇框-側邊欄
     option = st.sidebar.selectbox(
-        '你喜歡哪種動物？',
-        ['狗', '貓', '鸚鵡', '天竺鼠'])
+        '選擇哪筆資料?',
+        ['交易日期', '種類代碼', '作物代號', '市場代號', '市場名稱', '上價', '中價', '下價'])
     st.sidebar.text(f'你的答案：{option}')
     
     # 進度條
