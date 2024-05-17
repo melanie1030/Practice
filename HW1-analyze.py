@@ -1,6 +1,7 @@
 import time
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 # 標題
 st.title('我的第一個應用程式')
