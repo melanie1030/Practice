@@ -2,6 +2,7 @@ import time
 import streamlit as st
 import pandas as pd
 import altair as alt
+import base64
 
 # 標題
 st.title('HW1')
@@ -88,8 +89,13 @@ if uploaded_file is not None:
         time.sleep(0.05)
     bar.progress(100, '加載完成！')
     
-    # 消息通知
+    # 下載資料
     if st.button('保存', type="primary"):
+        csv = df.to_csv(index=False)
+        b64 = base64.b64encode(csv.encode()).decode()
+        href = f'<a href="data:file/csv;base64,{b64}" download="data.csv">按此下載資料</a>'
+        st.markdown(href, unsafe_allow_html=True)
         st.toast(':rainbow[你編輯的內容已經保存]', icon='💾')
+
 else:
     st.write("請上傳一個 CSV 或 JSON 檔案。")
