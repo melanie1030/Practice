@@ -20,24 +20,26 @@ if uploaded_file is not None:
     st.write("上傳的數據表格：")
     st.write(df)
     
-    # 表單選擇框
-    with st.form(key='my_form'):
-        row_option = st.selectbox('選擇要哪一行', 
-                                  ['交易日期', '種類代碼', '作物代號', '作物名稱', '市場代號', '市場名稱'])
-        transaction_option = st.selectbox('想看哪筆交易量', 
-                                          ['交易量', '上價', '中價', '下價', '平均價'])
-        submit_button = st.form_submit_button(label='Submit')
-    
-    if submit_button:
-        col1, col2 = st.columns(2)
+    # 左側欄
+    with st.sidebar:
+        # 表單選擇框
+        with st.form(key='my_form'):
+            row_option = st.selectbox('選擇要哪一行', 
+                                      ['交易日期', '種類代碼', '作物代號', '作物名稱', '市場代號', '市場名稱'])
+            transaction_option = st.selectbox('想看哪筆交易量', 
+                                              ['交易量', '上價', '中價', '下價', '平均價'])
+            submit_button = st.form_submit_button(label='Submit')
         
-        with col1:
-            st.write(f"選擇行：{row_option}")
-            st.write(df[[row_option]])
-        
-        with col2:
-            st.write(f"選擇價位或交易量：{transaction_option}")
-            st.write(df[[transaction_option]])
+        if submit_button:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write(f"顯示選擇的行：{row_option}")
+                st.write(df[[row_option]])
+            
+            with col2:
+                st.write(f"顯示選擇的交易量：{transaction_option}")
+                st.write(df[[transaction_option]])
     
     # 繪製圖表
     chart_data = df.select_dtypes(include=[np.number])  # 只選擇數值列
