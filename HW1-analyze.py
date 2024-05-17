@@ -2,7 +2,7 @@ import time
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+
 
 # 標題
 st.title('我的第一個應用程式')
