@@ -24,29 +24,29 @@ if uploaded_file is not None:
     with st.sidebar:
         # 表單選擇框
         with st.form(key='my_form'):
-            row_option = st.selectbox('選擇要哪一行', 
+            x_option = st.selectbox('選擇 X 軸資料', 
                                       ['交易日期', '種類代碼', '作物代號', '作物名稱', '市場代號', '市場名稱'])
-            transaction_option = st.selectbox('想看哪筆交易量', 
-                                              ['交易量', '上價', '中價', '下價', '平均價'])
+            y_option = st.selectbox('選擇 Y 軸資料', 
+                                    ['交易量', '上價', '中價', '下價', '平均價'])
             submit_button = st.form_submit_button(label='提交')
         
         if submit_button:
-            # 顯示選擇的行和交易量數據
+            # 顯示選擇的 X 軸和 Y 軸數據
             col1, col2 = st.columns(2)
             
             with col1:
-                st.write(f"顯示選擇的行：{row_option}")
-                st.write(df[[row_option]])
+                st.write(f"顯示選擇的 X 軸資料：{x_option}")
+                st.write(df[[x_option]])
             
             with col2:
-                st.write(f"顯示選擇的交易量：{transaction_option}")
-                st.write(df[[transaction_option]])
+                st.write(f"顯示選擇的 Y 軸資料：{y_option}")
+                st.write(df[[y_option]])
 
     # 中間位置繪製圖表
     if submit_button:
-        st.write("繪製圖表")
-        chart_data = df[[row_option, transaction_option]].dropna()
-        st.line_chart(chart_data.set_index(row_option))
+        st.write("繪製散點圖")
+        chart_data = df[[x_option, y_option]].dropna()
+        st.scatter_chart(chart_data.set_index(x_option))
     
     # 進度條
     bar = st.progress(0)
