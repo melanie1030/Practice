@@ -60,7 +60,7 @@ if uploaded_file is not None:
             st.bar_chart(chart_data.set_index(x_option))
         elif chart_type == '盒鬚圖':
             if uploaded_file.name.endswith('.json'):
-                st.error("此資料不是盒使用盒鬚圖")
+                st.error("此資料不適合使用盒鬚圖")
             else:
                 try:
                     st.altair_chart(alt.Chart(chart_data).mark_boxplot().encode(
