@@ -22,3 +22,7 @@ map_data = pd.DataFrame(
     np.random.randn(100, 2) / [50, 50] + [22.6, 120.4],
     columns=['lat', 'lon'])
 st.map(map_data)
+
+#繪製按鈕
+if st.button('不要按!'):
+    st.text("不是叫你不要按了嗎！")
