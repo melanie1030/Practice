@@ -42,9 +42,11 @@ if uploaded_file is not None:
                 st.write(f"显示选择的交易量：{transaction_option}")
                 st.write(df[[transaction_option]])
 
-            # 绘制图表
-            chart_data = df[[row_option, transaction_option]].dropna()
-            st.line_chart(chart_data.set_index(row_option))
+    # 中间位置绘制图表
+    if submit_button:
+        st.write("绘制图表")
+        chart_data = df[[row_option, transaction_option]].dropna()
+        st.line_chart(chart_data.set_index(row_option))
     
     # 进度条
     bar = st.progress(0)
