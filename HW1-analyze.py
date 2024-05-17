@@ -31,7 +31,10 @@ option = st.sidebar.selectbox(
     '你喜歡哪種動物？',
     ['狗', '貓', '鸚鵡', '天竺鼠'])
 st.sidebar.text(f'你的答案：{option}')
-#列容器
-left_column, right_column = st.columns(2)
-left_column.write("這是左邊欄位。")
-right_column.write("這是右邊欄位。")
+#進度條
+bar = st.progress(0)
+for i in range(100):
+    bar.progress(i + 1, f'目前進度 {i+1} %')
+    time.sleep(0.05)
+
+bar.progress(100, '載入完成！')
