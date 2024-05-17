@@ -4,11 +4,17 @@ import pandas as pd
 import altair as alt
 
 # 標題
-st.title('第一次作業')
+st.title('我的第一個應用程式')
 
-# 在左侧栏添加颜色选项
-color_options = ['藍色', '綠色', '紅色']
-selected_color = st.sidebar.selectbox("選擇顏色", color_options)
+# 上傳任何類型的檔案
+uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 檔案")
+
+# 選擇要繪製的圖表類型
+chart_type_options = ['折線圖', '長條圖', '盒鬚圖', '散點圖']
+chart_type = st.sidebar.radio("選擇圖表類型", chart_type_options)
+
+# 新增地圖選項
+show_map_button = st.sidebar.button("顯示地圖")
 
 if uploaded_file is not None:
     # 根據檔案類型讀取數據
@@ -55,7 +61,7 @@ if uploaded_file is not None:
             st.bar_chart(chart_data.set_index(x_option))
         elif chart_type == '盒鬚圖':
             if uploaded_file.name.endswith('.json'):
-                st.error("此資料不適合使用盒鬚圖")
+                st.error("此資料不是盒使用盒鬚圖")
             else:
                 try:
                     st.altair_chart(alt.Chart(chart_data).mark_boxplot().encode(
@@ -85,17 +91,5 @@ if uploaded_file is not None:
     # 消息通知
     if st.button('保存', type="primary"):
         st.toast(':rainbow[你編輯的內容已經保存]', icon='💾')
-
-# 在上傳檔案之後顯示選擇的顏色
-if selected_color:
-    if selected_color == '藍色':
-        st.write("你選擇了藍色")
-        # 在此处绘制相应的图表或进行其他操作
-    elif selected_color == '綠色':
-        st.write("你選擇了綠色")
-        # 在此处绘制相应的图表或进行其他操作
-    elif selected_color == '紅色':
-        st.write("你選擇了紅色")
-        # 在此处绘制相应的图表或进行其他操作
 else:
-    st.write("請在左側選擇一種顏色。")
+    st.write("請上傳一個 CSV 或 JSON 檔案。")
