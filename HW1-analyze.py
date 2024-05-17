@@ -29,11 +29,15 @@ if uploaded_file is not None:
         submit_button = st.form_submit_button(label='Submit')
     
     if submit_button:
-        st.write(f"顯示選擇的行：{row_option}")
-        st.write(df[[row_option]])
+        col1, col2 = st.columns(2)
         
-        st.write(f"顯示選擇的交易量：{transaction_option}")
-        st.write(df[[transaction_option]])
+        with col1:
+            st.write(f"顯示選擇的行：{row_option}")
+            st.write(df[[row_option]])
+        
+        with col2:
+            st.write(f"顯示選擇的交易量：{transaction_option}")
+            st.write(df[[transaction_option]])
     
     # 繪製圖表
     chart_data = df.select_dtypes(include=[np.number])  # 只選擇數值列
