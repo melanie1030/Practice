@@ -1,6 +1,7 @@
 import time
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 # 標題
 st.title('我的第一個應用程式')
@@ -57,7 +58,10 @@ if uploaded_file is not None:
             st.bar_chart(chart_data.set_index(x_option))
         elif chart_type == '盒鬚圖':
             try:
-                st.box_chart(chart_data.set_index(x_option))
+                st.altair_chart(alt.Chart(chart_data).mark_boxplot().encode(
+                    x=x_option,
+                    y=y_option
+                ), use_container_width=True)
             except ValueError:
                 st.error("此資料無法顯示盒鬚圖")
         elif chart_type == '散點圖':
