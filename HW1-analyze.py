@@ -56,7 +56,10 @@ if uploaded_file is not None:
         elif chart_type == '長條圖':
             st.bar_chart(chart_data.set_index(x_option))
         elif chart_type == '盒鬚圖':
-            st.box_chart(chart_data.set_index(x_option))
+            if len(chart_data) < 5:  # 如果數據點少於5個，無法繪製盒鬚圖
+                st.error("此資料無法顯示盒鬚圖")
+            else:
+                st.box_chart(chart_data.set_index(x_option))
         elif chart_type == '散點圖':
             st.scatter_chart(chart_data, x=x_option, y=y_option)
 
