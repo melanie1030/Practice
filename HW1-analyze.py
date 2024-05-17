@@ -27,7 +27,7 @@ if st.checkbox('顯示地圖圖表'):
 if st.button('不要按!'):
     st.text("不是叫你不要按了嗎！")
 #提供選擇框
-option = st.selectbox(
+option = st.sidebar.selectbox(
     '你喜歡哪種動物？',
     ['狗', '貓', '鸚鵡', '天竺鼠'])
-st.text(f'你的答案：{option}')
+st.sidebar.text(f'你的答案：{option}')
