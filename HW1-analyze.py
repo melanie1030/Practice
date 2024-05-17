@@ -20,6 +20,17 @@ if uploaded_file is not None:
     st.write("上傳的數據表格：")
     st.write(df)
     
+    # 提供選擇框-側邊欄
+    option = st.sidebar.selectbox(
+        '你想查看哪一列？',
+        df.columns.tolist()
+    )
+    st.sidebar.text(f'你選擇的列：{option}')
+    
+    # 顯示選擇的列
+    st.write(f"顯示選擇的列：{option}")
+    st.write(df[[option]])
+    
     # 繪製圖表
     chart_data = df.select_dtypes(include=[np.number])  # 只選擇數值列
     if not chart_data.empty:
@@ -37,12 +48,6 @@ if uploaded_file is not None:
     # 繪製按鈕
     if st.button('不要按!'):
         st.text("不是叫你不要按了嗎！")
-    
-    # 提供選擇框-側邊欄
-    option = st.sidebar.selectbox(
-        '你喜歡哪種動物？',
-        ['狗', '貓', '鸚鵡', '天竺鼠'])
-    st.sidebar.text(f'你的答案：{option}')
     
     # 進度條
     bar = st.progress(0)
