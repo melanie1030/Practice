@@ -15,6 +15,15 @@ chart_type = st.sidebar.radio("選擇圖表類型", chart_type_options)
 # 新增地圖選項
 show_map_button = st.sidebar.button("顯示地圖")
 
+def convert_to_map_data(data):
+    # 檢查是否存在可能的紅經度列
+    for lat_col in ['LAT', 'LATITUDE', 'lat', 'latitude']:
+        if lat_col in data.columns:
+            return data.rename(columns={lat_col: 'latitude'})
+
+    # 如果找不到，則引發異常
+    raise ValueError("地圖數據必須包含一個名為 'LAT'、'LATITUDE'、'lat' 或 'latitude' 的緯度列。")
+
 if uploaded_file is not None:
     # 根據檔案類型讀取數據
     if uploaded_file.name.endswith('.csv'):
@@ -71,8 +80,12 @@ if uploaded_file is not None:
     
     # 按下按鈕才顯示地圖
     if show_map_button:
-        st.write("顯示地圖：")
-        st.map(df)
+        try:
+            st.write("顯示地圖：")
+            map_data = convert_to_map_data(df)
+            st.map(map_data)
+        except ValueError as e:
+            st.error(str(e))
     
     # 進度條
     bar = st.progress(0)
