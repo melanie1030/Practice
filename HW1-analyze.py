@@ -3,7 +3,6 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 
-
 # 標題
 st.title('我的第一個應用程式')
 
@@ -48,19 +47,18 @@ if uploaded_file is not None:
                 st.write(df[[y_option]])
 
     # 中間位置繪製圖表
-if submit_button:
-    st.write(f"繪製{chart_type}")
-    chart_data = df[[x_option, y_option]].dropna()
-    
-    if chart_type == '折線圖':
-        st.line_chart(chart_data.set_index(x_option))
-    elif chart_type == '長條圖':
-        st.bar_chart(chart_data.set_index(x_option))
-    elif chart_type == '盒鬚圖':
-        st.box_chart(chart_data.set_index(x_option))
-    elif chart_type == '散點圖':
-        st.scatter_chart(chart_data, x=x_option, y=y_option)
-
+    if submit_button:
+        st.write(f"繪製{chart_type}")
+        chart_data = df[[x_option, y_option]].dropna()
+        
+        if chart_type == '折線圖':
+            st.line_chart(chart_data.set_index(x_option))
+        elif chart_type == '長條圖':
+            st.bar_chart(chart_data.set_index(x_option))
+        elif chart_type == '盒鬚圖':
+            st.boxplot(chart_data.groupby(x_option))
+        elif chart_type == '散點圖':
+            st.scatter_chart(chart_data, x=x_option, y=y_option)
     
     # 進度條
     bar = st.progress(0)
