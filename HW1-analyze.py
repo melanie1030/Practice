@@ -56,7 +56,7 @@ if uploaded_file is not None:
         elif chart_type == '長條圖':
             st.bar_chart(chart_data.set_index(x_option))
         elif chart_type == '盒鬚圖':
-            st.box_chart(chart_data.set_index(x_option))
+            st.boxplot(chart_data.groupby(x_option))
         elif chart_type == '圓餅圖':
             st.write("暫不支援圓餅圖")
     
