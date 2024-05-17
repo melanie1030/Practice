@@ -16,6 +16,21 @@ chart_type = st.sidebar.radio("選擇圖表類型", chart_type_options)
 # 新增地圖選項
 show_map_button = st.sidebar.button("顯示地圖")
 
+# 在左侧栏添加颜色选项
+color_options = ['藍色', '綠色', '紅色']
+selected_color = st.sidebar.selectbox("選擇顏色", color_options)
+
+# 根据用户选择的颜色绘制相应的图表或做出相应的处理
+if selected_color == '藍色':
+    st.write("你選擇了藍色")
+    # 在此处绘制相应的图表或进行其他操作
+elif selected_color == '綠色':
+    st.write("你選擇了綠色")
+    # 在此处绘制相应的图表或进行其他操作
+elif selected_color == '紅色':
+    st.write("你選擇了紅色")
+    # 在此处绘制相应的图表或进行其他操作
+
 if uploaded_file is not None:
     # 根據檔案類型讀取數據
     if uploaded_file.name.endswith('.csv'):
