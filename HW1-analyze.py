@@ -4,7 +4,7 @@ import pandas as pd
 import altair as alt
 
 # 標題
-st.title('我的第一個應用程式')
+st.title('HW1')
 
 # 上傳任何類型的檔案
 uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 檔案")
