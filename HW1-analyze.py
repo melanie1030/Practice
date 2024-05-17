@@ -69,7 +69,7 @@ if uploaded_file is not None:
                         y=y_option
                     ), use_container_width=True)
                 except ValueError:
-                    st.error("此資料無法顯示盒鬚圖")
+                    st.error("此資料「無法」顯示盒鬚圖!!")
         elif chart_type == '散點圖':
             st.scatter_chart(chart_data, x=x_option, y=y_option)
     
@@ -79,7 +79,7 @@ if uploaded_file is not None:
             st.write("顯示地圖：")
             st.map(df)
         else:
-            st.write("此資料「無法」使用地圖")
+            st.write("此資料「無法」使用地圖!!")
     
     # 進度條
     bar = st.progress(0)
