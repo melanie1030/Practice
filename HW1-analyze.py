@@ -38,3 +38,6 @@ for i in range(100):
     time.sleep(0.05)
 
 bar.progress(100, '載入完成！')
+#消息通知
+if st.button('儲存', type="primary"):
+    st.toast(':rainbow[你編輯的內容已經保存]', icon='💾')
