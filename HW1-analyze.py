@@ -41,7 +41,7 @@ if uploaded_file is not None:
         st.line_chart(chart_data)
     else:
         st.write("沒有數值列可用於繪製圖表。")
-
+    
     # 進度條
     bar = st.progress(0)
     for i in range(100):
