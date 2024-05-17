@@ -59,7 +59,13 @@ if uploaded_file is not None:
         elif chart_type == '長條圖':
             st.bar_chart(chart_data.set_index(x_option))
         elif chart_type == '盒鬚圖':
-            st.error("此資料無法顯示盒鬚圖")
+            try:
+                st.altair_chart(alt.Chart(chart_data).mark_boxplot().encode(
+                    x=x_option,
+                    y=y_option
+                ), use_container_width=True)
+            except ValueError:
+                st.write("此資料無法顯示盒鬚圖")
         elif chart_type == '散點圖':
             st.scatter_chart(chart_data, x=x_option, y=y_option)
     
