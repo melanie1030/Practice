@@ -30,11 +30,6 @@ if selected_color:
         st.write("你選擇了紅色")
         # 在此处绘制相应的图表或进行其他操作
 
-
-# 左侧栏表单提交按钮
-with st.sidebar.form(key='color_form'):
-    submit_button = st.form_submit_button(label='提交')
-
 if uploaded_file is not None:
     # 根據檔案類型讀取數據
     if uploaded_file.name.endswith('.csv'):
