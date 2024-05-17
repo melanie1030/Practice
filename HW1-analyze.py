@@ -1,7 +1,6 @@
 import time
 import streamlit as st
 import pandas as pd
-import altair as alt
 
 # 標題
 st.title('我的第一個應用程式')
@@ -12,6 +11,9 @@ uploaded_file = st.file_uploader("上傳一個 CSV 或 JSON 檔案")
 # 選擇要繪製的圖表類型
 chart_type_options = ['折線圖', '長條圖', '盒鬚圖', '散點圖']
 chart_type = st.sidebar.radio("選擇圖表類型", chart_type_options)
+
+# 新增地圖選項
+show_map_button = st.sidebar.button("顯示地圖")
 
 if uploaded_file is not None:
     # 根據檔案類型讀取數據
@@ -66,7 +68,11 @@ if uploaded_file is not None:
                 st.error("此資料無法顯示盒鬚圖")
         elif chart_type == '散點圖':
             st.scatter_chart(chart_data, x=x_option, y=y_option)
-
+    
+    # 按下按鈕才顯示地圖
+    if show_map_button:
+        st.write("顯示地圖：")
+        st.map(df)
     
     # 進度條
     bar = st.progress(0)
