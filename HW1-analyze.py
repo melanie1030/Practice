@@ -58,6 +58,7 @@ if uploaded_file is not None:
         elif chart_type == '盒鬚圖':
             st.boxplot(chart_data.groupby(x_option))
         elif chart_type == '散點圖':
+            st.scatter_chart(chart_data, x=x_option, y=y_option)
     
     # 進度條
     bar = st.progress(0)
