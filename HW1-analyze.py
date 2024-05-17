@@ -32,11 +32,11 @@ if uploaded_file is not None:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.write(f"顯示選擇的行：{row_option}")
+            st.write(f"選擇行：{row_option}")
             st.write(df[[row_option]])
         
         with col2:
-            st.write(f"顯示選擇的交易量：{transaction_option}")
+            st.write(f"選擇價位或交易量：{transaction_option}")
             st.write(df[[transaction_option]])
     
     # 繪製圖表
