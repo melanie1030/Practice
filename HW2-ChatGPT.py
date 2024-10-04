@@ -2,7 +2,7 @@ import streamlit as st
 import openai
 
 # 初始化 OpenAI API 金鑰
-api_key = st.secrets["openai_api_key"]
+api_key = st.secrets["openai"]["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"]  # 修改過的路徑
 openai.api_key = api_key
 
 # 訊息輸入區
