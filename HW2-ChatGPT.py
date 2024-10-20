@@ -11,12 +11,66 @@ if "messages" not in st.session_state:
         {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
     ]
 
-# Display chat history
+# Custom CSS for chat bubble styles
+st.markdown("""
+    <style>
+    .user-bubble {
+        background-color: #DCF8C6;
+        border-radius: 10px;
+        padding: 10px;
+        margin: 10px;
+        display: inline-block;
+        max-width: 70%;
+        text-align: left;
+    }
+    .ai-bubble {
+        background-color: #E8E8E8;
+        border-radius: 10px;
+        padding: 10px;
+        margin: 10px;
+        display: inline-block;
+        max-width: 70%;
+        text-align: left;
+    }
+    .user-container {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+    .ai-container {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+    .user-container img, .ai-container img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin-right: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Display chat history with avatars
 for message in st.session_state["messages"]:
     if message["role"] == "user":
-        st.write(f"**你：** {message['content']}")
+        st.markdown(f"""
+        <div class="user-container">
+            <img src="https://i.imgur.com/7S7oETi.png" alt="User">
+            <div class="user-bubble">
+                {message['content']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.success(f"AI：{message['content']}")
+        st.markdown(f"""
+        <div class="ai-container">
+            <img src="https://i.imgur.com/nGF1K8f.png" alt="AI">
+            <div class="ai-bubble">
+                {message['content']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # Input box for the user's question at the bottom of the screen
 user_input = st.chat_input("輸入訊息：")
