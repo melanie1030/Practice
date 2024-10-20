@@ -102,9 +102,6 @@ if user_input:
     # Add the user's input to the session state messages
     st.session_state["messages"].append({"role": "user", "content": user_input})
 
-    # Display the user's message immediately by re-rendering messages
-    render_messages()
-
     # Prepare the payload for the API request
     data = {
         "model": "gpt-3.5-turbo",
@@ -127,4 +124,4 @@ if user_input:
             st.error(f"Error: {response.status_code}, {response.text}")
 
     # Re-render messages to include the AI's response
-    render_messages()
+    st.experimental_rerun()  # Force a re-run to display the new messages
