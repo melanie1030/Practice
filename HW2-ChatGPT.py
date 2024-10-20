@@ -22,6 +22,8 @@ st.markdown("""
         display: inline-block;
         max-width: 70%;
         text-align: left;
+        float: right;
+        clear: both;
     }
     .ai-bubble {
         background-color: #E8E8E8;
@@ -31,22 +33,30 @@ st.markdown("""
         display: inline-block;
         max-width: 70%;
         text-align: left;
+        float: left;
+        clear: both;
     }
-    .user-container {
+    .user-container, .ai-container {
         display: flex;
         align-items: flex-start;
         margin-bottom: 10px;
-    }
-    .ai-container {
-        display: flex;
-        align-items: flex-start;
-        margin-bottom: 10px;
+        clear: both;
     }
     .user-container img, .ai-container img {
         width: 40px;
         height: 40px;
         border-radius: 50%;
+    }
+    .user-container {
+        justify-content: flex-end;
+    }
+    .user-container img {
+        margin-left: 10px;
+        order: 2;
+    }
+    .ai-container img {
         margin-right: 10px;
+        order: 1;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -56,10 +66,10 @@ for message in st.session_state["messages"]:
     if message["role"] == "user":
         st.markdown(f"""
         <div class="user-container">
-            <img src="https://i.imgur.com/7S7oETi.png" alt="User">
             <div class="user-bubble">
                 {message['content']}
             </div>
+            <img src="https://i.imgur.com/7S7oETi.png" alt="User">
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -106,8 +116,5 @@ if user_input:
 
         # Add the AI's response to the session state messages
         st.session_state["messages"].append({"role": "assistant", "content": answer})
-
-        # Display the updated conversation
-        st.success(f"AI：{answer}")
     else:
         st.error(f"Error: {response.status_code}, {response.text}")
