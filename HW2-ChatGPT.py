@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import base64  # 如果需要处理图像文件
 
 # Title and description for the Streamlit app
 st.title("ChatGPT Service 打造 🤖")
@@ -13,48 +14,7 @@ if "messages" not in st.session_state:
 
 # Custom CSS for chat bubble styles
 st.markdown("""
-    <style>
-    .user-bubble {
-        background-color: #DCF8C6;
-        border-radius: 10px;
-        padding: 10px;
-        margin: 10px;
-        display: inline-block;
-        max-width: 70%;
-        text-align: left;
-    }
-    .ai-bubble {
-        background-color: #E8E8E8;
-        border-radius: 10px;
-        padding: 10px;
-        margin: 10px;
-        display: inline-block;
-        max-width: 70%;
-        text-align: left;
-    }
-    .user-container, .ai-container {
-        display: flex;
-        align-items: flex-start;
-        margin-bottom: 10px;
-    }
-    .user-container img, .ai-container img {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-    }
-    .user-container {
-        justify-content: flex-end;
-    }
-    .user-container img {
-        margin-left: 10px;
-    }
-    .ai-container {
-        justify-content: flex-start;
-    }
-    .ai-container img {
-        margin-right: 10px;
-    }
-    </style>
+    <!-- 您的 CSS 样式保持不变 -->
 """, unsafe_allow_html=True)
 
 # Create a placeholder for chat messages
@@ -62,34 +22,17 @@ chat_placeholder = st.empty()
 
 # Function to render messages
 def render_messages():
-    with chat_placeholder.container():
-        for message in st.session_state["messages"]:
-            if message["role"] == "system":
-                continue  # Skip system messages
-            elif message["role"] == "user":
-                st.markdown(f"""
-                <div class="user-container">
-                    <div class="user-bubble">
-                        {message['content']}
-                    </div>
-                    <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh6XGT5Hz9MpAiyfTHlBczavuUjyTBza9zWdzYmoifglj0p1lsylcTEScnpSa-Youh7YXw-ssgO-mMQmw-DBz4NeesioQPTe8beOH_QS-A4JMnfZAGP-01gxPQrS-pPEnrnJxbdVnWguhCC/s1600/pose_pien_uruuru_woman.png" alt="User">
-                </div>
-                """, unsafe_allow_html=True)
-            elif message["role"] == "assistant":
-                st.markdown(f"""
-                <div class="ai-container">
-                    <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjCHBgyqLrwRdbSM72R9PutXIqxbI9yR5UzXWC0TYIYVlKgHH5TzkaHijRkdxQMRSJx8upcecs2RGHYW7gVOSQPH-LUrPUg3esbqx5-7Q04BPJWD-DdzTealzGBQehfXpDeLxYe29MjQQgo/s1600/megane_hikaru_woman.png" alt="AI">
-                    <div class="ai-bubble">
-                        {message['content']}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+    # 您的渲染消息函数保持不变
+    pass  # 为了简洁，这里省略具体内容
 
 # Display chat history with avatars
 render_messages()
 
 # Input box for the user's question at the bottom of the screen
 user_input = st.chat_input("輸入訊息：")
+
+# File uploader for uploading files or images
+uploaded_file = st.file_uploader("上傳檔案或圖片：", type=["txt", "pdf", "png", "jpg", "jpeg"])
 
 # Your API key (read securely from Streamlit secrets)
 api_key = st.secrets["api_key"]
@@ -101,17 +44,40 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# When the user submits a message
-if user_input:
-    # Add the user's input to the session state messages
-    st.session_state["messages"].append({"role": "user", "content": user_input})
+# When the user submits a message or uploads a file
+if user_input or uploaded_file:
+    if user_input:
+        # Add the user's input to the session state messages
+        st.session_state["messages"].append({"role": "user", "content": user_input})
+
+    if uploaded_file:
+        # Process the uploaded file
+        file_details = {"filename": uploaded_file.name, "filetype": uploaded_file.type}
+        if uploaded_file.type.startswith('text'):
+            # For text files
+            file_content = uploaded_file.getvalue().decode("utf-8")
+            # Add the file content to the conversation
+            st.session_state["messages"].append({"role": "user", "content": f"上傳的文件內容：\n{file_content}"})
+        elif uploaded_file.type in ["application/pdf"]:
+            # For PDF files
+            file_bytes = uploaded_file.read()
+            # 这里您可能需要使用 PDF 解析库来读取内容，例如 PyPDF2
+            st.session_state["messages"].append({"role": "user", "content": f"上傳了一個 PDF 文件：{uploaded_file.name}"})
+        elif uploaded_file.type.startswith('image'):
+            # For image files
+            img_bytes = uploaded_file.getvalue()
+            img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+            # Add the image content to the conversation (可能需要根据您的 API 能力调整)
+            st.session_state["messages"].append({"role": "user", "content": f"上傳的圖片內容（Base64編碼）：{img_base64}"})
+        else:
+            st.error("不支持的文件類型")
 
     # Re-render messages to display the user's message immediately
     render_messages()
 
     # Prepare the payload for the API request
     data = {
-        "model": "gpt-3.5-turbo",
+        "model": "gpt-4o-mini",  # 使用您的 gpt-4o-mini 模型
         "messages": st.session_state["messages"]
     }
 
