@@ -14,12 +14,12 @@ if "messages" not in st.session_state:
 # Display chat history
 for message in st.session_state["messages"]:
     if message["role"] == "user":
-        st.write(f"**請問：** {message['content']}")
+        st.write(f"**你：** {message['content']}")
     else:
-        st.success(f"AI 回答：{message['content']}")
+        st.success(f"AI：{message['content']}")
 
-# Input box for the user's question
-user_input = st.text_input("輸入訊息:")
+# Input box for the user's question at the bottom of the screen
+user_input = st.chat_input("輸入訊息：")
 
 # Your API key (read securely from Streamlit secrets)
 api_key = st.secrets["api_key"]
@@ -32,31 +32,28 @@ headers = {
 }
 
 # When the user submits a message
-if st.button("送出"):
-    if user_input:
-        # Add the user's input to the session state messages
-        st.session_state["messages"].append({"role": "user", "content": user_input})
+if user_input:
+    # Add the user's input to the session state messages
+    st.session_state["messages"].append({"role": "user", "content": user_input})
 
-        # Prepare the payload for the API request
-        data = {
-            "model": "gpt-3.5-turbo",
-            "messages": st.session_state["messages"]
-        }
+    # Prepare the payload for the API request
+    data = {
+        "model": "gpt-3.5-turbo",
+        "messages": st.session_state["messages"]
+    }
 
-        # Send the API request
-        response = requests.post(api_url, headers=headers, json=data)
+    # Send the API request
+    response = requests.post(api_url, headers=headers, json=data)
 
-        # Check if the request was successful
-        if response.status_code == 200:
-            response_json = response.json()
-            answer = response_json['choices'][0]['message']['content']
+    # Check if the request was successful
+    if response.status_code == 200:
+        response_json = response.json()
+        answer = response_json['choices'][0]['message']['content']
 
-            # Add the AI's response to the session state messages
-            st.session_state["messages"].append({"role": "assistant", "content": answer})
+        # Add the AI's response to the session state messages
+        st.session_state["messages"].append({"role": "assistant", "content": answer})
 
-            # Display the updated conversation
-            st.success(f"AI 回答：{answer}")
-        else:
-            st.error(f"Error: {response.status_code}, {response.text}")
+        # Display the updated conversation
+        st.success(f"AI：{answer}")
     else:
-        st.warning("請先輸入訊息！")
+        st.error(f"Error: {response.status_code}, {response.text}")
