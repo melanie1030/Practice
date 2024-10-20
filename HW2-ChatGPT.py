@@ -68,13 +68,13 @@ def render_messages():
                 <div class="user-bubble">
                     {message['content']}
                 </div>
-                <img src="https://i.imgur.com/7S7oETi.png" alt="User">
+                <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh6XGT5Hz9MpAiyfTHlBczavuUjyTBza9zWdzYmoifglj0p1lsylcTEScnpSa-Youh7YXw-ssgO-mMQmw-DBz4NeesioQPTe8beOH_QS-A4JMnfZAGP-01gxPQrS-pPEnrnJxbdVnWguhCC/s1600/pose_pien_uruuru_woman.png" alt="User">
             </div>
             """, unsafe_allow_html=True)
         elif message["role"] == "assistant":
             st.markdown(f"""
             <div class="ai-container">
-                <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEi52RbA-MP8y_gg_uoJuWBpA6vir71rcwcpWUqovWtcx1-pPhQcoFvs-hwQYDkCVEF56KQjVokidAa8-YCYh0jTJzNOls8keTOG7PuzQY9BdHI4jcigcH4PD8SlOrJXTmlV3TvqC02JuLfe/s910/computer_tokui_boy.png" alt="AI">
+                <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjCHBgyqLrwRdbSM72R9PutXIqxbI9yR5UzXWC0TYIYVlKgHH5TzkaHijRkdxQMRSJx8upcecs2RGHYW7gVOSQPH-LUrPUg3esbqx5-7Q04BPJWD-DdzTealzGBQehfXpDeLxYe29MjQQgo/s1600/megane_hikaru_woman.png" alt="AI">
                 <div class="ai-bubble">
                     {message['content']}
                 </div>
