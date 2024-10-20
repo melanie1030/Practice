@@ -57,29 +57,33 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Create a placeholder for chat messages
+chat_placeholder = st.empty()
+
 # Function to render messages
 def render_messages():
-    for message in st.session_state["messages"]:
-        if message["role"] == "system":
-            continue  # Skip system messages
-        elif message["role"] == "user":
-            st.markdown(f"""
-            <div class="user-container">
-                <div class="user-bubble">
-                    {message['content']}
+    with chat_placeholder.container():
+        for message in st.session_state["messages"]:
+            if message["role"] == "system":
+                continue  # Skip system messages
+            elif message["role"] == "user":
+                st.markdown(f"""
+                <div class="user-container">
+                    <div class="user-bubble">
+                        {message['content']}
+                    </div>
+                    <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh6XGT5Hz9MpAiyfTHlBczavuUjyTBza9zWdzYmoifglj0p1lsylcTEScnpSa-Youh7YXw-ssgO-mMQmw-DBz4NeesioQPTe8beOH_QS-A4JMnfZAGP-01gxPQrS-pPEnrnJxbdVnWguhCC/s1600/pose_pien_uruuru_woman.png" alt="User">
                 </div>
-                <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh6XGT5Hz9MpAiyfTHlBczavuUjyTBza9zWdzYmoifglj0p1lsylcTEScnpSa-Youh7YXw-ssgO-mMQmw-DBz4NeesioQPTe8beOH_QS-A4JMnfZAGP-01gxPQrS-pPEnrnJxbdVnWguhCC/s1600/pose_pien_uruuru_woman.png" alt="User">
-            </div>
-            """, unsafe_allow_html=True)
-        elif message["role"] == "assistant":
-            st.markdown(f"""
-            <div class="ai-container">
-                <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjCHBgyqLrwRdbSM72R9PutXIqxbI9yR5UzXWC0TYIYVlKgHH5TzkaHijRkdxQMRSJx8upcecs2RGHYW7gVOSQPH-LUrPUg3esbqx5-7Q04BPJWD-DdzTealzGBQehfXpDeLxYe29MjQQgo/s1600/megane_hikaru_woman.png" alt="AI">
-                <div class="ai-bubble">
-                    {message['content']}
+                """, unsafe_allow_html=True)
+            elif message["role"] == "assistant":
+                st.markdown(f"""
+                <div class="ai-container">
+                    <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjCHBgyqLrwRdbSM72R9PutXIqxbI9yR5UzXWC0TYIYVlKgHH5TzkaHijRkdxQMRSJx8upcecs2RGHYW7gVOSQPH-LUrPUg3esbqx5-7Q04BPJWD-DdzTealzGBQehfXpDeLxYe29MjQQgo/s1600/megane_hikaru_woman.png" alt="AI">
+                    <div class="ai-bubble">
+                        {message['content']}
+                    </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
 # Display chat history with avatars
 render_messages()
@@ -101,6 +105,9 @@ headers = {
 if user_input:
     # Add the user's input to the session state messages
     st.session_state["messages"].append({"role": "user", "content": user_input})
+
+    # Re-render messages to display the user's message immediately
+    render_messages()
 
     # Prepare the payload for the API request
     data = {
@@ -124,4 +131,4 @@ if user_input:
             st.error(f"Error: {response.status_code}, {response.text}")
 
     # Re-render messages to include the AI's response
-    st.experimental_rerun()  # Force a re-run to display the new messages
+    render_messages()
