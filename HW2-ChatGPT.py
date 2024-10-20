@@ -74,7 +74,7 @@ def render_messages():
         elif message["role"] == "assistant":
             st.markdown(f"""
             <div class="ai-container">
-                <img src="https://i.imgur.com/nGF1K8f.png" alt="AI">
+                <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEi52RbA-MP8y_gg_uoJuWBpA6vir71rcwcpWUqovWtcx1-pPhQcoFvs-hwQYDkCVEF56KQjVokidAa8-YCYh0jTJzNOls8keTOG7PuzQY9BdHI4jcigcH4PD8SlOrJXTmlV3TvqC02JuLfe/s910/computer_tokui_boy.png" alt="AI">
                 <div class="ai-bubble">
                     {message['content']}
                 </div>
