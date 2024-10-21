@@ -72,24 +72,31 @@ if uploaded_file:
 # Layout with input box and send button (below the file uploader)
 user_input = st.chat_input("輸入訊息：")
 
-# API key and URL configuration
+# API Key 和 URL 設置
+api_url = "https://api.openai.com/v1/chat/completions"  # 確保這裡是正確的 URL
 api_key = st.secrets["api_key"]
+
 headers = {
     "Authorization": f"Bearer {api_key}",
     "Content-Type": "application/json"
 }
 
-# Handle user input
+# 處理使用者輸入
 if user_input:
     st.session_state["messages"].append({"role": "user", "content": user_input})
     render_messages()
 
-    data = {"model": "gpt-4O", "messages": st.session_state["messages"]}
+    # 傳送的資料
+    data = {
+        "model": "gpt-4",  # 修改成正確的模型名稱
+        "messages": st.session_state["messages"]
+    }
 
     with st.spinner("AI 正在回應..."):
         try:
-            response = requests.post(headers=headers, json=data)
-            response.raise_for_status()
+            # 修正 API 呼叫的參數
+            response = requests.post(api_url, headers=headers, json=data)
+            response.raise_for_status()  # 如果發生 HTTP 錯誤，則會拋出異常
 
             response_json = response.json()
             answer = response_json['choices'][0]['message']['content']
