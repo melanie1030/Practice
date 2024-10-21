@@ -1,9 +1,10 @@
 import streamlit as st
 import requests
+import pandas as pd
 
 # Title and description for the Streamlit app
 st.title("ChatGPT Service 打造 🤖")
-st.subheader("您好!!歡迎您問我答~")
+st.subheader("您好!! 歡迎您問我答~")
 
 # Initialize session state for conversation history
 if "messages" not in st.session_state:
@@ -88,8 +89,16 @@ def render_messages():
 # Display chat history with avatars
 render_messages()
 
-# Input box for the user's question at the bottom of the screen
-user_input = st.chat_input("輸入訊息：")
+# Layout with input box, file uploader, and send button
+col1, col2 = st.columns([4, 1])
+
+# User input section with chat input
+with col1:
+    user_input = st.chat_input("輸入訊息：")
+
+# File uploader section for CSV files
+with col2:
+    uploaded_file = st.file_uploader("上傳檔案", type=["csv", "txt", "pdf", "jpg", "png", "jpeg"])
 
 # Your API key (read securely from Streamlit secrets)
 api_key = st.secrets["api_key"]
@@ -101,34 +110,34 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# When the user submits a message
+# Handle user input
 if user_input:
-    # Add the user's input to the session state messages
     st.session_state["messages"].append({"role": "user", "content": user_input})
-
-    # Re-render messages to display the user's message immediately
     render_messages()
 
-    # Prepare the payload for the API request
-    data = {
-        "model": "gpt-3.5-turbo",
-        "messages": st.session_state["messages"]
-    }
+    data = {"model": "gpt-40-mini", "messages": st.session_state["messages"]}
 
-    # Show a spinner while waiting for the AI's response
     with st.spinner("AI 正在回應..."):
-        # Send the API request
         response = requests.post(api_url, headers=headers, json=data)
-
-        # Check if the request was successful
         if response.status_code == 200:
-            response_json = response.json()
-            answer = response_json['choices'][0]['message']['content']
-
-            # Add the AI's response to the session state messages
+            answer = response.json()['choices'][0]['message']['content']
             st.session_state["messages"].append({"role": "assistant", "content": answer})
         else:
             st.error(f"Error: {response.status_code}, {response.text}")
 
-    # Re-render messages to include the AI's response
+    render_messages()
+
+# Handle file upload
+if uploaded_file:
+    if uploaded_file.name.endswith(".csv"):
+        # 讀取並顯示 CSV 檔案內容
+        df = pd.read_csv(uploaded_file)
+        st.session_state["messages"].append(
+            {"role": "user", "content": f"已上傳 CSV 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
+        )
+    else:
+        # 處理其他檔案類型
+        file_info = f"已上傳檔案：{uploaded_file.name} (大小：{uploaded_file.size} bytes)"
+        st.session_state["messages"].append({"role": "user", "content": file_info})
+
     render_messages()
