@@ -1,22 +1,18 @@
 import streamlit as st
+import requests
 import pandas as pd
-from openai import OpenAI
 
-# 初始化 OpenAI 客戶端
-OPENAI_API_KEY = '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'
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Streamlit 標題和副標題
+# Title and description for the Streamlit app
 st.title("ChatGPT Service 打造 🤖")
 st.subheader("您好!! 歡迎您問我答~")
 
-# 初始化聊天記錄
+# Initialize session state for conversation history
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
         {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
     ]
 
-# 渲染訊息的函數
+# Function to render messages
 def render_messages():
     with chat_placeholder.container():
         for message in st.session_state["messages"]:
@@ -41,14 +37,14 @@ def render_messages():
                 </div>
                 """, unsafe_allow_html=True)
 
-# 聊天訊息的占位符
+# Display chat history with avatars
 chat_placeholder = st.empty()
 render_messages()
 
-# 上傳檔案區塊
+# File uploader section (above the input box)
 uploaded_file = st.file_uploader("上傳檔案", type=["csv", "xlsx", "txt", "pdf", "jpg", "png", "jpeg"])
 
-# 檔案處理邏輯
+# Handle file upload
 if uploaded_file:
     try:
         if uploaded_file.name.endswith(".csv"):
@@ -70,25 +66,44 @@ if uploaded_file:
 
     render_messages()
 
-# 輸入區域（在檔案上傳區塊下方）
+# Layout with input box and send button (below the file uploader)
 user_input = st.chat_input("輸入訊息：")
 
-# 使用者輸入的處理
+# API Key 和 URL 設置
+api_url = "https://api.openai.com/v1/chat/completions"  # 確保這裡是正確的 URL
+api_key = st.secrets["api_key"]
+
+headers = {
+    "Authorization": f"Bearer {api_key}",
+    "Content-Type": "application/json"
+}
+
+# 處理使用者輸入
 if user_input:
     st.session_state["messages"].append({"role": "user", "content": user_input})
     render_messages()
 
-    # 呼叫 OpenAI API 生成回應
+    # 傳送的資料
+    data = {
+        "model": "gpt-4",  # 使用確認可用的模型名稱
+        "messages": st.session_state["messages"]
+    }
+
     with st.spinner("AI 正在回應..."):
         try:
-            response = client.chat.completions.create(
-                model="gpt-4.0",  # 改為使用 GPT-4.0 模型
-                messages=st.session_state["messages"]
-            )
-            answer = response.choices[0].message.content
+            # 發送 API 請求
+            response = requests.post(api_url, headers=headers, json=data)
+            response.raise_for_status()  # 若發生 HTTP 錯誤則拋出異常
+
+            # 處理回應
+            response_json = response.json()
+            answer = response_json['choices'][0]['message']['content']
             st.session_state["messages"].append({"role": "assistant", "content": answer})
 
-        except Exception as e:
-            st.error(f"API 錯誤：{e}")
+        except requests.exceptions.RequestException as e:
+            st.error(f"HTTP 錯誤: {e}")
+        except ValueError:
+            st.error("回應不是有效的 JSON 格式")
+            st.write("伺服器回應內容：", response.text)
 
     render_messages()
