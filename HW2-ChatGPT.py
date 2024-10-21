@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import pandas as pd
 
 # Title and description for the Streamlit app
 st.title("ChatGPT Service 打造 🤖")
@@ -92,12 +91,9 @@ render_messages()
 # Input box for the user's question at the bottom of the screen
 user_input = st.chat_input("輸入訊息：")
 
-# File uploader for uploading files or images
-uploaded_file = st.file_uploader("上傳檔案或圖片：", type=["txt", "pdf", "png", "jpg", "jpeg", "csv"])
-
 # Your API key (read securely from Streamlit secrets)
 api_key = st.secrets["api_key"]
-api_url = "https://free.gpt.ge"
+api_url = "https://api.chatanywhere.tech/v1/chat/completions"
 
 # Headers for the API request
 headers = {
@@ -105,55 +101,34 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# When the user submits a message or uploads a file
-if user_input or uploaded_file:
-    if user_input:
-        st.session_state["messages"].append({"role": "user", "content": user_input})
+# When the user submits a message
+if user_input:
+    # Add the user's input to the session state messages
+    st.session_state["messages"].append({"role": "user", "content": user_input})
 
-    if uploaded_file:
-        file_details = {"filename": uploaded_file.name, "filetype": uploaded_file.type}
-        file_type = uploaded_file.type
-
-        if file_type.startswith('text'):
-            try:
-                if file_type == 'text/plain':
-                    file_content = uploaded_file.getvalue().decode("utf-8")
-                    st.session_state["messages"].append({"role": "user", "content": f"上傳的文本文件內容：\n{file_content}"})
-                elif file_type == 'text/csv':
-                    df = pd.read_csv(uploaded_file)
-                    csv_content = df.to_csv(index=False)
-                    st.session_state["messages"].append({"role": "user", "content": f"上傳的 CSV 文件內容：\n{csv_content}"})
-            except Exception as e:
-                st.error(f"無法處理上傳的文件：{e}")
-        elif file_type in ["application/pdf"]:
-            st.session_state["messages"].append({"role": "user", "content": f"上傳了一個 PDF 文件：{uploaded_file.name}"})
-        elif file_type.startswith('image'):
-            img_bytes = uploaded_file.getvalue()
-            st.image(img_bytes, caption=uploaded_file.name)
-            st.session_state["messages"].append({"role": "user", "content": f"上傳了一張圖片：{uploaded_file.name}"})
-        else:
-            st.error("不支持的文件類型")
-
+    # Re-render messages to display the user's message immediately
     render_messages()
 
+    # Prepare the payload for the API request
     data = {
-        "model": "gpt-4o-mini",
+        "model": "gpt-3.5-turbo",
         "messages": st.session_state["messages"]
     }
 
+    # Show a spinner while waiting for the AI's response
     with st.spinner("AI 正在回應..."):
+        # Send the API request
         response = requests.post(api_url, headers=headers, json=data)
 
+        # Check if the request was successful
         if response.status_code == 200:
-            try:
-                response_json = response.json()
-                answer = response_json['choices'][0]['message']['content']
-                st.session_state["messages"].append({"role": "assistant", "content": answer})
-            except ValueError as e:
-                st.error(f"無法解析 API 的 JSON 響應：{e}")
-                st.text(f"API 返回的原始內容：\n{response.text}")
-        else:
-            st.error(f"API 請求失敗。狀態碼：{response.status_code}")
-            st.text(f"API 返回的內容：\n{response.text}")
+            response_json = response.json()
+            answer = response_json['choices'][0]['message']['content']
 
+            # Add the AI's response to the session state messages
+            st.session_state["messages"].append({"role": "assistant", "content": answer})
+        else:
+            st.error(f"Error: {response.status_code}, {response.text}")
+
+    # Re-render messages to include the AI's response
     render_messages()
