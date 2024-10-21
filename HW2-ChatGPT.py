@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-import json
 
 # Title and description for the Streamlit app
 st.title("ChatGPT Service 打造 🤖")
@@ -94,7 +93,7 @@ render_messages()
 user_input = st.chat_input("輸入訊息：")
 
 # File uploader for uploading files or images
-uploaded_file = st.file_uploader("上傳檔案或圖片：", type=["txt", "pdf", "png", "jpg", "jpeg", "csv", "json"])
+uploaded_file = st.file_uploader("上傳檔案或圖片：", type=["txt", "pdf", "png", "jpg", "jpeg", "csv"])
 
 # Your API key (read securely from Streamlit secrets)
 api_key = st.secrets["api_key"]
@@ -126,13 +125,6 @@ if user_input or uploaded_file:
                     st.session_state["messages"].append({"role": "user", "content": f"上傳的 CSV 文件內容：\n{csv_content}"})
             except Exception as e:
                 st.error(f"無法處理上傳的文件：{e}")
-        elif file_type == 'application/json':
-            try:
-                json_content = json.load(uploaded_file)
-                json_str = json.dumps(json_content, ensure_ascii=False, indent=2)
-                st.session_state["messages"].append({"role": "user", "content": f"上傳的 JSON 文件內容：\n{json_str}"})
-            except Exception as e:
-                st.error(f"無法讀取 JSON 文件：{e}")
         elif file_type in ["application/pdf"]:
             st.session_state["messages"].append({"role": "user", "content": f"上傳了一個 PDF 文件：{uploaded_file.name}"})
         elif file_type.startswith('image'):
@@ -151,7 +143,7 @@ if user_input or uploaded_file:
 
     with st.spinner("AI 正在回應..."):
         response = requests.post(api_url, headers=headers, json=data)
-        
+
         if response.status_code == 200:
             try:
                 response_json = response.json()
@@ -159,9 +151,9 @@ if user_input or uploaded_file:
                 st.session_state["messages"].append({"role": "assistant", "content": answer})
             except ValueError as e:
                 st.error(f"無法解析 API 的 JSON 響應：{e}")
-                st.text(f"API 返回的內容：{response.text}")
+                st.text(f"API 返回的原始內容：\n{response.text}")
         else:
             st.error(f"API 請求失敗。狀態碼：{response.status_code}")
-            st.text(f"API 返回的內容：{response.text}")
+            st.text(f"API 返回的內容：\n{response.text}")
 
     render_messages()
