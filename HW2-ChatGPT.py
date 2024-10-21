@@ -1,4 +1,3 @@
-from openai import OpenAI
 import streamlit as st
 import requests
 import pandas as pd
@@ -12,8 +11,6 @@ if "messages" not in st.session_state:
     st.session_state["messages"] = [
         {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
     ]
-
-# Custom CSS for chat bubble styles (same as before)...
 
 # Function to render messages
 def render_messages():
@@ -88,16 +85,17 @@ if user_input:
 
     # 傳送的資料
     data = {
-        "model": "gpt-4",  # 修改成正確的模型名稱
+        "model": "gpt-4",  # 使用確認可用的模型名稱
         "messages": st.session_state["messages"]
     }
 
     with st.spinner("AI 正在回應..."):
         try:
-            # 修正 API 呼叫的參數
+            # 發送 API 請求
             response = requests.post(api_url, headers=headers, json=data)
-            response.raise_for_status()  # 如果發生 HTTP 錯誤，則會拋出異常
+            response.raise_for_status()  # 若發生 HTTP 錯誤則拋出異常
 
+            # 處理回應
             response_json = response.json()
             answer = response_json['choices'][0]['message']['content']
             st.session_state["messages"].append({"role": "assistant", "content": answer})
