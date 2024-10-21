@@ -1,22 +1,22 @@
-import openai
 import streamlit as st
 import pandas as pd
+from openai import OpenAI
 
-# 使用您的 OpenAI API 金鑰
+# 初始化 OpenAI 客戶端
 OPENAI_API_KEY = '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'
-openai.api_key = OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Streamlit App 標題
+# Streamlit 標題和副標題
 st.title("ChatGPT Service 打造 🤖")
 st.subheader("您好!! 歡迎您問我答~")
 
-# 初始化對話歷史
+# 初始化聊天記錄
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
         {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
     ]
 
-# HTML + CSS: 自訂聊天泡泡
+# 渲染訊息的函數
 def render_messages():
     with chat_placeholder.container():
         for message in st.session_state["messages"]:
@@ -41,14 +41,14 @@ def render_messages():
                 </div>
                 """, unsafe_allow_html=True)
 
-# 顯示聊天歷史
+# 聊天訊息的占位符
 chat_placeholder = st.empty()
 render_messages()
 
-# 上傳檔案區域
+# 上傳檔案區塊
 uploaded_file = st.file_uploader("上傳檔案", type=["csv", "xlsx", "txt", "pdf", "jpg", "png", "jpeg"])
 
-# 處理上傳檔案
+# 檔案處理邏輯
 if uploaded_file:
     try:
         if uploaded_file.name.endswith(".csv"):
@@ -64,36 +64,31 @@ if uploaded_file:
         else:
             file_info = f"已上傳檔案：{uploaded_file.name} (大小：{uploaded_file.size} bytes)"
             st.session_state["messages"].append({"role": "user", "content": file_info})
+
     except Exception as e:
         st.error(f"無法讀取檔案：{e}")
 
     render_messages()
 
-# 使用者輸入區域
+# 輸入區域（在檔案上傳區塊下方）
 user_input = st.chat_input("輸入訊息：")
 
-# 處理使用者輸入並呼叫 OpenAI API
+# 使用者輸入的處理
 if user_input:
     st.session_state["messages"].append({"role": "user", "content": user_input})
     render_messages()
 
+    # 呼叫 OpenAI API 生成回應
     with st.spinner("AI 正在回應..."):
         try:
-            # 呼叫 OpenAI API
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",  # 呼叫模型
+            response = client.chat.completions.create(
+                model="gpt-4.0",  # 改為使用 GPT-4.0 模型
                 messages=st.session_state["messages"]
             )
-
-            # 取得回應內容
-            full_response = response.choices[0].message.content
-            st.session_state["messages"].append({"role": "assistant", "content": full_response})
-
-            # 顯示 AI 回應
-            with st.chat_message("assistant"):
-                st.markdown(full_response)
+            answer = response.choices[0].message.content
+            st.session_state["messages"].append({"role": "assistant", "content": answer})
 
         except Exception as e:
-            st.error(f"發生錯誤：{e}")
+            st.error(f"API 錯誤：{e}")
 
     render_messages()
