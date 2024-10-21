@@ -88,7 +88,7 @@ if user_input:
 
     with st.spinner("AI 正在回應..."):
         try:
-            response = requests.post(api_url, headers=headers, json=data)
+            response = requests.post(headers=headers, json=data)
             response.raise_for_status()
 
             response_json = response.json()
