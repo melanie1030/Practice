@@ -43,16 +43,33 @@ def render_messages():
 chat_placeholder = st.empty()
 render_messages()
 
-# Layout with input box, file uploader, and send button
-col1, col2 = st.columns([4, 1])
+# File uploader section (above the input box)
+uploaded_file = st.file_uploader("上傳檔案", type=["csv", "xlsx", "txt", "pdf", "jpg", "png", "jpeg"])
 
-# User input section
-with col1:
-    user_input = st.chat_input("輸入訊息：")
+# Handle file upload
+if uploaded_file:
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+            st.session_state["messages"].append(
+                {"role": "user", "content": f"已上傳 CSV 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
+            )
+        elif uploaded_file.name.endswith(".xlsx"):
+            df = pd.read_excel(uploaded_file)
+            st.session_state["messages"].append(
+                {"role": "user", "content": f"已上傳 Excel 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
+            )
+        else:
+            file_info = f"已上傳檔案：{uploaded_file.name} (大小：{uploaded_file.size} bytes)"
+            st.session_state["messages"].append({"role": "user", "content": file_info})
 
-# File uploader section for multiple file types
-with col2:
-    uploaded_file = st.file_uploader("上傳檔案", type=["csv", "xlsx", "txt", "pdf", "jpg", "png", "jpeg"])
+    except Exception as e:
+        st.error(f"無法讀取檔案：{e}")
+
+    render_messages()
+
+# Layout with input box and send button (below the file uploader)
+user_input = st.chat_input("輸入訊息：")
 
 # API key and URL configuration
 api_key = st.secrets["api_key"]
@@ -83,27 +100,5 @@ if user_input:
         except ValueError:
             st.error("回應不是有效的 JSON 格式")
             st.write("伺服器回應內容：", response.text)
-
-    render_messages()
-
-# Handle file upload
-if uploaded_file:
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-            st.session_state["messages"].append(
-                {"role": "user", "content": f"已上傳 CSV 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
-            )
-        elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file)
-            st.session_state["messages"].append(
-                {"role": "user", "content": f"已上傳 Excel 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
-            )
-        else:
-            file_info = f"已上傳檔案：{uploaded_file.name} (大小：{uploaded_file.size} bytes)"
-            st.session_state["messages"].append({"role": "user", "content": file_info})
-
-    except Exception as e:
-        st.error(f"無法讀取檔案：{e}")
 
     render_messages()
