@@ -93,7 +93,7 @@ user_input = st.chat_input("輸入訊息：")
 
 # Your API key (read securely from Streamlit secrets)
 api_key = st.secrets["api_key"]
-api_url = "https://free.gpt.ge"
+api_url = "https://api.chatanywhere.tech/v1/chat/completions"
 
 # Headers for the API request
 headers = {
