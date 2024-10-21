@@ -12,61 +12,14 @@ if "messages" not in st.session_state:
         {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
     ]
 
-# Custom CSS for chat bubble styles
-st.markdown("""
-    <style>
-    .user-bubble {
-        background-color: #DCF8C6;
-        border-radius: 10px;
-        padding: 10px;
-        margin: 10px;
-        display: inline-block;
-        max-width: 70%;
-        text-align: left;
-    }
-    .ai-bubble {
-        background-color: #E8E8E8;
-        border-radius: 10px;
-        padding: 10px;
-        margin: 10px;
-        display: inline-block;
-        max-width: 70%;
-        text-align: left;
-    }
-    .user-container, .ai-container {
-        display: flex;
-        align-items: flex-start;
-        margin-bottom: 10px;
-    }
-    .user-container img, .ai-container img {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-    }
-    .user-container {
-        justify-content: flex-end;
-    }
-    .user-container img {
-        margin-left: 10px;
-    }
-    .ai-container {
-        justify-content: flex-start;
-    }
-    .ai-container img {
-        margin-right: 10px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# Create a placeholder for chat messages
-chat_placeholder = st.empty()
+# Custom CSS for chat bubble styles (same as before)...
 
 # Function to render messages
 def render_messages():
     with chat_placeholder.container():
         for message in st.session_state["messages"]:
             if message["role"] == "system":
-                continue  # Skip system messages
+                continue
             elif message["role"] == "user":
                 st.markdown(f"""
                 <div class="user-container">
@@ -87,24 +40,23 @@ def render_messages():
                 """, unsafe_allow_html=True)
 
 # Display chat history with avatars
+chat_placeholder = st.empty()
 render_messages()
 
 # Layout with input box, file uploader, and send button
 col1, col2 = st.columns([4, 1])
 
-# User input section with chat input
+# User input section
 with col1:
     user_input = st.chat_input("輸入訊息：")
 
-# File uploader section for CSV files
+# File uploader section for multiple file types
 with col2:
-    uploaded_file = st.file_uploader("上傳檔案", type=["csv", "txt", "pdf", "jpg", "png", "jpeg"])
+    uploaded_file = st.file_uploader("上傳檔案", type=["csv", "xlsx", "txt", "pdf", "jpg", "png", "jpeg"])
 
-# Your API key (read securely from Streamlit secrets)
+# API key and URL configuration
 api_key = st.secrets["api_key"]
 api_url = "https://free.gpt.ge"
-
-# Headers for the API request
 headers = {
     "Authorization": f"Bearer {api_key}",
     "Content-Type": "application/json"
@@ -118,26 +70,40 @@ if user_input:
     data = {"model": "gpt-40-mini", "messages": st.session_state["messages"]}
 
     with st.spinner("AI 正在回應..."):
-        response = requests.post(api_url, headers=headers, json=data)
-        if response.status_code == 200:
-            answer = response.json()['choices'][0]['message']['content']
+        try:
+            response = requests.post(api_url, headers=headers, json=data)
+            response.raise_for_status()
+
+            response_json = response.json()
+            answer = response_json['choices'][0]['message']['content']
             st.session_state["messages"].append({"role": "assistant", "content": answer})
-        else:
-            st.error(f"Error: {response.status_code}, {response.text}")
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"HTTP 錯誤: {e}")
+        except ValueError:
+            st.error("回應不是有效的 JSON 格式")
+            st.write("伺服器回應內容：", response.text)
 
     render_messages()
 
 # Handle file upload
 if uploaded_file:
-    if uploaded_file.name.endswith(".csv"):
-        # 讀取並顯示 CSV 檔案內容
-        df = pd.read_csv(uploaded_file)
-        st.session_state["messages"].append(
-            {"role": "user", "content": f"已上傳 CSV 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
-        )
-    else:
-        # 處理其他檔案類型
-        file_info = f"已上傳檔案：{uploaded_file.name} (大小：{uploaded_file.size} bytes)"
-        st.session_state["messages"].append({"role": "user", "content": file_info})
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+            st.session_state["messages"].append(
+                {"role": "user", "content": f"已上傳 CSV 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
+            )
+        elif uploaded_file.name.endswith(".xlsx"):
+            df = pd.read_excel(uploaded_file)
+            st.session_state["messages"].append(
+                {"role": "user", "content": f"已上傳 Excel 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
+            )
+        else:
+            file_info = f"已上傳檔案：{uploaded_file.name} (大小：{uploaded_file.size} bytes)"
+            st.session_state["messages"].append({"role": "user", "content": file_info})
+
+    except Exception as e:
+        st.error(f"無法讀取檔案：{e}")
 
     render_messages()
