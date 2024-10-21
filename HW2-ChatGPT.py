@@ -1,3 +1,4 @@
+from openai import OpenAI
 import streamlit as st
 import requests
 import pandas as pd
@@ -73,7 +74,6 @@ user_input = st.chat_input("輸入訊息：")
 
 # API key and URL configuration
 api_key = st.secrets["api_key"]
-api_url = "https://free.gpt.ge"
 headers = {
     "Authorization": f"Bearer {api_key}",
     "Content-Type": "application/json"
@@ -84,7 +84,7 @@ if user_input:
     st.session_state["messages"].append({"role": "user", "content": user_input})
     render_messages()
 
-    data = {"model": "gpt-40-mini", "messages": st.session_state["messages"]}
+    data = {"model": "gpt-4O", "messages": st.session_state["messages"]}
 
     with st.spinner("AI 正在回應..."):
         try:
