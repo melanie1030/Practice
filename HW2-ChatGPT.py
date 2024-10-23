@@ -4,7 +4,7 @@ import json
 
 # 建議使用 st.secrets 或環境變數來安全地存儲您的 OpenAI API 金鑰
 # 如果您在 Streamlit 的 secrets 中存儲了 API 金鑰，請使用以下方式訪問
-OPENAI_API_KEY = st.secrets["sk-svcacct-fb_-GzpFTmE6wtv222EkZdGrZrVUnZdTIP-AkvTvtcxO8n7D-tZvHHAL6ChEGT3BlbkFJCwdg-PbyzjyhbVo99UJNUKYTHayGD-I0QpeVibX_K7x6F8UE9Q7j0flr-VmAA"]
+OPENAI_API_KEY = "sk-svcacct-fb_-GzpFTmE6wtv222EkZdGrZrVUnZdTIP-AkvTvtcxO8n7D-tZvHHAL6ChEGT3BlbkFJCwdg-PbyzjyhbVo99UJNUKYTHayGD-I0QpeVibX_K7x6F8UE9Q7j0flr-VmAA"
 
 # Streamlit App 標題
 st.title("ChatGPT Service 打造 🤖")
