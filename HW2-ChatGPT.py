@@ -1,17 +1,22 @@
 import streamlit as st
-import requests
+import subprocess
+import json
 
-# Title and description for the Streamlit app
+# 建議使用 st.secrets 或環境變數來安全地存儲您的 OpenAI API 金鑰
+# 如果您在 Streamlit 的 secrets 中存儲了 API 金鑰，請使用以下方式訪問
+OPENAI_API_KEY = st.secrets["sk-svcacct-fb_-GzpFTmE6wtv222EkZdGrZrVUnZdTIP-AkvTvtcxO8n7D-tZvHHAL6ChEGT3BlbkFJCwdg-PbyzjyhbVo99UJNUKYTHayGD-I0QpeVibX_K7x6F8UE9Q7j0flr-VmAA"]
+
+# Streamlit App 標題
 st.title("ChatGPT Service 打造 🤖")
 st.subheader("您好!! 歡迎您問我答~")
 
-# Initialize session state for conversation history
+# 初始化對話歷史
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
         {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
     ]
 
-# Custom CSS for chat bubble styles
+# 自訂聊天氣泡的 CSS 樣式
 st.markdown("""
     <style>
     .user-bubble {
@@ -57,15 +62,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Create a placeholder for chat messages
-chat_placeholder = st.empty()
-
-# Function to render messages
+# 定義函數來渲染訊息
 def render_messages():
     with chat_placeholder.container():
         for message in st.session_state["messages"]:
             if message["role"] == "system":
-                continue  # Skip system messages
+                continue
             elif message["role"] == "user":
                 st.markdown(f"""
                 <div class="user-container">
@@ -85,50 +87,48 @@ def render_messages():
                 </div>
                 """, unsafe_allow_html=True)
 
-# Display chat history with avatars
+# 創建一個佔位符來顯示聊天訊息
+chat_placeholder = st.empty()
 render_messages()
 
-# Input box for the user's question at the bottom of the screen
+# 在螢幕底部的輸入框
 user_input = st.chat_input("輸入訊息：")
 
-# Hardcode your API key here (for testing only, not recommended for production)
-api_key = "sk-SidO0mE8swFiAhLSiXTYis9HZl8NlqRM82ZYDztoN0VbtTiN"
-api_url = "https://api.chatanywhere.tech/v1/chat/completions"
-
-# Headers for the API request
-headers = {
-    "Authorization": f"Bearer {api_key}",
-    "Content-Type": "application/json"
-}
-
-# When the user submits a message
 if user_input:
-    # Add the user's input to the session state messages
     st.session_state["messages"].append({"role": "user", "content": user_input})
-
-    # Re-render messages to display the user's message immediately
     render_messages()
 
-    # Prepare the payload for the API request
-    data = {
-        "model": "gpt-3.5-turbo",
-        "messages": st.session_state["messages"]
-    }
-
-    # Show a spinner while waiting for the AI's response
     with st.spinner("AI 正在回應..."):
-        # Send the API request
-        response = requests.post(api_url, headers=headers, json=data)
+        try:
+            # 將 messages 轉換為 JSON 字符串
+            messages_json = json.dumps(st.session_state["messages"])
 
-        # Check if the request was successful
-        if response.status_code == 200:
-            response_json = response.json()
-            answer = response_json['choices'][0]['message']['content']
+            # 構建 curl 命令
+            curl_command = [
+                "curl", "https://api.openai.com/v1/chat/completions",
+                "-H", "Content-Type: application/json",
+                "-H", f"Authorization: Bearer {OPENAI_API_KEY}",
+                "-d", json.dumps({
+                    "model": "gpt-4o",
+                    "messages": st.session_state["messages"]
+                })
+            ]
 
-            # Add the AI's response to the session state messages
-            st.session_state["messages"].append({"role": "assistant", "content": answer})
-        else:
-            st.error(f"Error: {response.status_code}, {response.text}")
+            # 使用 subprocess 執行 curl 命令
+            result = subprocess.run(curl_command, capture_output=True, text=True)
 
-    # Re-render messages to include the AI's response
-    render_messages()
+            # 檢查是否有錯誤輸出
+            if result.stderr:
+                st.error(f"請求錯誤：{result.stderr}")
+            else:
+                # 解析回應
+                response = json.loads(result.stdout)
+                if 'choices' in response and len(response['choices']) > 0:
+                    full_response = response['choices'][0]['message']['content'].strip()
+                    st.session_state["messages"].append({"role": "assistant", "content": full_response})
+                    # 再次渲染訊息以包含 AI 的回應
+                    render_messages()
+                else:
+                    st.error("未收到 AI 的回應。")
+        except Exception as e:
+            st.error(f"發生錯誤：{e}")
