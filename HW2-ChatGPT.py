@@ -3,7 +3,7 @@ import requests
 
 # Title and description for the Streamlit app
 st.title("ChatGPT Service 打造 🤖")
-st.subheader("您好!!歡迎您問我答~")
+st.subheader("您好!! 歡迎您問我答~")
 
 # Initialize session state for conversation history
 if "messages" not in st.session_state:
@@ -91,8 +91,8 @@ render_messages()
 # Input box for the user's question at the bottom of the screen
 user_input = st.chat_input("輸入訊息：")
 
-# Your API key (read securely from Streamlit secrets)
-api_key = st.secrets["api_key"]
+# Hardcode your API key here (for testing only, not recommended for production)
+api_key = "sk-SidO0mE8swFiAhLSiXTYis9HZl8NlqRM82ZYDztoN0VbtTiN"
 api_url = "https://api.chatanywhere.tech/v1/chat/completions"
 
 # Headers for the API request
