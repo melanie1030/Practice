@@ -1,10 +1,9 @@
 import streamlit as st
 import requests
-import pandas as pd
 
 # Title and description for the Streamlit app
 st.title("ChatGPT Service 打造 🤖")
-st.subheader("您好!! 歡迎您問我答~")
+st.subheader("您好!!歡迎您問我答~")
 
 # Initialize session state for conversation history
 if "messages" not in st.session_state:
@@ -12,12 +11,61 @@ if "messages" not in st.session_state:
         {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
     ]
 
+# Custom CSS for chat bubble styles
+st.markdown("""
+    <style>
+    .user-bubble {
+        background-color: #DCF8C6;
+        border-radius: 10px;
+        padding: 10px;
+        margin: 10px;
+        display: inline-block;
+        max-width: 70%;
+        text-align: left;
+    }
+    .ai-bubble {
+        background-color: #E8E8E8;
+        border-radius: 10px;
+        padding: 10px;
+        margin: 10px;
+        display: inline-block;
+        max-width: 70%;
+        text-align: left;
+    }
+    .user-container, .ai-container {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+    .user-container img, .ai-container img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+    }
+    .user-container {
+        justify-content: flex-end;
+    }
+    .user-container img {
+        margin-left: 10px;
+    }
+    .ai-container {
+        justify-content: flex-start;
+    }
+    .ai-container img {
+        margin-right: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Create a placeholder for chat messages
+chat_placeholder = st.empty()
+
 # Function to render messages
 def render_messages():
     with chat_placeholder.container():
         for message in st.session_state["messages"]:
             if message["role"] == "system":
-                continue
+                continue  # Skip system messages
             elif message["role"] == "user":
                 st.markdown(f"""
                 <div class="user-container">
@@ -38,72 +86,49 @@ def render_messages():
                 """, unsafe_allow_html=True)
 
 # Display chat history with avatars
-chat_placeholder = st.empty()
 render_messages()
 
-# File uploader section (above the input box)
-uploaded_file = st.file_uploader("上傳檔案", type=["csv", "xlsx", "txt", "pdf", "jpg", "png", "jpeg"])
-
-# Handle file upload
-if uploaded_file:
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-            st.session_state["messages"].append(
-                {"role": "user", "content": f"已上傳 CSV 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
-            )
-        elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file)
-            st.session_state["messages"].append(
-                {"role": "user", "content": f"已上傳 Excel 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
-            )
-        else:
-            file_info = f"已上傳檔案：{uploaded_file.name} (大小：{uploaded_file.size} bytes)"
-            st.session_state["messages"].append({"role": "user", "content": file_info})
-
-    except Exception as e:
-        st.error(f"無法讀取檔案：{e}")
-
-    render_messages()
-
-# Layout with input box and send button (below the file uploader)
+# Input box for the user's question at the bottom of the screen
 user_input = st.chat_input("輸入訊息：")
 
-# API Key 和 URL 設置
-api_url = "https://api.openai.com/v1/chat/completions"  # 確保這裡是正確的 URL
+# Your API key (read securely from Streamlit secrets)
 api_key = st.secrets["api_key"]
+api_url = "https://api.chatanywhere.tech/v1/chat/completions"
 
+# Headers for the API request
 headers = {
     "Authorization": f"Bearer {api_key}",
     "Content-Type": "application/json"
 }
 
-# 處理使用者輸入
+# When the user submits a message
 if user_input:
+    # Add the user's input to the session state messages
     st.session_state["messages"].append({"role": "user", "content": user_input})
+
+    # Re-render messages to display the user's message immediately
     render_messages()
 
-    # 傳送的資料
+    # Prepare the payload for the API request
     data = {
-        "model": "gpt-4",  # 使用確認可用的模型名稱
+        "model": "gpt-3.5-turbo",
         "messages": st.session_state["messages"]
     }
 
+    # Show a spinner while waiting for the AI's response
     with st.spinner("AI 正在回應..."):
-        try:
-            # 發送 API 請求
-            response = requests.post(api_url, headers=headers, json=data)
-            response.raise_for_status()  # 若發生 HTTP 錯誤則拋出異常
+        # Send the API request
+        response = requests.post(api_url, headers=headers, json=data)
 
-            # 處理回應
+        # Check if the request was successful
+        if response.status_code == 200:
             response_json = response.json()
             answer = response_json['choices'][0]['message']['content']
+
+            # Add the AI's response to the session state messages
             st.session_state["messages"].append({"role": "assistant", "content": answer})
+        else:
+            st.error(f"Error: {response.status_code}, {response.text}")
 
-        except requests.exceptions.RequestException as e:
-            st.error(f"HTTP 錯誤: {e}")
-        except ValueError:
-            st.error("回應不是有效的 JSON 格式")
-            st.write("伺服器回應內容：", response.text)
-
+    # Re-render messages to include the AI's response
     render_messages()
