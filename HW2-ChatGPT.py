@@ -2,8 +2,9 @@ import streamlit as st
 import subprocess
 import json
 
-# 直接硬編 API Key，僅用於測試
-OPENAI_API_KEY = "sk-svcacct-fb_-GzpFTmE6wtv222EkZdGrZrVUnZdTIP-AkvTvtcxO8n7D-tZvHHAL6ChEGT3BlbkFJCwdg-PbyzjyhbVo99UJNUKYTHayGD-I0QpeVibX_K7x6F8UE9Q7j0flr-VmAA"
+# 建議使用 st.secrets 或環境變數來安全地存儲您的 OpenAI API 金鑰
+# 如果您在 Streamlit 的 secrets 中存儲了 API 金鑰，請使用以下方式訪問
+OPENAI_API_KEY = st.secrets["sk-svcacct-fb_-GzpFTmE6wtv222EkZdGrZrVUnZdTIP-AkvTvtcxO8n7D-tZvHHAL6ChEGT3BlbkFJCwdg-PbyzjyhbVo99UJNUKYTHayGD-I0QpeVibX_K7x6F8UE9Q7j0flr-VmAA"]
 
 # Streamlit App 標題
 st.title("ChatGPT Service 打造 🤖")
@@ -70,7 +71,9 @@ def render_messages():
             elif message["role"] == "user":
                 st.markdown(f"""
                 <div class="user-container">
-                    <div class="user-bubble">{message['content']}</div>
+                    <div class="user-bubble">
+                        {message['content']}
+                    </div>
                     <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh6XGT5Hz9MpAiyfTHlBczavuUjyTBza9zWdzYmoifglj0p1lsylcTEScnpSa-Youh7YXw-ssgO-mMQmw-DBz4NeesioQPTe8beOH_QS-A4JMnfZAGP-01gxPQrS-pPEnrnJxbdVnWguhCC/s1600/pose_pien_uruuru_woman.png" alt="User">
                 </div>
                 """, unsafe_allow_html=True)
@@ -78,7 +81,9 @@ def render_messages():
                 st.markdown(f"""
                 <div class="ai-container">
                     <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjCHBgyqLrwRdbSM72R9PutXIqxbI9yR5UzXWC0TYIYVlKgHH5TzkaHijRkdxQMRSJx8upcecs2RGHYW7gVOSQPH-LUrPUg3esbqx5-7Q04BPJWD-DdzTealzGBQehfXpDeLxYe29MjQQgo/s1600/megane_hikaru_woman.png" alt="AI">
-                    <div class="ai-bubble">{message['content']}</div>
+                    <div class="ai-bubble">
+                        {message['content']}
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -104,7 +109,7 @@ if user_input:
                 "-H", "Content-Type: application/json",
                 "-H", f"Authorization: Bearer {OPENAI_API_KEY}",
                 "-d", json.dumps({
-                    "model": "gpt-3.5-turbo",
+                    "model": "gpt-4o",
                     "messages": st.session_state["messages"]
                 })
             ]
@@ -121,8 +126,12 @@ if user_input:
                 if 'choices' in response and len(response['choices']) > 0:
                     full_response = response['choices'][0]['message']['content'].strip()
                     st.session_state["messages"].append({"role": "assistant", "content": full_response})
+                    # 再次渲染訊息以包含 AI 的回應
                     render_messages()
                 else:
+                    st.error("未收到 AI 的回應。")
+        except Exception as e:
+            st.error(f"發生錯誤：{e}")
                     st.error("未收到 AI 的回應。")
         except Exception as e:
             st.error(f"發生錯誤：{e}")
