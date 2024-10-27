@@ -4,7 +4,7 @@ import subprocess
 import json
 
 # 使用您的 OpenAI API 金鑰
-OPENAI_API_KEY = "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"
+OPENAI_API_KEY = "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"
 
 # Streamlit App 標題
 st.title("ChatGPT Service 打造 🤖")
