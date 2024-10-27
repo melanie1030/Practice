@@ -1,76 +1,116 @@
+from openai import OpenAI
 import streamlit as st
+import requests
 import pandas as pd
-import subprocess
 import json
 
-# 使用您的 OpenAI API 金鑰
-OPENAI_API_KEY = "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"
-
-# Streamlit App 標題
+# Title and description for the Streamlit app
 st.title("ChatGPT Service 打造 🤖")
 st.subheader("您好!! 歡迎您問我答~")
 
-# 初始化對話歷史
+# Initialize session state for conversation history
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
         {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
     ]
 
+# Custom CSS for chat bubble styles (same as before)...
+
+# Function to render messages
 def render_messages():
     with chat_placeholder.container():
         for message in st.session_state["messages"]:
             if message["role"] == "system":
                 continue
             elif message["role"] == "user":
-                st.markdown(f"**使用者:** {message['content']}")
+                st.markdown(f"""
+                <div class="user-container">
+                    <div class="user-bubble">
+                        {message['content']}
+                    </div>
+                    <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh6XGT5Hz9MpAiyfTHlBczavuUjyTBza9zWdzYmoifglj0p1lsylcTEScnpSa-Youh7YXw-ssgO-mMQmw-DBz4NeesioQPTe8beOH_QS-A4JMnfZAGP-01gxPQrS-pPEnrnJxbdVnWguhCC/s1600/pose_pien_uruuru_woman.png" alt="User">
+                </div>
+                """, unsafe_allow_html=True)
             elif message["role"] == "assistant":
-                st.markdown(f"**AI:** {message['content']}")
+                st.markdown(f"""
+                <div class="ai-container">
+                    <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjCHBgyqLrwRdbSM72R9PutXIqxbI9yR5UzXWC0TYIYVlKgHH5TzkaHijRkdxQMRSJx8upcecs2RGHYW7gVOSQPH-LUrPUg3esbqx5-7Q04BPJWD-DdzTealzGBQehfXpDeLxYe29MjQQgo/s1600/megane_hikaru_woman.png" alt="AI">
+                    <div class="ai-bubble">
+                        {message['content']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
+# Display chat history with avatars
 chat_placeholder = st.empty()
 render_messages()
 
+# File uploader section (above the input box)
+uploaded_file = st.file_uploader("上傳檔案", type=["csv", "xlsx", "txt", "pdf", "jpg", "png", "jpeg"])
+
+# Handle file upload
+if uploaded_file:
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+            st.session_state["messages"].append(
+                {"role": "user", "content": f"已上傳 CSV 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
+            )
+        elif uploaded_file.name.endswith(".xlsx"):
+            df = pd.read_excel(uploaded_file)
+            st.session_state["messages"].append(
+                {"role": "user", "content": f"已上傳 Excel 檔案：{uploaded_file.name}，以下是內容：\n{df.to_string(index=False)}"}
+            )
+        else:
+            file_info = f"已上傳檔案：{uploaded_file.name} (大小：{uploaded_file.size} bytes)"
+            st.session_state["messages"].append({"role": "user", "content": file_info})
+
+    except Exception as e:
+        st.error(f"無法讀取檔案：{e}")
+
+    render_messages()
+
+# Layout with input box and send button (below the file uploader)
 user_input = st.chat_input("輸入訊息：")
 
+# API Key 和 URL 設置
+api_url = "https://api.openai.com/v1/chat/completions"  # 確保這裡是正確的 URL
+api_key = st.secrets["api_key"]
+
+headers = {
+    "Authorization": f"Bearer {api_key}",
+    "Content-Type": "application/json"
+}
+
+# 處理使用者輸入
 if user_input:
     st.session_state["messages"].append({"role": "user", "content": user_input})
     render_messages()
 
+    # 傳送的資料
+    data = {
+        "model": "gpt-4o",  # 修改成正確的模型名稱
+        "messages": st.session_state["messages"]
+    }
+
     with st.spinner("AI 正在回應..."):
         try:
-            # 建立 JSON 資料
-            messages_json = json.dumps(st.session_state["messages"])
+            # 修正 API 呼叫的參數
+            response = requests.post(api_url, headers=headers, json=data)
+            response.raise_for_status()  # 如果發生 HTTP 錯誤，則會拋出異常
 
-            # 構建 curl 命令
-            curl_command = [
-                "curl", "https://api.openai.com/v1/chat/completions",
-                "-H", "Content-Type: application/json",
-                "-H", f"Authorization: Bearer {OPENAI_API_KEY}",
-                "-d", json.dumps({
-                    "model": "gpt-3.5-turbo",
-                    "messages": st.session_state["messages"]
-                })
-            ]
-
-            # 使用 subprocess 執行 curl 命令
-            result = subprocess.run(curl_command, capture_output=True, text=True)
-
-            # 解析回應
-            response = json.loads(result.stdout)
-
-            # 顯示完整的 JSON 回應
+            response_json = response.json()
+            
             st.markdown("### 完整回應 JSON：")
             st.json(response)
+            
+            answer = response_json['choices'][0]['message']['content']
+            st.session_state["messages"].append({"role": "assistant", "content": answer})
 
-            # 從回應中擷取 AI 的訊息內容
-            full_response = response['choices'][0]['message']['content']
-
-            # 儲存並顯示 AI 回應
-            st.session_state["messages"].append({"role": "assistant", "content": full_response})
-
-            with st.chat_message("assistant"):
-                st.markdown(full_response)
-
-        except Exception as e:
-            st.error(f"發生錯誤：{e}")
+        except requests.exceptions.RequestException as e:
+            st.error(f"HTTP 錯誤: {e}")
+        except ValueError:
+            st.error("回應不是有效的 JSON 格式")
+            st.write("伺服器回應內容：", response.text)
 
     render_messages()
