@@ -56,7 +56,7 @@ if user_input:
 
             # 解析回應
             response = json.loads(result.stdout)
-            full_response = response['choices'][0]['message']['content']
+            full_response = response
 
             st.session_state["messages"].append({"role": "assistant", "content": full_response})
 
