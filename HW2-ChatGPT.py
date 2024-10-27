@@ -1,10 +1,8 @@
 import streamlit as st
-import pandas as pd
-import subprocess
-import json
+import openai
 
 # 使用您的 OpenAI API 金鑰
-OPENAI_API_KEY = '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'
+openai.api_key = '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'
 
 # Streamlit App 標題
 st.title("ChatGPT Service 打造 🤖")
@@ -37,27 +35,14 @@ if user_input:
 
     with st.spinner("AI 正在回應..."):
         try:
-            # 建立 JSON 資料
-            messages_json = json.dumps(st.session_state["messages"])
+            # 使用 openai 庫發送請求
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=st.session_state["messages"]
+            )
 
-            # 構建 curl 命令
-            curl_command = [
-                "curl", "https://api.openai.com/v1/chat/completions",
-                "-H", "Content-Type: application/json",
-                "-H", f"Authorization: Bearer {OPENAI_API_KEY}",
-                "-d", json.dumps({
-                    "model": "gpt-4o",
-                    "messages": st.session_state["messages"]
-                })
-            ]
-
-            # 使用 subprocess 執行 curl 命令
-            result = subprocess.run(curl_command, capture_output=True, text=True)
-
-            # 解析回應
-            response = json.loads(result.stdout)
+            # 從回應中取得內容
             full_response = response['choices'][0]['message']['content']
-
             st.session_state["messages"].append({"role": "assistant", "content": full_response})
 
             with st.chat_message("assistant"):
