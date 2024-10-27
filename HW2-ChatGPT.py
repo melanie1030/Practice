@@ -4,7 +4,7 @@ import subprocess
 import json
 
 # 使用您的 OpenAI API 金鑰
-OPENAI_API_KEY="sk-proj-4m0hfrpPylVoi429S9JQT3BlbkFJe9aHwIDJzWsp62yz9mz3"
+OPENAI_API_KEY = "sk-proj-4m0hfrpPylVoi429S9JQT3BlbkFJe9aHwIDJzWsp62yz9mz3"
 
 # Streamlit App 標題
 st.title("ChatGPT Service 打造 🤖")
@@ -56,8 +56,15 @@ if user_input:
 
             # 解析回應
             response = json.loads(result.stdout)
-            full_response = response
 
+            # 顯示完整的 JSON 回應
+            st.markdown("### 完整回應 JSON：")
+            st.json(response)
+
+            # 從回應中擷取 AI 的訊息內容
+            full_response = response['choices'][0]['message']['content']
+
+            # 儲存並顯示 AI 回應
             st.session_state["messages"].append({"role": "assistant", "content": full_response})
 
             with st.chat_message("assistant"):
