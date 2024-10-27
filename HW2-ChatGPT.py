@@ -1,5 +1,6 @@
 import streamlit as st
-import openai
+from openai import OpenAI
+client = OpenAI()
 
 # 使用您的 OpenAI API 金鑰
 openai.api_key = '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'
