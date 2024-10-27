@@ -46,7 +46,7 @@ if user_input:
                 "-H", "Content-Type: application/json",
                 "-H", f"Authorization: Bearer {OPENAI_API_KEY}",
                 "-d", json.dumps({
-                    "model": "gpt-3.5-turbo",
+                    "model": "gpt-4o",
                     "messages": st.session_state["messages"]
                 })
             ]
