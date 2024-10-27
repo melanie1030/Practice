@@ -1,9 +1,9 @@
 import streamlit as st
-from openai import OpenAI
-client = OpenAI()
+import requests
+import json
 
 # 使用您的 OpenAI API 金鑰
-openai.api_key = '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'
+OPENAI_API_KEY = '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'
 
 # Streamlit App 標題
 st.title("ChatGPT Service 打造 🤖")
@@ -12,7 +12,7 @@ st.subheader("您好!! 歡迎您問我答~")
 # 初始化對話歷史
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
-        {"role": "system", "content": "你是一個幫助人的助理，請用繁體中文回答。"}
+        {"role": "system", "content": "You are a helpful assistant."}
     ]
 
 def render_messages():
@@ -36,18 +36,29 @@ if user_input:
 
     with st.spinner("AI 正在回應..."):
         try:
-            # 使用 openai 庫發送請求
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=st.session_state["messages"]
-            )
+            # 建立 headers 和 data
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+            }
 
-            # 從回應中取得內容
-            full_response = response['choices'][0]['message']['content']
-            st.session_state["messages"].append({"role": "assistant", "content": full_response})
+            data = {
+                "model": "gpt-4o-mini-2024-07-18",
+                "messages": st.session_state["messages"],
+            }
 
-            with st.chat_message("assistant"):
-                st.markdown(full_response)
+            # 發送 POST 請求到 OpenAI API
+            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
+
+            # 檢查請求是否成功
+            if response.status_code == 200:
+                full_response = response.json()["choices"][0]["message"]["content"]
+                st.session_state["messages"].append({"role": "assistant", "content": full_response})
+
+                with st.chat_message("assistant"):
+                    st.markdown(full_response)
+            else:
+                st.error(f"請求失敗：{response.status_code} - {response.text}")
 
         except Exception as e:
             st.error(f"發生錯誤：{e}")
