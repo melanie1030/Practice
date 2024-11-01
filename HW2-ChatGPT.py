@@ -71,6 +71,9 @@ if user_input:
                     st.markdown(full_response)
             else:
                 st.error(f"Unexpected response structure: {response_json}")
+                partial_key = OPENAI_API_KEY[:5] + "..." + OPENAI_API_KEY[-5:]
+                response_json['error']['message'] += f" (使用的 API Key: {partial_key})"
+                st.json(response_json)
 
         except Exception as e:
             # Print the beginning and end of the API key in the error message for debugging
