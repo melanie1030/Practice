@@ -3,7 +3,7 @@ import requests
 import json
 
 # Use Streamlit secrets for API key
-OPENAI_API_KEY = "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"  # Replace this with st.secrets["OPENAI_API_KEY"] if using Streamlit secrets.
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 
 # Streamlit App Title
 st.title("ChatGPT Service 打造 🤖")
