@@ -3,11 +3,11 @@ import requests
 import json
 
 # Use Streamlit secrets for API key
-OPENAI_API_KEY = "your_real_api_key"  # Replace this with st.secrets["OPENAI_API_KEY"] if using Streamlit secrets.
+OPENAI_API_KEY = "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"  # Replace this with st.secrets["OPENAI_API_KEY"] if using Streamlit secrets.
 
 # Streamlit App Title
 st.title("ChatGPT Service 打造 🤖")
-st.subheader("您好!! 歡迎您問我答~今天是11/1")
+st.subheader("您好!! 歡迎您問我答~今天是11/11")
 
 # Initialize chat history
 if "messages" not in st.session_state:
