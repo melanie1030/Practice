@@ -8,6 +8,7 @@ OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 # Streamlit App Title
 st.title("ChatGPT Service 打造 🤖")
 st.subheader("您好!! 歡迎您問我答~今天是11/1")
+st.write("API Key (partial):", OPENAI_API_KEY[:5] + "..." + OPENAI_API_KEY[-5:])
 
 # Initialize chat history
 if "messages" not in st.session_state:
