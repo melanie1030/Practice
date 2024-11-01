@@ -73,6 +73,8 @@ if user_input:
                 st.error(f"Unexpected response structure: {response_json}")
 
         except Exception as e:
-            st.error(f"發生錯誤：{e}")
+            # Print the beginning and end of the API key in the error message for debugging
+            partial_key = OPENAI_API_KEY[:5] + "..." + OPENAI_API_KEY[-5:]
+            st.error(f"發生錯誤：{e}. 使用的 API Key: {partial_key}")
 
     render_messages()
