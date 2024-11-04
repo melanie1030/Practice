@@ -26,21 +26,18 @@ def load_image_base64(image):
     image.save(buffer, format=image.format)
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-def file_to_base64(file_path):
-    """Convert a file to Base64 encoding."""
-    with open(file_path, "rb") as file:
-        return base64.b64encode(file.read()).decode('utf-8')
+def add_user_image(image):
+    """Add an image message to the session state."""
+    img_base64 = load_image_base64(image)
+    st.session_state.messages.append({
+        "role": "user",
+        "content": [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}]
+    })
 
 def reset_session_messages():
     """Clear conversation history from the session."""
     if "messages" in st.session_state:
         st.session_state.pop("messages")
-
-def add_user_message(content, message_type="text"):
-    """Add a user message to the session state."""
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    st.session_state.messages.append({"role": "user", "content": [{"type": message_type, "text": content}]})
 
 # --- Chatbot Main Functionality ---
 
@@ -84,21 +81,39 @@ def main():
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            # Iterate over content to handle multiple types
             for content in message["content"]:
                 if content["type"] == "text":
                     st.write(content.get("text", ""))
                 elif content["type"] == "image_url":
                     st.image(content["image_url"].get("url", ""))
-                elif content["type"] == "video_file":
-                    st.video(content.get("video_file", ""))
-                elif content["type"] == "audio_file":
-                    st.audio(content.get("audio_file", ""))
+
+    # --- 圖像上傳功能 ---
+    st.write("### 上傳圖像或拍照")
+    cols_img = st.columns(2)
+    
+    # 圖像上傳
+    with cols_img[0]:
+        uploaded_img = st.file_uploader("選擇一張圖片:", type=["png", "jpg", "jpeg"])
+        if uploaded_img:
+            img = Image.open(uploaded_img)
+            add_user_image(img)
+            st.success("圖像已上傳!")
+
+    # 相機拍照
+    with cols_img[1]:
+        camera_img = st.camera_input("拍照")
+        if camera_img:
+            img = Image.open(camera_img)
+            add_user_image(img)
+            st.success("拍照已成功!")
 
     # --- 用戶輸入 ---
     prompt = st.chat_input("嗨！問我任何問題...")
     if prompt:
-        add_user_message(prompt)
+        st.session_state.messages.append({
+            "role": "user",
+            "content": [{"type": "text", "text": prompt}]
+        })
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -108,4 +123,3 @@ def main():
 # 程式入口點
 if __name__ == "__main__":
     main()
-
