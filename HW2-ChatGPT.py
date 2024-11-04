@@ -72,6 +72,23 @@ def main():
         model = st.selectbox("選擇模型:", OPENAI_MODELS)
         model_params = {"model": model, "temperature": st.slider("溫度", 0.0, 2.0, 0.3)}
 
+        # 圖像上傳和拍照功能
+        st.write("### 上傳圖像或拍照")
+        
+        # 圖像上傳
+        uploaded_img = st.file_uploader("選擇一張圖片:", type=["png", "jpg", "jpeg"])
+        if uploaded_img:
+            img = Image.open(uploaded_img)
+            add_user_image(img)
+            st.success("圖像已上傳!")
+
+        # 相機拍照
+        camera_img = st.camera_input("拍照")
+        if camera_img:
+            img = Image.open(camera_img)
+            add_user_image(img)
+            st.success("拍照已成功!")
+
         # 重置對話
         st.button("🗑️ 清除對話", on_click=reset_session_messages)
 
@@ -86,26 +103,6 @@ def main():
                     st.write(content.get("text", ""))
                 elif content["type"] == "image_url":
                     st.image(content["image_url"].get("url", ""))
-
-    # --- 圖像上傳功能 ---
-    st.write("### 上傳圖像或拍照")
-    cols_img = st.columns(2)
-    
-    # 圖像上傳
-    with cols_img[0]:
-        uploaded_img = st.file_uploader("選擇一張圖片:", type=["png", "jpg", "jpeg"])
-        if uploaded_img:
-            img = Image.open(uploaded_img)
-            add_user_image(img)
-            st.success("圖像已上傳!")
-
-    # 相機拍照
-    with cols_img[1]:
-        camera_img = st.camera_input("拍照")
-        if camera_img:
-            img = Image.open(camera_img)
-            add_user_image(img)
-            st.success("拍照已成功!")
 
     # --- 用戶輸入 ---
     prompt = st.chat_input("嗨！問我任何問題...")
