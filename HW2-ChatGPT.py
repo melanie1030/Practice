@@ -240,4 +240,57 @@ def main():
                     audio_file_added = True
 
         # --- 聊天輸入處理 ---
-        if prompt := st.chat_input("Hi! Ask me anything...") or audio_prompt or audio_f
+        if prompt := st.chat_input("Hi! Ask me anything...") or audio_prompt or audio_file_added:
+            if not audio_file_added:
+                # 添加文本訊息
+                st.session_state.messages.append(
+                    {
+                        "role": "user", 
+                        "content": [{
+                            "type": "text",
+                            "text": prompt or audio_prompt,
+                        }]
+                    }
+                )
+                
+                # 顯示新訊息
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+            else:
+                # 顯示音頻文件
+                with st.chat_message("user"):
+                    st.audio(f"audio_{audio_id}.wav")
+
+            # 顯示AI助手回應
+            with st.chat_message("assistant"):
+                model2key = {
+                    "openai": openai_api_key,
+                }
+                st.write_stream(
+                    stream_llm_response(
+                        model_params=model_params, 
+                        model_type=model_type, 
+                        api_key=model2key[model_type]
+                    )
+                )
+
+            # --- 添加音頻回應（可選） ---
+            if audio_response:
+                # 使用OpenAI的TTS服務生成語音回應
+                response = client.audio.speech.create(
+                    model=tts_model,
+                    voice=tts_voice,
+                    input=st.session_state.messages[-1]["content"][0]["text"],
+                )
+                audio_base64 = base64.b64encode(response.content).decode('utf-8')
+                # 創建音頻播放器
+                audio_html = f"""
+                <audio controls autoplay>
+                    <source src="data:audio/wav;base64,{audio_base64}" type="audio/mp3">
+                </audio>
+                """
+                st.html(audio_html)
+
+# 程式入口點
+if __name__=="__main__":
+    main()
