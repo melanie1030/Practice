@@ -59,14 +59,14 @@ def base64_to_image(base64_string):
 def main():
     # --- 頁面配置 ---
     st.set_page_config(
-        page_title="Chatbot",
+        page_title="聊天機器人",
         page_icon="🤖",
         layout="centered",
         initial_sidebar_state="expanded",
     )
 
     # --- 頁面標題 ---
-    st.html("""<h1 style="text-align: center; color: #6ca395;">🤖 <i>The Openai Chatbot</i> </h1>""")
+    st.html("""<h1 style="text-align: center; color: #6ca395;">🤖 <i>Openai聊天機器人</i> </h1>""")
 
     # --- 側邊欄設置 ---
     with st.sidebar:
@@ -74,16 +74,16 @@ def main():
         with cols_keys[0]:
             # 獲取預設的OpenAI API密鑰（如果有的話）
             default_openai_api_key = os.getenv("OPENAI_API_KEY") if os.getenv("OPENAI_API_KEY") is not None else ""
-            with st.popover("🔐 API_KEY"):
-                openai_api_key = st.text_input("Introduce your OpenAI API Key (https://platform.openai.com/)", 
+            with st.popover("🔐 API密鑰"):
+                openai_api_key = st.text_input("請輸入您的OpenAI API密鑰 (https://platform.openai.com/)", 
                                              value=default_openai_api_key, 
                                              type="password")
-#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
+
     # --- 主要內容 ---
     # 檢查用戶是否輸入了API密鑰
     if (openai_api_key == "" or openai_api_key is None or "sk-" not in openai_api_key):
         st.write("#")
-        st.warning("⬅️ Please introduce an API Key to continue...")
+        st.warning("⬅️ 請輸入API密鑰以繼續...")
     
     else:
         client = OpenAI(api_key=openai_api_key)  # 創建OpenAI客戶端
@@ -111,23 +111,23 @@ def main():
             
             # 顯示可用的模型列表
             available_models = [] + (openai_models if openai_api_key else [])
-            model = st.selectbox("Select a model:", available_models, index=0)
+            model = st.selectbox("選擇模型:", available_models, index=0)
             model_type = None
             if model.startswith("gpt"): model_type = "openai"
             
             # 模型參數設置
-            with st.popover("⚙️ Model parameters"):
-                model_temp = st.slider("Temperature", min_value=0.0, max_value=2.0, value=0.3, step=0.1)
+            with st.popover("⚙️ 模型參數"):
+                model_temp = st.slider("溫度", min_value=0.0, max_value=2.0, value=0.3, step=0.1)
 
             # 音頻回應選項
-            audio_response = st.toggle("Audio response", value=False)
+            audio_response = st.toggle("音頻回應", value=False)
             if audio_response:
                 cols = st.columns(2)
                 with cols[0]:
-                    tts_voice = st.selectbox("Select a voice:", 
+                    tts_voice = st.selectbox("選擇語音:", 
                                            ["alloy", "echo", "fable", "onyx", "nova", "shimmer"])
                 with cols[1]:
-                    tts_model = st.selectbox("Select a model:", ["tts-1", "tts-1-hd"], index=1)
+                    tts_model = st.selectbox("選擇模型:", ["tts-1", "tts-1-hd"], index=1)
 
             # 設置模型參數
             model_params = {
@@ -146,7 +146,7 @@ def main():
 
             # --- 圖像上傳功能 ---
             if model in ["gpt-4o", "gpt-4-turbo"]:
-                st.write(f"### **image{' or a video file' if model_type=='google' else ''}:**")
+                st.write(f"### **上傳圖像{' 或影片' if model_type=='google' else ''}:**")
 
                 # 添加圖像到訊息列表的函數
                 def add_image_to_messages():
@@ -183,9 +183,9 @@ def main():
                 # 圖像上傳介面
                 cols_img = st.columns(2)
                 with cols_img[0]:
-                    with st.popover("📁 Upload"):
+                    with st.popover("📁 上傳"):
                         st.file_uploader(
-                            f"Upload an image{' or a video' if model_type == 'google' else ''}:", 
+                            f"上傳圖像{' 或影片' if model_type == 'google' else ''}:", 
                             type=["png", "jpg", "jpeg"] + (["mp4"] if model_type == "google" else []), 
                             accept_multiple_files=False,
                             key="uploaded_img",
@@ -193,18 +193,18 @@ def main():
                         )
 
                 with cols_img[1]:                    
-                    with st.popover("📸 Camera"):
-                        activate_camera = st.checkbox("Activate camera")
+                    with st.popover("📸 拍照"):
+                        activate_camera = st.checkbox("啟動相機")
                         if activate_camera:
                             st.camera_input(
-                                "Take a picture", 
+                                "拍張照片", 
                                 key="camera_img",
                                 on_change=add_image_to_messages,
                             )
 
             # --- 音頻上傳功能 ---
             st.write("#")
-            st.write(f"### **🎤{' Speech To Text' if model_type == 'openai' else ''}:**")
+            st.write(f"### **🎤{' 語音轉文字' if model_type == 'openai' else ''}:**")
 
             # 音頻處理相關變量初始化
             audio_prompt = None
@@ -213,7 +213,7 @@ def main():
                 st.session_state.prev_speech_hash = None
 
             # 音頻錄製介面
-            speech_input = audio_recorder("Press to talk:", icon_size="3x", neutral_color="#6ca395")
+            speech_input = audio_recorder("按住說話:", icon_size="3x", neutral_color="#6ca395")
             if speech_input and st.session_state.prev_speech_hash != hash(speech_input):
                 st.session_state.prev_speech_hash = hash(speech_input)
                 if model_type != "google":
@@ -240,7 +240,7 @@ def main():
                     audio_file_added = True
 
         # --- 聊天輸入處理 ---
-        if prompt := st.chat_input("Hi! Ask me anything...") or audio_prompt or audio_file_added:
+        if prompt := st.chat_input("嗨！問我任何問題...") or audio_prompt or audio_file_added:
             if not audio_file_added:
                 # 添加文本訊息
                 st.session_state.messages.append(
