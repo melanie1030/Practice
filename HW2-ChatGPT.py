@@ -84,7 +84,16 @@ def main():
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.write(message["content"][0]["text"])
+            # Iterate over content to handle multiple types
+            for content in message["content"]:
+                if content["type"] == "text":
+                    st.write(content.get("text", ""))
+                elif content["type"] == "image_url":
+                    st.image(content["image_url"].get("url", ""))
+                elif content["type"] == "video_file":
+                    st.video(content.get("video_file", ""))
+                elif content["type"] == "audio_file":
+                    st.audio(content.get("audio_file", ""))
 
     # --- 用戶輸入 ---
     prompt = st.chat_input("嗨！問我任何問題...")
@@ -99,3 +108,4 @@ def main():
 # 程式入口點
 if __name__ == "__main__":
     main()
+
