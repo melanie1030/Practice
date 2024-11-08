@@ -139,16 +139,26 @@ def main():
     # --- User Input ---
     prompt = st.chat_input("Hi! Ask me anything...")
     if prompt:
-        # Append user's message with a prompt to use Traditional Chinese
+        # Append user's message without the prompt modification for display
         st.session_state.messages.append({
             "role": "user",
-            "content": [{"type": "text", "text": f"{prompt}（請以繁體中文回答）"}]
+            "content": [{"type": "text", "text": prompt}]
         })
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # Create an internal prompt with the Traditional Chinese instruction
+        internal_prompt = f"{prompt}\n如果您的回答原本為簡體中文，請使用繁體中文回答。"
+        st.session_state.messages.append({
+            "role": "user",
+            "content": [{"type": "text", "text": internal_prompt}]
+        })
+
         # Generate assistant's response and display it
         stream_llm_response(client, model_params)
+
+        # Remove the internal prompt after the response is generated
+        st.session_state.messages.pop()
 
     # --- Export Chat History ---
     st.sidebar.write("### Export Chat History")
