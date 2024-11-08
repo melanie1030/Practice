@@ -9,6 +9,7 @@ from io import BytesIO
 import random
 import json
 from datetime import datetime
+from langdetect import detect  # Import language detection library
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -17,7 +18,6 @@ dotenv.load_dotenv()
 OPENAI_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
 
 # --- Helper Functions ---
-
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
@@ -59,21 +59,29 @@ def save_chat_to_json(messages):
         mime="application/json"
     )
 
-# --- Chatbot Main Functionality ---
+# Function to detect the language of the input and adjust the model's response
+def detect_language_and_set_response(prompt):
+    """Detect the language of the input and adjust the assistant's response."""
+    lang = detect(prompt)
+    if lang == 'zh-cn':  # Simplified Chinese detected
+        return "zh-tw"  # Force the response to Traditional Chinese
+    return lang  # Return the detected language (for English, Japanese, etc.)
 
-def stream_llm_response(client, model_params):
+# --- Chatbot Main Functionality ---
+def stream_llm_response(client, model_params, prompt):
     """Stream responses from the LLM model and store them in session state."""
     assistant_response = ""
+    # Detect language and set response language accordingly
+    response_language = detect_language_and_set_response(prompt)
 
-    # 使用一個副本來傳遞給模型的訊息
-    messages_for_model = st.session_state.messages.copy()
-
+    # Set the appropriate language for the assistant's response
     for chunk in client.chat.completions.create(
             model=model_params.get("model", "gpt-4o"),
-            messages=messages_for_model,
+            messages=st.session_state.messages,
             temperature=model_params.get("temperature", 0.3),
             max_tokens=4096,
-            stream=True):
+            stream=True,
+            language=response_language):  # Pass the language to the model
         chunk_text = chunk.choices[0].delta.content or ""
         assistant_response += chunk_text
     
@@ -143,28 +151,16 @@ def main():
     # --- User Input ---
     prompt = st.chat_input("Hi! Ask me anything...")
     if prompt:
-        # 用戶的原始訊息
-        user_message = {
+        # Append user's message to session state
+        st.session_state.messages.append({
             "role": "user",
             "content": [{"type": "text", "text": prompt}]
-        }
-        
-        # 用於傳遞給模型的訊息，包含提示詞
-        user_message_with_prompt = {
-            "role": "user",
-            "content": [{"type": "text", "text": f"{prompt}\n如果您的回答原本為簡體中文，請使用繁體中文回答。"}]
-        }
-
-        # 將原始訊息添加到 session state 中，以便顯示在對話紀錄中
-        st.session_state.messages.append(user_message)
+        })
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # 在模型副本的訊息中添加提示詞
-        messages_for_model = st.session_state.messages[:-1] + [user_message_with_prompt]
-
         # Generate assistant's response and display it
-        stream_llm_response(client, model_params)
+        stream_llm_response(client, model_params, prompt)
 
     # --- Export Chat History ---
     st.sidebar.write("### Export Chat History")
