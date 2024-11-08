@@ -139,10 +139,10 @@ def main():
     # --- User Input ---
     prompt = st.chat_input("Hi! Ask me anything...")
     if prompt:
-        # Append user's message to session state
+        # Append user's message with a prompt to use Traditional Chinese
         st.session_state.messages.append({
             "role": "user",
-            "content": [{"type": "text", "text": prompt}]
+            "content": [{"type": "text", "text": f"{prompt}（請以繁體中文回答）"}]
         })
         with st.chat_message("user"):
             st.markdown(prompt)
