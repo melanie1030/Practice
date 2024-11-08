@@ -63,7 +63,7 @@ def save_chat_to_json(messages):
 
 def stream_llm_response(client, model_params):
     """Stream responses from the LLM model and store them in session state."""
-    assistant_message = {"role": "assistant", "content": []}
+    assistant_response = ""
     for chunk in client.chat.completions.create(
             model=model_params.get("model", "gpt-4o"),
             messages=st.session_state.messages,
@@ -71,11 +71,17 @@ def stream_llm_response(client, model_params):
             max_tokens=4096,
             stream=True):
         chunk_text = chunk.choices[0].delta.content or ""
-        assistant_message["content"].append({"type": "text", "text": chunk_text})
-        yield chunk_text
+        assistant_response += chunk_text
     
-    # Add the assistant's response to the session state after completion
-    st.session_state.messages.append(assistant_message)
+    # Add the assistant's full response to the session state after completion
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": [{"type": "text", "text": assistant_response}]
+    })
+
+    # Display the complete response in the chat window
+    with st.chat_message("assistant"):
+        st.write(assistant_response)
 
 def main():
     # --- Page Configuration ---
@@ -142,8 +148,7 @@ def main():
             st.markdown(prompt)
 
         # Generate assistant's response and display it
-        with st.chat_message("assistant"):
-            st.write_stream(stream_llm_response(client, model_params))
+        stream_llm_response(client, model_params)
 
     # --- Export Chat History ---
     st.sidebar.write("### Export Chat History")
