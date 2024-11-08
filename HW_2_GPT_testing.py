@@ -64,9 +64,16 @@ def save_chat_to_json(messages):
 def stream_llm_response(client, model_params):
     """Stream responses from the LLM model and store them in session state."""
     assistant_response = ""
+    messages_for_model = st.session_state.messages.copy()
+
+    # 在用戶的最新訊息中附加提示詞，但不影響用戶界面顯示
+    if messages_for_model and messages_for_model[-1]["role"] == "user":
+        user_content = messages_for_model[-1]["content"][0]["text"]
+        messages_for_model[-1]["content"][0]["text"] = f"{user_content}\n如果您的回答原本為簡體中文，請使用繁體中文回答。"
+
     for chunk in client.chat.completions.create(
             model=model_params.get("model", "gpt-4o"),
-            messages=st.session_state.messages,
+            messages=messages_for_model,
             temperature=model_params.get("temperature", 0.3),
             max_tokens=4096,
             stream=True):
@@ -147,18 +154,8 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Create an internal prompt with the Traditional Chinese instruction
-        internal_prompt = f"{prompt}\n如果您的回答原本為簡體中文，請使用繁體中文回答。"
-        st.session_state.messages.append({
-            "role": "user",
-            "content": [{"type": "text", "text": internal_prompt}]
-        })
-
         # Generate assistant's response and display it
         stream_llm_response(client, model_params)
-
-        # Remove the internal prompt after the response is generated
-        st.session_state.messages.pop()
 
     # --- Export Chat History ---
     st.sidebar.write("### Export Chat History")
