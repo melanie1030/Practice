@@ -62,7 +62,8 @@ def save_chat_to_json(messages):
 # --- Chatbot Main Functionality ---
 
 def stream_llm_response(client, model_params):
-    """Stream responses from the LLM model."""
+    """Stream responses from the LLM model and store them in session state."""
+    assistant_message = {"role": "assistant", "content": []}
     for chunk in client.chat.completions.create(
             model=model_params.get("model", "gpt-4o"),
             messages=st.session_state.messages,
@@ -70,7 +71,11 @@ def stream_llm_response(client, model_params):
             max_tokens=4096,
             stream=True):
         chunk_text = chunk.choices[0].delta.content or ""
+        assistant_message["content"].append({"type": "text", "text": chunk_text})
         yield chunk_text
+    
+    # Add the assistant's response to the session state after completion
+    st.session_state.messages.append(assistant_message)
 
 def main():
     # --- Page Configuration ---
@@ -116,6 +121,7 @@ def main():
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
+    # Display all messages in session state
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             for content in message["content"]:
@@ -127,6 +133,7 @@ def main():
     # --- User Input ---
     prompt = st.chat_input("Hi! Ask me anything...")
     if prompt:
+        # Append user's message to session state
         st.session_state.messages.append({
             "role": "user",
             "content": [{"type": "text", "text": prompt}]
@@ -134,6 +141,7 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # Generate assistant's response and display it
         with st.chat_message("assistant"):
             st.write_stream(stream_llm_response(client, model_params))
 
