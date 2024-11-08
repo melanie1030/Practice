@@ -7,7 +7,6 @@ from audio_recorder_streamlit import audio_recorder
 import base64
 from io import BytesIO
 import random
-from google.cloud import storage  # Import Google Cloud Storage library
 import json
 from datetime import datetime
 
@@ -42,13 +41,23 @@ def reset_session_messages():
     if "messages" in st.session_state:
         st.session_state.pop("messages")
 
-def save_to_cloud(bucket_name, file_name, data):
-    """Save conversation history to Google Cloud Storage."""
-    client = storage.Client()  # Initialize Google Cloud client
-    bucket = client.get_bucket(bucket_name)  # Retrieve the bucket
-    blob = bucket.blob(file_name)  # Create a new blob for the file
-    blob.upload_from_string(json.dumps(data), content_type='application/json')
-    return blob.public_url  # Return the public URL of the uploaded file
+def save_chat_to_json(messages):
+    """Save chat history as a JSON file and provide a download button."""
+    # Convert chat history to JSON string
+    chat_json = json.dumps(messages, ensure_ascii=False, indent=4)
+    
+    # Use BytesIO to create a downloadable file
+    json_bytes = BytesIO(chat_json.encode('utf-8'))
+    json_bytes.seek(0)
+    
+    # Provide a download button for the JSON file
+    file_name = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    st.download_button(
+        label="下載對話紀錄",
+        data=json_bytes,
+        file_name=file_name,
+        mime="application/json"
+    )
 
 # --- Chatbot Main Functionality ---
 
@@ -130,11 +139,7 @@ def main():
 
     # --- Export Chat History ---
     st.sidebar.write("### Export Chat History")
-    bucket_name = st.text_input("Google Cloud Bucket Name")
-    if st.sidebar.button("Save Chat History") and bucket_name:
-        file_name = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        url = save_to_cloud(bucket_name, file_name, st.session_state.messages)
-        st.sidebar.success(f"Chat history saved! [View File]({url})")
+    save_chat_to_json(st.session_state.messages)  # Add download button for chat history
 
 # Entry point
 if __name__ == "__main__":
