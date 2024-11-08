@@ -9,7 +9,6 @@ from io import BytesIO
 import random
 import json
 from datetime import datetime
-from langdetect import detect  # Import language detection library
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -18,6 +17,7 @@ dotenv.load_dotenv()
 OPENAI_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
 
 # --- Helper Functions ---
+
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
@@ -59,29 +59,17 @@ def save_chat_to_json(messages):
         mime="application/json"
     )
 
-# Function to detect the language of the input and adjust the model's response
-def detect_language_and_set_response(prompt):
-    """Detect the language of the input and adjust the assistant's response."""
-    lang = detect(prompt)
-    if lang == 'zh-cn':  # Simplified Chinese detected
-        return "zh-tw"  # Force the response to Traditional Chinese
-    return lang  # Return the detected language (for English, Japanese, etc.)
-
 # --- Chatbot Main Functionality ---
-def stream_llm_response(client, model_params, prompt):
+
+def stream_llm_response(client, model_params):
     """Stream responses from the LLM model and store them in session state."""
     assistant_response = ""
-    # Detect language and set response language accordingly
-    response_language = detect_language_and_set_response(prompt)
-
-    # Set the appropriate language for the assistant's response
     for chunk in client.chat.completions.create(
             model=model_params.get("model", "gpt-4o"),
             messages=st.session_state.messages,
             temperature=model_params.get("temperature", 0.3),
             max_tokens=4096,
-            stream=True,
-            language=response_language):  # Pass the language to the model
+            stream=True):
         chunk_text = chunk.choices[0].delta.content or ""
         assistant_response += chunk_text
     
@@ -160,7 +148,7 @@ def main():
             st.markdown(prompt)
 
         # Generate assistant's response and display it
-        stream_llm_response(client, model_params, prompt)
+        stream_llm_response(client, model_params)
 
     # --- Export Chat History ---
     st.sidebar.write("### Export Chat History")
