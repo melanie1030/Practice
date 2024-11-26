@@ -1,159 +1,112 @@
 import streamlit as st
-from openai import OpenAI
-import dotenv
-import os
-from PIL import Image
-from audio_recorder_streamlit import audio_recorder
-import base64
+import pandas as pd
+import matplotlib.pyplot as plt
 from io import BytesIO
-import random
-import json
 from datetime import datetime
-
-# --- Initialize and Settings ---
-dotenv.load_dotenv()
-
-# Define global variables
-OPENAI_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
 
 # --- Helper Functions ---
 
-def initialize_client(api_key):
-    """Initialize OpenAI client with the provided API key."""
-    return OpenAI(api_key=api_key) if api_key else None
+def plot_line_chart(data, x_column, y_column):
+    """生成折線圖"""
+    plt.figure(figsize=(10, 6))
+    plt.plot(data[x_column], data[y_column], marker='o')
+    plt.title(f"{y_column} vs {x_column}", fontsize=16)
+    plt.xlabel(x_column, fontsize=14)
+    plt.ylabel(y_column, fontsize=14)
+    plt.grid(True)
+    plt.tight_layout()
+    return plt
 
-def load_image_base64(image):
-    """Convert an image to Base64 encoding."""
-    buffer = BytesIO()
-    image.save(buffer, format=image.format)
-    return base64.b64encode(buffer.getvalue()).decode('utf-8')
+def plot_bar_chart(data, x_column, y_column):
+    """生成柱狀圖"""
+    plt.figure(figsize=(10, 6))
+    plt.bar(data[x_column], data[y_column], color='skyblue')
+    plt.title(f"{y_column} vs {x_column}", fontsize=16)
+    plt.xlabel(x_column, fontsize=14)
+    plt.ylabel(y_column, fontsize=14)
+    plt.tight_layout()
+    return plt
 
-def add_user_image(image):
-    """Add an image message to the session state."""
-    img_base64 = load_image_base64(image)
-    st.session_state.messages.append({
-        "role": "user",
-        "content": [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}]
-    })
+def plot_scatter_chart(data, x_column, y_column):
+    """生成散點圖"""
+    plt.figure(figsize=(10, 6))
+    plt.scatter(data[x_column], data[y_column], color='purple')
+    plt.title(f"{y_column} vs {x_column} (Scatter Plot)", fontsize=16)
+    plt.xlabel(x_column, fontsize=14)
+    plt.ylabel(y_column, fontsize=14)
+    plt.grid(True)
+    plt.tight_layout()
+    return plt
 
-def reset_session_messages():
-    """Clear conversation history from the session."""
-    if "messages" in st.session_state:
-        st.session_state.pop("messages")
+def plot_pie_chart(data, column):
+    """生成餅圖"""
+    plt.figure(figsize=(8, 8))
+    data[column].value_counts().plot.pie(autopct='%1.1f%%', startangle=90, cmap='viridis')
+    plt.title(f"Distribution of {column}", fontsize=16)
+    plt.ylabel('')
+    plt.tight_layout()
+    return plt
 
-def save_chat_to_json(messages):
-    """Save chat history as a JSON file and provide a download button."""
-    # Convert chat history to JSON string
-    chat_json = json.dumps(messages, ensure_ascii=False, indent=4)
-    
-    # Use BytesIO to create a downloadable file
-    json_bytes = BytesIO(chat_json.encode('utf-8'))
-    json_bytes.seek(0)
-    
-    # Provide a download button for the JSON file
-    file_name = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    st.download_button(
-        label="下載對話紀錄",
-        data=json_bytes,
-        file_name=file_name,
-        mime="application/json"
-    )
+def generate_summary(data):
+    """生成數據摘要"""
+    summary = data.describe(include='all').transpose()
+    return summary
 
-# --- Chatbot Main Functionality ---
-
-def stream_llm_response(client, model_params):
-    """Stream responses from the LLM model and store them in session state."""
-    assistant_response = ""
-    for chunk in client.chat.completions.create(
-            model=model_params.get("model", "gpt-4o"),
-            messages=st.session_state.messages,
-            temperature=model_params.get("temperature", 0.3),
-            max_tokens=4096,
-            stream=True):
-        chunk_text = chunk.choices[0].delta.content or ""
-        assistant_response += chunk_text
-    
-    # Add the assistant's full response to the session state after completion
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": [{"type": "text", "text": assistant_response}]
-    })
-
-    # Display the complete response in the chat window
-    with st.chat_message("assistant"):
-        st.write(assistant_response)
-
+# --- Main Function ---
 def main():
-    # --- Page Configuration ---
-    st.set_page_config(page_title="Chatbot", page_icon="🤖", layout="centered", initial_sidebar_state="expanded")
-    st.html("""<h1 style="text-align: center; color: #6ca395;">🤖 <i>OpenAI Chatbot</i> </h1>""")
+    st.set_page_config(page_title="Chart Generator", page_icon="📊", layout="wide")
+    st.title("📊 數據分析與圖表生成器")
 
-    # --- Sidebar Setup ---
-    with st.sidebar:
-        st.subheader("🔐 Enter Your API Key")
-        default_api_key = os.getenv("OPENAI_API_KEY", "")
-        api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
+    st.sidebar.header("📂 上傳數據文件")
+    uploaded_file = st.sidebar.file_uploader("上傳 CSV 文件:", type=["csv"])
+    if uploaded_file:
+        data = pd.read_csv(uploaded_file)
+        st.write("### 數據預覽")
+        st.dataframe(data)
 
-        client = initialize_client(api_key)
-        if not api_key or not client:
-            st.warning("⬅️ Please enter the API key to continue...")
-            return
+        st.write("### 數據摘要")
+        summary = generate_summary(data)
+        st.dataframe(summary)
 
-        # Model Settings
-        model = st.selectbox("Select Model:", OPENAI_MODELS)
-        model_params = {"model": model, "temperature": st.slider("Temperature", 0.0, 2.0, 0.3)}
+        st.sidebar.header("📈 圖表設置")
+        chart_type_input = st.sidebar.text_input("輸入圖表類型 (例: 折線圖, 散點圖, 柱狀圖, 餅圖)")
+        x_column = st.sidebar.selectbox("選擇 X 軸", data.columns)
+        y_column = st.sidebar.selectbox("選擇 Y 軸", data.columns)
 
-        # Image Upload and Camera
-        st.write("### Upload Image or Take Photo")
-        
-        # Image Upload
-        uploaded_img = st.file_uploader("Select an image:", type=["png", "jpg", "jpeg"])
-        if uploaded_img:
-            img = Image.open(uploaded_img)
-            add_user_image(img)
-            st.success("Image uploaded!")
+        if st.sidebar.button("生成圖表"):
+            chart_type = chart_type_input.lower()
 
-        # Take Photo
-        camera_img = st.camera_input("Take a photo")
-        if camera_img:
-            img = Image.open(camera_img)
-            add_user_image(img)
-            st.success("Photo taken successfully!")
+            if "折線" in chart_type or "line" in chart_type:
+                fig = plot_line_chart(data, x_column, y_column)
+                st.write("### 折線圖")
+                st.pyplot(fig)
+            elif "柱狀" in chart_type or "bar" in chart_type:
+                fig = plot_bar_chart(data, x_column, y_column)
+                st.write("### 柱狀圖")
+                st.pyplot(fig)
+            elif "散點" in chart_type or "scatter" in chart_type:
+                fig = plot_scatter_chart(data, x_column, y_column)
+                st.write("### 散點圖")
+                st.pyplot(fig)
+            elif "餅圖" in chart_type or "pie" in chart_type:
+                column = st.sidebar.selectbox("選擇繪製餅圖的列", data.columns)
+                fig = plot_pie_chart(data, column)
+                st.write("### 餅圖")
+                st.pyplot(fig)
+            else:
+                st.warning("無法識別的圖表類型，請重新輸入。")
 
-        # Reset Conversation
-        st.button("🗑️ Clear Conversation", on_click=reset_session_messages)
+            buf = BytesIO()
+            fig.savefig(buf, format="png")
+            buf.seek(0)
+            st.download_button(
+                label="下載圖表",
+                data=buf,
+                file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                mime="image/png"
+            )
+    else:
+        st.info("請在左側上傳 CSV 文件以繼續。")
 
-    # --- Chat Window & Messages ---
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    # Display all messages in session state
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            for content in message["content"]:
-                if content["type"] == "text":
-                    st.write(content.get("text", ""))
-                elif content["type"] == "image_url":
-                    st.image(content["image_url"].get("url", ""))
-
-    # --- User Input ---
-    prompt = st.chat_input("Hi! Ask me anything...")
-    if prompt:
-        # Append user's message to session state
-        st.session_state.messages.append({
-            "role": "user",
-            "content": [{"type": "text", "text": prompt}]
-        })
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        # Generate assistant's response and display it
-        stream_llm_response(client, model_params)
-
-    # --- Export Chat History ---
-    st.sidebar.write("### Export Chat History")
-    save_chat_to_json(st.session_state.messages)  # Add download button for chat history
-
-# Entry point
 if __name__ == "__main__":
     main()
