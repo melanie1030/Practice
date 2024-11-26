@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd  # 用于数据分析
 from openai import OpenAI
 import dotenv
 import os
@@ -58,6 +59,33 @@ def save_chat_to_json(messages):
         file_name=file_name,
         mime="application/json"
     )
+
+def analyze_csv_data(file):
+    """分析上传的 .csv 文件内容，并生成数据分析结果."""
+    try:
+        df = pd.read_csv(file)
+        st.write("### 📝 文件数据预览:")
+        st.dataframe(df)  # 显示前几行
+        
+        # 基础统计信息
+        st.write("### 📊 数据统计信息:")
+        st.write(df.describe())
+
+        # 列名信息
+        st.write("### 📋 数据列信息:")
+        st.write(df.columns.tolist())
+        
+        # 提供下载选项
+        st.write("### 💾 下载数据处理结果:")
+        processed_csv = df.describe().to_csv().encode('utf-8')
+        st.download_button(
+            label="下載統計信息 (.csv)",
+            data=processed_csv,
+            file_name="data_statistics.csv",
+            mime="text/csv"
+        )
+    except Exception as e:
+        st.error(f"处理 CSV 文件时出错: {e}")
 
 # --- Chatbot Main Functionality ---
 
@@ -149,6 +177,12 @@ def main():
 
         # Generate assistant's response and display it
         stream_llm_response(client, model_params)
+
+    # --- CSV Upload and Analysis --- 新增功能
+    st.write("## 📂 上传并分析 CSV 文件")
+    csv_file = st.file_uploader("上传一个 CSV 文件进行分析:", type=["csv"])
+    if csv_file:
+        analyze_csv_data(csv_file)
 
     # --- Export Chat History ---
     st.sidebar.write("### Export Chat History")
