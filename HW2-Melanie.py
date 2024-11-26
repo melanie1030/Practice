@@ -80,31 +80,68 @@ def main():
                 fig = plot_line_chart(data, x_column, y_column)
                 st.write("### 折線圖")
                 st.pyplot(fig)
+
+                # 下載圖表
+                buf = BytesIO()
+                fig.savefig(buf, format="png")
+                buf.seek(0)
+                st.download_button(
+                    label="下載圖表",
+                    data=buf,
+                    file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                    mime="image/png"
+                )
+
             elif "柱狀" in chart_type or "bar" in chart_type:
                 fig = plot_bar_chart(data, x_column, y_column)
                 st.write("### 柱狀圖")
                 st.pyplot(fig)
+
+                # 下載圖表
+                buf = BytesIO()
+                fig.savefig(buf, format="png")
+                buf.seek(0)
+                st.download_button(
+                    label="下載圖表",
+                    data=buf,
+                    file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                    mime="image/png"
+                )
+
             elif "散點" in chart_type or "scatter" in chart_type:
                 fig = plot_scatter_chart(data, x_column, y_column)
                 st.write("### 散點圖")
                 st.pyplot(fig)
+
+                # 下載圖表
+                buf = BytesIO()
+                fig.savefig(buf, format="png")
+                buf.seek(0)
+                st.download_button(
+                    label="下載圖表",
+                    data=buf,
+                    file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                    mime="image/png"
+                )
+
             elif "餅圖" in chart_type or "pie" in chart_type:
                 column = st.sidebar.selectbox("選擇繪製餅圖的列", data.columns)
                 fig = plot_pie_chart(data, column)
                 st.write("### 餅圖")
                 st.pyplot(fig)
+
+                # 下載圖表
+                buf = BytesIO()
+                fig.savefig(buf, format="png")
+                buf.seek(0)
+                st.download_button(
+                    label="下載圖表",
+                    data=buf,
+                    file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                    mime="image/png"
+                )
             else:
                 st.warning("無法識別的圖表類型，請重新輸入。")
-
-            buf = BytesIO()
-            fig.savefig(buf, format="png")
-            buf.seek(0)
-            st.download_button(
-                label="下載圖表",
-                data=buf,
-                file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                mime="image/png"
-            )
     else:
         st.info("請在左側上傳 CSV 文件以繼續。")
 
