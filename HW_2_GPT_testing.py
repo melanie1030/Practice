@@ -119,9 +119,14 @@ def main():
     # User input
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
+        # Add user input to conversation history
         st.session_state.messages.append({"role": "user", "content": user_input})
 
-        # Call GPT
+        # Immediately display user input
+        with st.chat_message("user"):
+            st.write(user_input)
+
+        # Call GPT and display its response
         with st.spinner("Thinking..."):
             try:
                 # Modify prompt if CSV is uploaded
@@ -144,14 +149,16 @@ def main():
                 else:
                     raise ValueError("Invalid GPT response structure.")
 
-                # Add GPT response to chat
+                # Add GPT response to conversation history
                 st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
+
+                # Immediately display GPT response
                 with st.chat_message("assistant"):
                     st.write(gpt_reply)
 
                 # Generate chart if CSV is uploaded
                 if csv_data is not None:
-                    with st.spinner("Generating chart based on GPT response..."):
+                    with st.spinner("Generating chart from GPT response..."):
                         try:
                             parsed_response = json.loads(gpt_reply)
                             chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
