@@ -171,7 +171,7 @@ def main():
                                     mime="image/png"
                                 )
                         except json.JSONDecodeError:
-                            st.error("Failed to parse GPT response for chart generation. Please check the response format.")
+                            st.error("")    """Failed to parse GPT response for chart generation. Please check the response format."""
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
