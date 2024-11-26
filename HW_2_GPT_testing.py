@@ -6,6 +6,8 @@ import dotenv
 import os
 from io import BytesIO
 import json
+from PIL import Image
+from datetime import datetime
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -51,10 +53,27 @@ def generate_image_from_gpt_response(response, csv_data):
         return None
 
 
+def save_chat_to_json(messages):
+    """Save chat history as a JSON file."""
+    try:
+        chat_json = json.dumps(messages, ensure_ascii=False, indent=4)
+        json_bytes = BytesIO(chat_json.encode("utf-8"))
+        json_bytes.seek(0)
+        file_name = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        st.download_button(
+            label="Download Chat History",
+            data=json_bytes,
+            file_name=file_name,
+            mime="application/json",
+        )
+    except Exception as e:
+        st.error(f"Failed to save chat history: {e}")
+
+
 def main():
     # --- Page Configuration ---
-    st.set_page_config(page_title="Chatbot with Data Analysis", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot + 📊 Data Analysis")
+    st.set_page_config(page_title="Chatbot with Data & Images", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot + 📊 Data Analysis + 🖼️ Image Upload")
 
     # --- Sidebar Setup ---
     with st.sidebar:
@@ -75,6 +94,18 @@ def main():
             csv_data = pd.read_csv(uploaded_file)
             st.write("### Data Preview")
             st.dataframe(csv_data)
+
+        # Upload Image
+        st.subheader("🖼️ Upload an Image")
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
+        if uploaded_image:
+            image = Image.open(uploaded_image)
+            st.image(image, caption="Uploaded Image", use_column_width=True)
+
+        # Download Chat History
+        st.subheader("💾 Export Chat History")
+        if st.button("Save Chat History"):
+            save_chat_to_json(st.session_state.messages)
 
     # --- Chat Interface ---
     if "messages" not in st.session_state:
