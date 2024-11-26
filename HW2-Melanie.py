@@ -1,11 +1,23 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from openai import OpenAI
+import dotenv
+import os
 from io import BytesIO
+import json
+from PIL import Image
 from datetime import datetime
 
-# --- Helper Functions ---
+dotenv.load_dotenv()
 
+OPENAI_MODELS = ["gpt-4-turbo", "gpt-3.5-turbo"]
+
+def initialize_client(api_key):
+    """Initialize OpenAI client with the provided API key."""
+    return OpenAI(api_key=api_key) if api_key else None
+
+# --- Helper Functions ---
 def plot_line_chart(data, x_column, y_column):
     """生成折線圖"""
     plt.figure(figsize=(10, 6))
@@ -52,98 +64,124 @@ def generate_summary(data):
     summary = data.describe(include='all').transpose()
     return summary
 
+def generate_image_from_gpt_response(response, csv_data):
+    """Generate a chart based on GPT's response."""
+    try:
+        chart_type = response.get("chart_type", "line")  # Default to line chart
+        x_column = response.get("x_column", csv_data.columns[0])
+        y_column = response.get("y_column", csv_data.columns[1])
+        fig = None
+
+        if chart_type == "line":
+            fig = plot_line_chart(csv_data, x_column, y_column)
+        elif chart_type == "bar":
+            fig = plot_bar_chart(csv_data, x_column, y_column)
+        elif chart_type == "scatter":
+            fig = plot_scatter_chart(csv_data, x_column, y_column)
+        elif chart_type == "pie":
+            fig = plot_pie_chart(csv_data, x_column)
+
+        # Save chart to buffer
+        buf = BytesIO()
+        fig.savefig(buf, format="png")
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        st.error(f"Failed to generate the chart: {e}")
+        return None
+
+def save_chat_to_json(messages):
+    """Save chat history as a JSON file."""
+    try:
+        chat_json = json.dumps(messages, ensure_ascii=False, indent=4)
+        json_bytes = BytesIO(chat_json.encode("utf-8"))
+        json_bytes.seek(0)
+        file_name = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        st.download_button(
+            label="Download Chat History",
+            data=json_bytes,
+            file_name=file_name,
+            mime="application/json",
+        )
+    except Exception as e:
+        st.error(f"Failed to save chat history: {e}")
+
 # --- Main Function ---
 def main():
-    st.set_page_config(page_title="Chart Generator", page_icon="📊", layout="wide")
-    st.title("📊 數據分析與圖表生成器")
+    st.set_page_config(page_title="Chatbot with Data & Images", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot + 📊 Data Analysis + 🖼️ Image Upload")
 
-    st.sidebar.header("📂 上傳數據文件")
-    uploaded_file = st.sidebar.file_uploader("上傳 CSV 文件:", type=["csv"])
-    if uploaded_file:
-        data = pd.read_csv(uploaded_file)
-        st.write("### 數據預覽")
-        st.dataframe(data)
+    with st.sidebar:
+        st.subheader("🔐 Enter Your API Key")
+        default_api_key = os.getenv("OPENAI_API_KEY", "")
+        api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
 
-        st.write("### 數據摘要")
-        summary = generate_summary(data)
-        st.dataframe(summary)
+        client = initialize_client(api_key)
+        if not api_key or not client:
+            st.warning("⬅️ Please enter the API key to continue...")
+            return
 
-        st.sidebar.header("📈 圖表設置")
-        chart_type_input = st.sidebar.text_input("輸入圖表類型 (例: 折線圖, 散點圖, 柱狀圖, 餅圖)")
-        x_column = st.sidebar.selectbox("選擇 X 軸", data.columns)
-        y_column = st.sidebar.selectbox("選擇 Y 軸", data.columns)
+        st.subheader("📂 Upload a CSV File")
+        uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
+        csv_data = None
+        if uploaded_file:
+            csv_data = pd.read_csv(uploaded_file)
+            st.write("### Data Preview")
+            st.dataframe(csv_data)
 
-        if st.sidebar.button("生成圖表"):
-            chart_type = chart_type_input.lower()
+        st.subheader("💾 Export Chat History")
+        if st.button("Save Chat History"):
+            save_chat_to_json(st.session_state.messages)
 
-            if "折線" in chart_type or "line" in chart_type:
-                fig = plot_line_chart(data, x_column, y_column)
-                st.write("### 折線圖")
-                st.pyplot(fig)
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-                # 下載圖表
-                buf = BytesIO()
-                fig.savefig(buf, format="png")
-                buf.seek(0)
-                st.download_button(
-                    label="下載圖表",
-                    data=buf,
-                    file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                    mime="image/png"
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
+    user_input = st.chat_input("Hi! Ask me anything...")
+    if user_input:
+        st.session_state.messages.append({"role": "user", "content": user_input})
+
+        with st.spinner("Thinking..."):
+            try:
+                prompt = user_input
+                if csv_data is not None:
+                    prompt = (
+                        f"You are a data analyst. Analyze the following dataset and provide insights or "
+                        f"chart suggestions. Dataset preview:\n{csv_data.head(5).to_json()}.\n"
+                        f"User question: {user_input}"
+                    )
+
+                response = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role": "user", "content": prompt}]
                 )
 
-            elif "柱狀" in chart_type or "bar" in chart_type:
-                fig = plot_bar_chart(data, x_column, y_column)
-                st.write("### 柱狀圖")
-                st.pyplot(fig)
+                if hasattr(response, "choices") and len(response.choices) > 0:
+                    gpt_reply = response.choices[0].message.content
+                else:
+                    raise ValueError("Invalid GPT response structure.")
 
-                # 下載圖表
-                buf = BytesIO()
-                fig.savefig(buf, format="png")
-                buf.seek(0)
-                st.download_button(
-                    label="下載圖表",
-                    data=buf,
-                    file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                    mime="image/png"
-                )
+                st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
+                with st.chat_message("assistant"):
+                    st.write(gpt_reply)
 
-            elif "散點" in chart_type or "scatter" in chart_type:
-                fig = plot_scatter_chart(data, x_column, y_column)
-                st.write("### 散點圖")
-                st.pyplot(fig)
+                if csv_data is not None:
+                    parsed_response = json.loads(gpt_reply)
+                    chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
+                    if chart_buf:
+                        st.image(chart_buf, caption="Generated Chart", use_column_width=True)
+                        st.download_button(
+                            label="Download Chart",
+                            data=chart_buf,
+                            file_name="generated_chart.png",
+                            mime="image/png"
+                        )
 
-                # 下載圖表
-                buf = BytesIO()
-                fig.savefig(buf, format="png")
-                buf.seek(0)
-                st.download_button(
-                    label="下載圖表",
-                    data=buf,
-                    file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                    mime="image/png"
-                )
-
-            elif "餅圖" in chart_type or "pie" in chart_type:
-                column = st.sidebar.selectbox("選擇繪製餅圖的列", data.columns)
-                fig = plot_pie_chart(data, column)
-                st.write("### 餅圖")
-                st.pyplot(fig)
-
-                # 下載圖表
-                buf = BytesIO()
-                fig.savefig(buf, format="png")
-                buf.seek(0)
-                st.download_button(
-                    label="下載圖表",
-                    data=buf,
-                    file_name=f"chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                    mime="image/png"
-                )
-            else:
-                st.warning("無法識別的圖表類型，請重新輸入。")
-    else:
-        st.info("請在左側上傳 CSV 文件以繼續。")
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
