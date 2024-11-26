@@ -6,7 +6,6 @@ import dotenv
 import os
 from io import BytesIO
 import json
-from datetime import datetime
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -21,10 +20,9 @@ def initialize_client(api_key):
 
 
 def generate_image_from_gpt_response(response, csv_data):
-    """根据 GPT 的回复生成图表."""
+    """Generate a chart based on GPT's response."""
     try:
-        # 解析 GPT 回复中的关键词生成图表
-        chart_type = response.get("chart_type", "line")  # 默认折线图
+        chart_type = response.get("chart_type", "line")  # Default to line chart
         x_column = response.get("x_column", csv_data.columns[0])
         y_column = response.get("y_column", csv_data.columns[1])
 
@@ -42,21 +40,21 @@ def generate_image_from_gpt_response(response, csv_data):
             plt.xlabel(x_column, fontsize=14)
             plt.ylabel(y_column, fontsize=14)
 
-        # 保存图表并返回
+        # Save chart to buffer
         buf = BytesIO()
         plt.tight_layout()
         plt.savefig(buf, format="png")
         buf.seek(0)
         return buf
     except Exception as e:
-        st.error(f"生成图片失败: {e}")
+        st.error(f"Failed to generate the chart: {e}")
         return None
 
 
 def main():
     # --- Page Configuration ---
-    st.set_page_config(page_title="Chatbot + CSV", page_icon="🤖", layout="centered")
-    st.title("📊 Chatbot with CSV Analysis")
+    st.set_page_config(page_title="Chatbot with Data Analysis", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot + 📊 Data Analysis")
 
     # --- Sidebar Setup ---
     with st.sidebar:
@@ -82,7 +80,7 @@ def main():
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display conversation
+    # Display conversation history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
@@ -93,31 +91,36 @@ def main():
         st.session_state.messages.append({"role": "user", "content": user_input})
 
         # Call GPT
-        with st.spinner("GPT is thinking..."):
+        with st.spinner("Thinking..."):
             try:
+                # Modify prompt if CSV is uploaded
+                prompt = user_input
+                if csv_data is not None:
+                    prompt = (
+                        f"You are a data analyst. Analyze the following dataset and provide insights or "
+                        f"chart suggestions. Dataset preview:\n{csv_data.head(5).to_json()}.\n"
+                        f"User question: {user_input}"
+                    )
+
                 response = client.chat.completions.create(
                     model="gpt-4-turbo",
-                    messages=[{"role": "user", "content": user_input}]
+                    messages=[{"role": "user", "content": prompt}]
                 )
 
-                # Debug: Output full GPT response
-                st.write("### Debug: Full GPT Response")
-                st.json(str(response))  # 将对象转为字符串以调试
-
-                # Extract GPT reply
+                # Extract GPT response
                 if hasattr(response, "choices") and len(response.choices) > 0:
                     gpt_reply = response.choices[0].message.content
                 else:
-                    raise ValueError("Invalid response structure: 'choices' not found or empty.")
+                    raise ValueError("Invalid GPT response structure.")
 
-                # Append GPT response to chat
+                # Add GPT response to chat
                 st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
                 with st.chat_message("assistant"):
                     st.write(gpt_reply)
 
                 # Generate chart if CSV is uploaded
                 if csv_data is not None:
-                    with st.spinner("Generating chart from GPT response..."):
+                    with st.spinner("Generating chart based on GPT response..."):
                         try:
                             parsed_response = json.loads(gpt_reply)
                             chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
@@ -130,11 +133,10 @@ def main():
                                     mime="image/png"
                                 )
                         except json.JSONDecodeError:
-                            st.error("Failed to parse GPT response. Ensure the response is in JSON format.")
+                            st.error("Failed to parse GPT response for chart generation. Please check the response format.")
 
             except Exception as e:
-                # Output error details
-                st.error(f"An error occurred while processing GPT response: {e}")
+                st.error(f"An error occurred: {e}")
 
 
 if __name__ == "__main__":
