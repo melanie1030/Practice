@@ -2,16 +2,14 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import openai
-import dotenv
 import os
 from io import BytesIO
 import json
 from PIL import Image
 from datetime import datetime
 
-# --- Initialize and Settings ---
-dotenv.load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# --- Initialize OpenAI API Key ---
+openai.api_key = os.getenv("OPENAI_API_KEY", "your_openai_api_key")  # 替换为你的 API 密钥
 
 def generate_image_from_json(chart_data, csv_data):
     """Generate a chart based on chart_data JSON and CSV."""
@@ -52,8 +50,24 @@ def parse_gpt_response(response_content):
         response_json = json.loads(response_content)
         return response_json.get("message"), response_json.get("chart_data")
     except json.JSONDecodeError:
-        st.error("Failed to parse GPT response. Ensure it contains valid JSON.")
         return response_content, None
+
+
+def save_chat_to_json(messages):
+    """Save chat history as a JSON file."""
+    try:
+        chat_json = json.dumps(messages, ensure_ascii=False, indent=4)
+        json_bytes = BytesIO(chat_json.encode("utf-8"))
+        json_bytes.seek(0)
+        file_name = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        st.download_button(
+            label="Download Chat History",
+            data=json_bytes,
+            file_name=file_name,
+            mime="application/json",
+        )
+    except Exception as e:
+        st.error(f"Failed to save chat history: {e}")
 
 
 def main():
@@ -63,13 +77,8 @@ def main():
 
     # --- Sidebar Setup ---
     with st.sidebar:
-        st.subheader("🔐 Enter Your API Key")
-        default_api_key = os.getenv("OPENAI_API_KEY", "")
-        api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
-
-        if not api_key:
-            st.warning("⬅️ Please enter the API key to continue...")
-            return
+        st.subheader("🔐 API Key Configuration")
+        st.write("Ensure your OpenAI API key is correctly configured in the environment or code.")
 
         # Upload CSV
         st.subheader("📂 Upload a CSV File")
@@ -122,13 +131,14 @@ def main():
                 
                 User query: {user_input}
                 """
-                response = openai.ChatCompletion.create(
-                    model="gpt-4-turbo",
-                    messages=[{"role": "system", "content": "You are a helpful assistant."},
-                              {"role": "user", "content": prompt}]
+                response = openai.Completion.create(
+                    engine="text-davinci-003",
+                    prompt=prompt,
+                    max_tokens=600,
+                    temperature=0.7
                 )
 
-                gpt_response = response["choices"][0]["message"]["content"]
+                gpt_response = response["choices"][0]["text"]
 
                 # Parse GPT response for general message and chart data
                 message, chart_data = parse_gpt_response(gpt_response)
