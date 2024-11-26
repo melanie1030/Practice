@@ -102,13 +102,13 @@ def main():
 
                 # Debug: Output full GPT response
                 st.write("### Debug: Full GPT Response")
-                st.json(response)
+                st.json(str(response))  # 将对象转为字符串以调试
 
                 # Extract GPT reply
-                if "choices" in response and response.choices:
-                    gpt_reply = response.choices[0].message.get("content", "No content available.")
+                if hasattr(response, "choices") and len(response.choices) > 0:
+                    gpt_reply = response.choices[0].message.content
                 else:
-                    raise ValueError("Invalid response structure: 'choices' not found.")
+                    raise ValueError("Invalid response structure: 'choices' not found or empty.")
 
                 # Append GPT response to chat
                 st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
