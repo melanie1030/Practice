@@ -9,7 +9,7 @@ from PIL import Image
 from datetime import datetime
 
 # --- Initialize OpenAI API Key ---
-openai.api_key = os.getenv("OPENAI_API_KEY", "your_openai_api_key")  # 替换为你的 API 密钥
+openai.api_key = os.getenv("OPENAI_API_KEY", "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")  # 替换为你的 API 密钥
 
 def generate_image_from_json(chart_data, csv_data):
     """Generate a chart based on chart_data JSON and CSV."""
