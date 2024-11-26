@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import openai  # 必须导入 openai 模块
+import openai  # OpenAI SDK
 import dotenv
 import os
 from io import BytesIO
