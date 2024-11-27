@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import openai
-import os
 from io import BytesIO
 import json
-from datetime import datetime
+import os
 
 def generate_image_from_json(chart_data, csv_data):
     """Generate a chart based on chart_data JSON and CSV."""
@@ -52,8 +51,8 @@ def parse_gpt_response(response_content):
 
 def main():
     # --- Page Configuration ---
-    st.set_page_config(page_title="Chatbot with API Key Input", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot with API Key Input and Chart Generation")
+    st.set_page_config(page_title="Chatbot with GPT-4o and Chart Generation", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot with GPT-4o and Chart Generation (New OpenAI SDK)")
 
     # --- Sidebar Setup ---
     with st.sidebar:
@@ -103,14 +102,17 @@ def main():
                 Based on this user request: {user_input}.
                 Do not include any additional text or explanation.
                 """
-                response = openai.Completion.create(
-                    engine="gpt-4o",
-                    prompt=prompt,
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",  # Change to gpt-4, gpt-4-turbo, or gpt-4o
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant for generating charts."},
+                        {"role": "user", "content": prompt},
+                    ],
                     max_tokens=150,
                     temperature=0
                 )
 
-                gpt_response = response["choices"][0]["text"].strip()
+                gpt_response = response["choices"][0]["message"]["content"].strip()
 
                 # Parse GPT response
                 chart_data = parse_gpt_response(gpt_response)
