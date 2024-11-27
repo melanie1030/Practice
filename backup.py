@@ -28,25 +28,19 @@ def generate_image_from_gpt_response(response, csv_data):
         x_column = response.get("x_column", csv_data.columns[0])
         y_column = response.get("y_column", csv_data.columns[1])
 
+        plt.figure(figsize=(10, 6))
+
         if chart_type == "line":
-            plt.figure(figsize=(10, 6))
             plt.plot(csv_data[x_column], csv_data[y_column], marker='o')
-            plt.title(f"{y_column} vs {x_column}", fontsize=16)
-            plt.xlabel(x_column, fontsize=14)
-            plt.ylabel(y_column, fontsize=14)
-            plt.grid(True)
         elif chart_type == "bar":
-            plt.figure(figsize=(10, 6))
             plt.bar(csv_data[x_column], csv_data[y_column], color='skyblue')
-            plt.title(f"{y_column} vs {x_column}", fontsize=16)
-            plt.xlabel(x_column, fontsize=14)
-            plt.ylabel(y_column, fontsize=14)
         elif chart_type == "scatter":
-            plt.figure(figsize=(10, 6))
             plt.scatter(csv_data[x_column], csv_data[y_column], alpha=0.7, edgecolors='b')
-            plt.title(f"{y_column} vs {x_column}", fontsize=16)
-            plt.xlabel(x_column, fontsize=14)
-            plt.ylabel(y_column, fontsize=14)
+
+        plt.title(f"{y_column} vs {x_column} ({chart_type.capitalize()} Chart)", fontsize=16)
+        plt.xlabel(x_column, fontsize=14)
+        plt.ylabel(y_column, fontsize=14)
+        plt.grid(True)
 
         # Save chart to buffer
         buf = BytesIO()
@@ -125,7 +119,11 @@ def main():
     # User input
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
+        # Add user message to session state
         st.session_state.messages.append({"role": "user", "content": user_input})
+        # Display the user message immediately
+        with st.chat_message("user"):
+            st.write(user_input)
 
         # Call GPT
         with st.spinner("Thinking..."):
@@ -135,7 +133,7 @@ def main():
                     prompt = f"""
                     Please respond only with a JSON object in the following format:
                     {{
-                        "chart_type": "bar",  # Supported values: "bar", "line"
+                        "chart_type": "bar",  # Supported values: "bar", "line", "scatter"
                         "x_column": "Date",  # Replace with the desired column name for X-axis
                         "y_column": "Sales"  # Replace with the desired column name for Y-axis
                     }}
