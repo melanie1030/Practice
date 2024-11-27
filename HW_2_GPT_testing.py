@@ -62,7 +62,7 @@ def main():
         if not api_key_:
             st.warning("Please enter your OpenAI API key to proceed.")
             return
-        OpenAI(api_key=api_key_)
+        client = OpenAI(api_key=api_key_)
 
         # Upload CSV
         st.subheader("📂 Upload a CSV File")
