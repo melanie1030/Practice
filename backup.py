@@ -41,6 +41,12 @@ def generate_image_from_gpt_response(response, csv_data):
             plt.title(f"{y_column} vs {x_column}", fontsize=16)
             plt.xlabel(x_column, fontsize=14)
             plt.ylabel(y_column, fontsize=14)
+        elif chart_type == "scatter":
+            plt.figure(figsize=(10, 6))
+            plt.scatter(csv_data[x_column], csv_data[y_column], alpha=0.7, edgecolors='b')
+            plt.title(f"{y_column} vs {x_column}", fontsize=16)
+            plt.xlabel(x_column, fontsize=14)
+            plt.ylabel(y_column, fontsize=14)
 
         # Save chart to buffer
         buf = BytesIO()
