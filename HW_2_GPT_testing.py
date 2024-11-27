@@ -104,7 +104,7 @@ def main():
                 Do not include any additional text or explanation.
                 """
                 response = openai.Completion.create(
-                    engine="text-davinci-003",
+                    engine="gpt-4o",
                     prompt=prompt,
                     max_tokens=150,
                     temperature=0
