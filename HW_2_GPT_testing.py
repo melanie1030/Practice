@@ -7,9 +7,6 @@ from io import BytesIO
 import json
 from datetime import datetime
 
-# --- Initialize OpenAI API Key ---
-openai.api_key = os.getenv("OPENAI_API_KEY", "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")  # 替换为你的 API 密钥
-
 def generate_image_from_json(chart_data, csv_data):
     """Generate a chart based on chart_data JSON and CSV."""
     try:
@@ -55,13 +52,19 @@ def parse_gpt_response(response_content):
 
 def main():
     # --- Page Configuration ---
-    st.set_page_config(page_title="Chatbot with Strict JSON Output", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot with Strict JSON Output for Chart Generation")
+    st.set_page_config(page_title="Chatbot with API Key Input", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot with API Key Input and Chart Generation")
 
     # --- Sidebar Setup ---
     with st.sidebar:
-        st.subheader("🔐 API Key Configuration")
-        st.write("Ensure your OpenAI API key is correctly configured in the environment or code.")
+        st.subheader("🔐 OpenAI API Key")
+        api_key = st.text_input("Enter your OpenAI API Key:", type="password")
+
+        # Check if API key is provided
+        if not api_key:
+            st.warning("Please enter your OpenAI API key to proceed.")
+            return
+        openai.api_key = api_key
 
         # Upload CSV
         st.subheader("📂 Upload a CSV File")
