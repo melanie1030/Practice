@@ -11,7 +11,10 @@ from datetime import datetime
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Define global variables
+OPENAI_MODELS = ["gpt-4-turbo", "gpt-3.5-turbo"]
+
 
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
@@ -67,32 +70,6 @@ def save_chat_to_json(messages):
         st.error(f"Failed to save chat history: {e}")
 
 
-def analyze_csv_with_gpt(df, user_question):
-    """
-    使用 GPT 分析 CSV 数据。
-    将数据的摘要和用户问题发送给 GPT 模型。
-    """
-    # 将数据的前几行转为 JSON 格式
-    data_preview = df.head(5).to_json()
-    # 创建 GPT 提示词
-    prompt = (
-        f"You are a data analyst. Below is a preview of the dataset:\n{data_preview}\n\n"
-        f"User question: {user_question}\n"
-        f"Provide detailed insights or suggestions based on the data."
-    )
-
-    # 调用 GPT 模型
-    response = openai.ChatCompletion.create(
-        model="gpt-4-turbo",
-        messages=[
-            {"role": "system", "content": "You are an expert data analyst."},
-            {"role": "user", "content": prompt},
-        ]
-    )
-    # 返回 GPT 的回答
-    return response["choices"][0]["message"]["content"]
-
-
 def main():
     # --- Page Configuration ---
     st.set_page_config(page_title="Chatbot with Data & Images", page_icon="🤖", layout="centered")
@@ -104,7 +81,8 @@ def main():
         default_api_key = os.getenv("OPENAI_API_KEY", "")
         api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
 
-        if not api_key:
+        client = initialize_client(api_key)
+        if not api_key or not client:
             st.warning("⬅️ Please enter the API key to continue...")
             return
 
@@ -152,27 +130,37 @@ def main():
         with st.spinner("Thinking..."):
             try:
                 # Modify prompt if CSV is uploaded
+                prompt = user_input
                 if csv_data is not None:
-                    gpt_response = analyze_csv_with_gpt(csv_data, user_input)
+                    prompt = (
+                        f"You are a data analyst. Analyze the following dataset and provide insights or "
+                        f"chart suggestions. Dataset preview:\n{csv_data.head(5).to_json()}.\n"
+                        f"User question: {user_input}"
+                    )
+
+                response = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+
+                # Extract GPT response
+                if hasattr(response, "choices") and len(response.choices) > 0:
+                    gpt_reply = response.choices[0].message.content
                 else:
-                    # Simple GPT Chat
-                    gpt_response = openai.ChatCompletion.create(
-                        model="gpt-4-turbo",
-                        messages=[{"role": "user", "content": user_input}]
-                    )["choices"][0]["message"]["content"]
+                    raise ValueError("Invalid GPT response structure.")
 
                 # Add GPT response to conversation history
-                st.session_state.messages.append({"role": "assistant", "content": gpt_response})
+                st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
 
                 # Immediately display GPT response
                 with st.chat_message("assistant"):
-                    st.write(gpt_response)
+                    st.write(gpt_reply)
 
                 # Generate chart if CSV is uploaded
                 if csv_data is not None:
                     with st.spinner("Generating chart from GPT response..."):
                         try:
-                            parsed_response = json.loads(gpt_response)
+                            parsed_response = json.loads(gpt_reply)
                             chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
                             if chart_buf:
                                 st.image(chart_buf, caption="Generated Chart", use_column_width=True)
