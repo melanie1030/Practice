@@ -124,14 +124,20 @@ def main():
         # Call GPT
         with st.spinner("Thinking..."):
             try:
-                # Modify prompt if CSV is uploaded
-                prompt = user_input
+                # Modify prompt based on CSV
                 if csv_data is not None:
-                    prompt = (
-                        f"You are a data analyst. Analyze the following dataset and provide insights or "
-                        f"chart suggestions. Dataset preview:\n{csv_data.head(5).to_json()}.\n"
-                        f"User question: {user_input}"
-                    )
+                    prompt = f"""
+                    Please respond only with a JSON object in the following format:
+                    {{
+                        "chart_type": "bar",  # Supported values: "bar", "line"
+                        "x_column": "Date",  # Replace with the desired column name for X-axis
+                        "y_column": "Sales"  # Replace with the desired column name for Y-axis
+                    }}
+                    Based on this user request: {user_input}.
+                    Do not include any additional text or explanation.
+                    """
+                else:
+                    prompt = user_input
 
                 response = client.chat.completions.create(
                     model="gpt-4-turbo",
@@ -153,7 +159,7 @@ def main():
                 if csv_data is not None:
                     with st.spinner("Generating chart based on GPT response..."):
                         try:
-                            parsed_response = json.loads(gpt_reply)
+                            parsed_response = json.loads(gpt_reply)  # Validate JSON format
                             chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
                             if chart_buf:
                                 st.image(chart_buf, caption="Generated Chart", use_column_width=True)
