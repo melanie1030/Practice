@@ -111,7 +111,7 @@ def main():
                     temperature=0
                 )
 
-                gpt_response = response.choices[0].message.content
+                gpt_response = response.choices[0].message
 
                 # Parse GPT response
                 chart_data = parse_gpt_response(gpt_response)
