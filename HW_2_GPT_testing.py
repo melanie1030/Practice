@@ -64,7 +64,7 @@ def main():
             st.warning("Please enter your OpenAI API key to proceed.")
             return
         client = OpenAI(
-            api_key=os.environ.get(api_key_),  # This is the default and can be omitted
+            api_key=api_key_  # This is the default and can be omitted
         )
 
         # Upload CSV
