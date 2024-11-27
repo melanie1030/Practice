@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from openai import OpenAI
+import openai  # 官方 SDK
 from io import BytesIO
 import json
-import os
 
 def generate_image_from_json(chart_data, csv_data):
     """Generate a chart based on chart_data JSON and CSV."""
@@ -52,20 +51,18 @@ def parse_gpt_response(response_content):
 def main():
     # --- Page Configuration ---
     st.set_page_config(page_title="Chatbot with GPT-4o and Chart Generation", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot with GPT-4o and Chart Generation (New OpenAI SDK)")
+    st.title("🤖 Chatbot with GPT-4o and Chart Generation (Official SDK)")
 
     # --- Sidebar Setup ---
     with st.sidebar:
         st.subheader("🔐 OpenAI API Key")
-        api_key_ = st.text_input("Enter your OpenAI API Key:", type="password")
+        api_key = st.text_input("Enter your OpenAI API Key:", type="password")
 
         # Check if API key is provided
-        if not api_key_:
+        if not api_key:
             st.warning("Please enter your OpenAI API key to proceed.")
             return
-        client = OpenAI(
-            api_key=api_key_  # This is the default and can be omitted
-        )
+        openai.api_key = api_key
 
         # Upload CSV
         st.subheader("📂 Upload a CSV File")
@@ -104,17 +101,17 @@ def main():
                 Based on this user request: {user_input}.
                 Do not include any additional text or explanation.
                 """
-                response = client.chat.completions.create(
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",  # 或 gpt-4-turbo, gpt-4o
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant for generating charts."},
                         {"role": "user", "content": prompt},
                     ],
-                    model="gpt-4o",
                     max_tokens=150,
                     temperature=0
                 )
 
-                gpt_response = response["choices"][0]["message"]["content"].strip()
+                gpt_response = response.choices[0].message["content"].strip()
 
                 # Parse GPT response
                 chart_data = parse_gpt_response(gpt_response)
