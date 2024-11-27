@@ -108,8 +108,7 @@ def main():
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=150,
-                    temperature=0,
-                    stream=True
+                    temperature=0
                 )
 
                 gpt_response = response.choices[0].message["content"].strip()
