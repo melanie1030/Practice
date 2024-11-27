@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 
 # --- Initialize OpenAI API Key ---
-openai.api_key = os.getenv("OPENAI_API_KEY", "sk-proj-fw8FLaBNrt6TaOen4Hx7kMDgYdOYT-cOYI4QALcZ3w9T0nUWNf5e5NDN_xRjQ1I17AI92ptGoT3BlbkFJjZnQsp7uAP6CIyZqH96BHVTHsFCYesUoOtLBgN5KB3GtvIS-pXHmKIMddDv1EFkjbV8BeUpIA")  # 替换为你的 API 密钥
+openai.api_key = os.getenv("OPENAI_API_KEY", "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")  # 替换为你的 API 密钥
 
 def generate_image_from_json(chart_data, csv_data):
     """Generate a chart based on chart_data JSON and CSV."""
