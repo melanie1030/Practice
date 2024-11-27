@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import openai
+from openai import OpenAI
 from io import BytesIO
 import json
 import os
