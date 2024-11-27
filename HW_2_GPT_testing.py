@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import openai  # 官方 SDK
+from openai import OpenAI
 from io import BytesIO
 import json
 
@@ -56,13 +56,13 @@ def main():
     # --- Sidebar Setup ---
     with st.sidebar:
         st.subheader("🔐 OpenAI API Key")
-        api_key = st.text_input("Enter your OpenAI API Key:", type="password")
+        api_key_ = st.text_input("Enter your OpenAI API Key:", type="password")
 
         # Check if API key is provided
-        if not api_key:
+        if not api_key_:
             st.warning("Please enter your OpenAI API key to proceed.")
             return
-        openai.api_key = api_key
+        OpenAI(api_key=api_key_)
 
         # Upload CSV
         st.subheader("📂 Upload a CSV File")
@@ -101,14 +101,15 @@ def main():
                 Based on this user request: {user_input}.
                 Do not include any additional text or explanation.
                 """
-                response = openai.ChatCompletion.create(
+                response = client.chat.completions.create(
                     model="gpt-4",  # 或 gpt-4-turbo, gpt-4o
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant for generating charts."},
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=150,
-                    temperature=0
+                    temperature=0,
+                    stream=True
                 )
 
                 gpt_response = response.choices[0].message["content"].strip()
