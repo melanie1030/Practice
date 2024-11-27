@@ -60,7 +60,7 @@ def main():
         api_key_ = st.text_input("Enter your OpenAI API Key:", type="password")
 
         # Check if API key is provided
-        if not api_key:
+        if not api_key_:
             st.warning("Please enter your OpenAI API key to proceed.")
             return
         client = OpenAI(
