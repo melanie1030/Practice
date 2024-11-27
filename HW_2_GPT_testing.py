@@ -1,32 +1,21 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from openai import OpenAI
-import dotenv
+import openai
 import os
 from io import BytesIO
 import json
-from PIL import Image
 from datetime import datetime
 
-# --- Initialize and Settings ---
-dotenv.load_dotenv()
+# --- Initialize OpenAI API Key ---
+openai.api_key = os.getenv("OPENAI_API_KEY", "your_openai_api_key")  # 替换为你的 API 密钥
 
-# Define global variables
-OPENAI_MODELS = ["gpt-4-turbo", "gpt-3.5-turbo"]
-
-
-def initialize_client(api_key):
-    """Initialize OpenAI client with the provided API key."""
-    return OpenAI(api_key=api_key) if api_key else None
-
-
-def generate_image_from_gpt_response(response, csv_data):
-    """Generate a chart based on GPT's response."""
+def generate_image_from_json(chart_data, csv_data):
+    """Generate a chart based on chart_data JSON and CSV."""
     try:
-        chart_type = response.get("chart_type", "line")  # Default to line chart
-        x_column = response.get("x_column", csv_data.columns[0])
-        y_column = response.get("y_column", csv_data.columns[1])
+        chart_type = chart_data.get("chart_type", "line")  # Default to line chart
+        x_column = chart_data.get("x_column", csv_data.columns[0])
+        y_column = chart_data.get("y_column", csv_data.columns[1])
 
         if chart_type == "line":
             plt.figure(figsize=(10, 6))
@@ -42,9 +31,10 @@ def generate_image_from_gpt_response(response, csv_data):
             plt.xlabel(x_column, fontsize=14)
             plt.ylabel(y_column, fontsize=14)
 
+        plt.tight_layout()
+
         # Save chart to buffer
         buf = BytesIO()
-        plt.tight_layout()
         plt.savefig(buf, format="png")
         buf.seek(0)
         return buf
@@ -53,38 +43,25 @@ def generate_image_from_gpt_response(response, csv_data):
         return None
 
 
-def save_chat_to_json(messages):
-    """Save chat history as a JSON file."""
+def parse_gpt_response(response_content):
+    """Parse GPT response to extract chart data."""
     try:
-        chat_json = json.dumps(messages, ensure_ascii=False, indent=4)
-        json_bytes = BytesIO(chat_json.encode("utf-8"))
-        json_bytes.seek(0)
-        file_name = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        st.download_button(
-            label="Download Chat History",
-            data=json_bytes,
-            file_name=file_name,
-            mime="application/json",
-        )
-    except Exception as e:
-        st.error(f"Failed to save chat history: {e}")
+        response_json = json.loads(response_content)
+        return response_json
+    except json.JSONDecodeError:
+        st.error("Failed to parse GPT response. Ensure it contains valid JSON.")
+        return None
 
 
 def main():
     # --- Page Configuration ---
-    st.set_page_config(page_title="Chatbot with Data & Images", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot + 📊 Data Analysis + 🖼️ Image Upload")
+    st.set_page_config(page_title="Chatbot with Strict JSON Output", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot with Strict JSON Output for Chart Generation")
 
     # --- Sidebar Setup ---
     with st.sidebar:
-        st.subheader("🔐 Enter Your API Key")
-        default_api_key = os.getenv("OPENAI_API_KEY", "")
-        api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
-
-        client = initialize_client(api_key)
-        if not api_key or not client:
-            st.warning("⬅️ Please enter the API key to continue...")
-            return
+        st.subheader("🔐 API Key Configuration")
+        st.write("Ensure your OpenAI API key is correctly configured in the environment or code.")
 
         # Upload CSV
         st.subheader("📂 Upload a CSV File")
@@ -95,29 +72,12 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
-        # Upload Image
-        st.subheader("🖼️ Upload an Image")
-        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
-        if uploaded_image:
-            image = Image.open(uploaded_image)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
-
-        # Download Chat History
-        st.subheader("💾 Export Chat History")
-        if st.button("Save Chat History"):
-            save_chat_to_json(st.session_state.messages)
-
     # --- Chat Interface ---
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display conversation history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
-
     # User input
-    user_input = st.chat_input("Hi! Ask me anything...")
+    user_input = st.chat_input("Describe the chart you need (e.g., bar chart of sales over time):")
     if user_input:
         # Add user input to conversation history
         st.session_state.messages.append({"role": "user", "content": user_input})
@@ -127,51 +87,42 @@ def main():
             st.write(user_input)
 
         # Call GPT and display its response
-        with st.spinner("Thinking..."):
+        with st.spinner("Generating JSON response..."):
             try:
-                # Modify prompt if CSV is uploaded
-                prompt = user_input
-                if csv_data is not None:
-                    prompt = (
-                        f"You are a data analyst. Analyze the following dataset and provide insights or "
-                        f"chart suggestions. Dataset preview:\n{csv_data.head(5).to_json()}.\n"
-                        f"User question: {user_input}"
-                    )
-
-                response = client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    messages=[{"role": "user", "content": prompt}]
+                # GPT Prompt to enforce JSON-only response
+                prompt = f"""
+                Please respond only with a JSON object in the following format:
+                {{
+                    "chart_type": "bar",
+                    "x_column": "Date",
+                    "y_column": "Sales"
+                }}
+                Based on this user request: {user_input}.
+                Do not include any additional text or explanation.
+                """
+                response = openai.Completion.create(
+                    engine="text-davinci-003",
+                    prompt=prompt,
+                    max_tokens=150,
+                    temperature=0
                 )
 
-                # Extract GPT response
-                if hasattr(response, "choices") and len(response.choices) > 0:
-                    gpt_reply = response.choices[0].message.content
-                else:
-                    raise ValueError("Invalid GPT response structure.")
+                gpt_response = response["choices"][0]["text"].strip()
 
-                # Add GPT response to conversation history
-                st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
+                # Parse GPT response
+                chart_data = parse_gpt_response(gpt_response)
 
-                # Immediately display GPT response
-                with st.chat_message("assistant"):
-                    st.write(gpt_reply)
-
-                # Generate chart if CSV is uploaded
-                if csv_data is not None:
-                    with st.spinner("Generating chart from GPT response..."):
-                        try:
-                            parsed_response = json.loads(gpt_reply)
-                            chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
-                            if chart_buf:
-                                st.image(chart_buf, caption="Generated Chart", use_column_width=True)
-                                st.download_button(
-                                    label="Download Chart",
-                                    data=chart_buf,
-                                    file_name="generated_chart.png",
-                                    mime="image/png"
-                                )
-                        except json.JSONDecodeError:
-                            st.error("Failed to parse GPT response for chart generation. Please check the response format.")
+                if chart_data and csv_data is not None:
+                    with st.spinner("Generating chart from JSON..."):
+                        chart_buf = generate_image_from_json(chart_data, csv_data)
+                        if chart_buf:
+                            st.image(chart_buf, caption="Generated Chart", use_column_width=True)
+                            st.download_button(
+                                label="Download Chart",
+                                data=chart_buf,
+                                file_name="generated_chart.png",
+                                mime="image/png"
+                            )
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
