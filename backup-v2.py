@@ -36,9 +36,15 @@ def generate_image_from_gpt_response(response, csv_data):
             plt.bar(csv_data[x_column], csv_data[y_column], color='skyblue')
         elif chart_type == "scatter":
             plt.scatter(csv_data[x_column], csv_data[y_column], alpha=0.7, edgecolors='b')
+        elif chart_type == "box":  # 新增盒鬚圖支持
+            if y_column in csv_data.columns:
+                plt.boxplot(csv_data[y_column], vert=True, patch_artist=True)
+                plt.xticks([1], [y_column])  # 只顯示 y 軸欄位名稱
+            else:
+                raise ValueError("Boxplot requires a valid column for Y-axis.")
 
         plt.title(f"{y_column} vs {x_column} ({chart_type.capitalize()} Chart)", fontsize=16)
-        plt.xlabel(x_column, fontsize=14)
+        plt.xlabel(x_column if chart_type != "box" else "", fontsize=14)
         plt.ylabel(y_column, fontsize=14)
         plt.grid(True)
 
@@ -134,7 +140,7 @@ def main():
                     prompt = f"""
                     Please respond only with a JSON object in the following format:
                     {{
-                        "chart_type": "bar",  # Supported values: "bar", "line", "scatter"
+                        "chart_type": "box",  # Supported values: "bar", "line", "scatter", "box"
                         "x_column": "{csv_data.columns[0]}",  # Replace with the desired column name for X-axis
                         "y_column": "{csv_data.columns[1]}",  # Replace with the desired column name for Y-axis
                         "contentx": "Your advice or something else you wanna say to the user as an assistant"
