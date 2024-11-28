@@ -77,7 +77,7 @@ def main():
 
     # --- Sidebar Setup ---
     with st.sidebar:
-        st.subheader("🔐 Enter Your API Key")
+        st.subheader("🔒 Enter Your API Key")
         default_api_key = os.getenv("OPENAI_API_KEY", "")
         api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
 
@@ -130,14 +130,17 @@ def main():
             try:
                 # Modify prompt based on CSV
                 if csv_data is not None:
+                    csv_columns = ", ".join(csv_data.columns)
                     prompt = f"""
                     Please respond only with a JSON object in the following format:
                     {{
                         "chart_type": "bar",  # Supported values: "bar", "line", "scatter"
-                        "x_column": "Date",  # Replace with the desired column name for X-axis
-                        "y_column": "Sales"  # Replace with the desired column name for Y-axis
+                        "x_column": "{csv_data.columns[0]}",  # Replace with the desired column name for X-axis
+                        "y_column": "{csv_data.columns[1]}",  # Replace with the desired column name for Y-axis
+                        "contentx": "Your advice or something else you wanna say to the user as an assistant"
                     }}
                     Based on this user request: {user_input}.
+                    Here are the available columns in the CSV: {csv_columns}.
                     Do not include any additional text or explanation.
                     """
                 else:
