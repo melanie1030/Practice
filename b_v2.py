@@ -148,6 +148,7 @@ def main():
                     Based on this user request: {user_input}.
                     Here are the available columns in the CSV: {csv_columns}.
                     Do not include any additional text or explanation.
+                    Please dont choose id or name as X_column or Y_column
                     """
                 else:
                     prompt = user_input
