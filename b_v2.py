@@ -202,7 +202,7 @@ def main():
             st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
 
         if st.sidebar.button("🖨️ Save as PDF"):
-        save_conversation_to_pdf()
+            save_conversation_to_pdf()
         
     # --- Chat Interface ---
     if "messages" not in st.session_state:
