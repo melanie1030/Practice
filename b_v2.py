@@ -5,7 +5,6 @@ from io import BytesIO
 import json
 from PIL import Image
 from datetime import datetime
-from fpdf import FPDF
 from openai import OpenAI
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
@@ -16,9 +15,11 @@ import os
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
 
+
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
+
 
 def generate_image_from_gpt_response(response, csv_data):
     """Generate a chart based on GPT's response."""
@@ -56,51 +57,48 @@ def generate_image_from_gpt_response(response, csv_data):
         st.error(f"Failed to generate the chart: {e}")
         return None
 
-def save_to_pdf(conversation, chart_image=None):
-    """Save conversation and chart as a PDF with Unicode support."""
+
+def save_conversation_to_file():
+    """Save conversation and memory to a JSON file."""
     try:
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
+        messages = st.session_state.messages
+        memory = st.session_state.memory.load_memory_variables({})
+        data = {"messages": messages, "memory": memory}
 
-        # 添加支援 Unicode 的字型
-        pdf.add_font("ArialUnicode", "", "ArialUnicodeMS.ttf", uni=True)  # 確保該字型文件在相同路徑
-        pdf.set_font("ArialUnicode", size=12)
-
-        # Add title
-        pdf.set_font("ArialUnicode", style="B", size=16)
-        pdf.cell(200, 10, txt="Conversation and Analysis", ln=True, align="C")
-        pdf.ln(10)
-
-        # Add conversation
-        pdf.set_font("ArialUnicode", size=12)
-        pdf.cell(200, 10, txt="Conversation History:", ln=True, align="L")
-        pdf.ln(5)
-        for message in conversation:
-            role = message.get("role", "unknown").capitalize()
-            content = message.get("content", "")
-            pdf.multi_cell(0, 10, txt=f"{role}: {content}")
-            pdf.ln(5)
-
-        # Add chart
-        if chart_image:
-            pdf.add_page()
-            pdf.cell(200, 10, txt="Generated Chart:", ln=True, align="L")
-            pdf.ln(5)
-            pdf.image(chart_image, x=10, y=None, w=180)
-
-        # Save as file
-        file_name = "conversation_and_chart.pdf"
-        pdf.output(file_name)
-        return file_name
+        file_name = "conversation_history.json"
+        with open(file_name, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        st.success(f"Conversation saved to {file_name}")
     except Exception as e:
-        st.error(f"Failed to save PDF: {e}")
-        return None
+        st.error(f"Failed to save conversation: {e}")
+
+
+def load_conversation_from_file():
+    """Load conversation and memory from a JSON file."""
+    try:
+        file_name = st.file_uploader("Upload a conversation file", type="json")
+        if file_name:
+            with open(file_name, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            st.session_state.messages = data.get("messages", [])
+            memory_data = data.get("memory", {})
+            if memory_data:
+                st.session_state.memory = ConversationBufferMemory.from_memory_variables(memory_data)
+                st.session_state.conversation = ConversationChain(
+                    llm=st.session_state.chat_model,
+                    memory=st.session_state.memory
+                )
+            st.success("Conversation loaded successfully!")
+    except Exception as e:
+        st.error(f"Failed to load conversation: {e}")
+
 
 def main():
     # --- Page Configuration ---
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory")
+    # st.title("我兒子")
     
     # --- Sidebar Setup ---
     with st.sidebar:
@@ -125,6 +123,12 @@ def main():
             st.session_state.messages = []
             st.success("Memory cleared!")
 
+        # Show current memory state
+        st.subheader("🧠 Memory State")
+        if "memory" in st.session_state:
+            memory_content = st.session_state.memory.load_memory_variables({})
+            st.text_area("Current Memory", value=str(memory_content), height=200)
+
         # Upload CSV
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
@@ -134,14 +138,32 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
+        # Upload Image
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
+        if uploaded_image:
+            img_bytes = BytesIO(uploaded_image.read())
+            st.session_state.messages.append({"role": "user", "image": img_bytes.getvalue()})
+            st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
+
     # --- Chat Interface ---
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
+    # Display conversation history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if "content" in message:
+                st.write(message["content"])
+            if "image" in message:
+                img = Image.open(BytesIO(message["image"]))
+                st.image(img, caption="Uploaded Image", use_column_width=True)
 
     # User input
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.write(user_input)
 
         # Generate response
         with st.spinner("Thinking..."):
@@ -150,16 +172,28 @@ def main():
                     csv_columns = ", ".join(csv_data.columns)
                     prompt = f"""
                     Please respond with a JSON object in the format:
-                    {{"chart_type": "line", "x_column": "{csv_data.columns[0]}", "y_column": "{csv_data.columns[1]}"}}
+                    {{
+                        "chart_type": "line", 
+                        "x_column": "{csv_data.columns[0]}", 
+                        "y_column": "{csv_data.columns[1]}",
+                        "contentx": "Response in #zh-tw."
+                    }}
                     Based on the request: {user_input}.
                     Available columns: {csv_columns}.
                     """
                 else:
-                    prompt = user_input
+                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 response = st.session_state.conversation.run(prompt)
                 st.session_state.messages.append({"role": "assistant", "content": response})
-
+                with st.chat_message("assistant"):
+                    if csv_data is None:
+                        st.write(response)
+                    elif csv_data is not None:
+                        response_json = json.loads(response)
+                        display = response_json.get('contentx')
+                        st.write(display)
+                        
                 if csv_data is not None:
                     parsed_response = json.loads(response)
                     chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
@@ -174,28 +208,11 @@ def main():
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
-    if st.sidebar.button("📄 Save as PDF"):
-        try:
-            chart_image = None
-            if "chart_buf" in locals() and chart_buf:
-                chart_image_path = "temp_chart.png"
-                with open(chart_image_path, "wb") as f:
-                    f.write(chart_buf.getvalue())
-                chart_image = chart_image_path
+    if st.sidebar.button("💾 Save Conversation"):
+        save_conversation_to_file()
+    if st.sidebar.button("📂 Load Conversation"):
+        load_conversation_from_file()
 
-            pdf_file = save_to_pdf(st.session_state.messages, chart_image)
-            if pdf_file:
-                with open(pdf_file, "rb") as f:
-                    pdf_data = f.read()
-                st.sidebar.download_button(
-                    label="Download PDF",
-                    data=pdf_data,
-                    file_name=pdf_file,
-                    mime="application/pdf"
-                )
-                st.success("PDF saved successfully!")
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
