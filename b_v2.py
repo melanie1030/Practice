@@ -97,8 +97,9 @@ def load_conversation_from_file():
 def main():
     # --- Page Configuration ---
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory")
-
+    # st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory")
+    st.title("我兒子")
+    
     # --- Sidebar Setup ---
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
