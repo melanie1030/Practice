@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import json
 from PIL import Image
+from fpdf import FPDF
 from datetime import datetime
 from openai import OpenAI
 from langchain.chains import ConversationChain
@@ -56,6 +57,61 @@ def generate_image_from_gpt_response(response, csv_data):
     except Exception as e:
         st.error(f"Failed to generate the chart: {e}")
         return None
+
+def save_conversation_to_pdf():
+    """Save conversation and memory to a PDF file."""
+    try:
+        # Initialize PDF
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+
+        # Add a title
+        pdf.set_font("Arial", style="B", size=16)
+        pdf.cell(200, 10, txt="Chatbot Conversation History", ln=True, align="C")
+        pdf.ln(10)
+
+        # Add conversation content
+        for message in st.session_state.messages:
+            role = "User" if message["role"] == "user" else "Assistant"
+            pdf.set_font("Arial", style="B", size=12)
+            pdf.cell(0, 10, txt=f"{role}:", ln=True)
+            pdf.set_font("Arial", size=12)
+            if "content" in message:
+                pdf.multi_cell(0, 10, txt=message["content"])
+            if "image" in message:
+                # Save image to a buffer and embed it
+                img = Image.open(BytesIO(message["image"]))
+                img_buf = BytesIO()
+                img.save(img_buf, format="PNG")
+                img_buf.seek(0)
+                pdf.image(img_buf, x=10, y=None, w=100)
+            pdf.ln(10)
+
+        # Save the PDF to a buffer
+        pdf_buffer = BytesIO()
+        pdf.output(pdf_buffer)
+        pdf_buffer.seek(0)
+
+        # Allow user to download the PDF
+        st.download_button(
+            label="Download Conversation as PDF",
+            data=pdf_buffer,
+            file_name="conversation_history.pdf",
+            mime="application/pdf"
+        )
+        st.success("PDF generated successfully!")
+    except Exception as e:
+        st.error(f"Failed to save conversation as PDF: {e}")
+
+
+def main():
+    # --- Existing main function content ---
+    
+    # Add a button in the sidebar to save conversation as PDF
+    if st.sidebar.button("🖨️ Save as PDF"):
+        save_conversation_to_pdf()
 
 
 def save_conversation_to_file():
