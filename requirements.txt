@@ -12,3 +12,4 @@ matplotlib
 langchain
 python-dotenv
 faiss-cpu
+langchain_community
