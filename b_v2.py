@@ -15,9 +15,11 @@ import os
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
 
+
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
+
 
 def generate_image_from_gpt_response(response, csv_data):
     """Generate a chart based on GPT's response."""
@@ -55,6 +57,7 @@ def generate_image_from_gpt_response(response, csv_data):
         st.error(f"Failed to generate the chart: {e}")
         return None
 
+
 def save_conversation_to_file():
     """Save conversation and memory to a JSON file."""
     try:
@@ -68,6 +71,7 @@ def save_conversation_to_file():
         st.success(f"Conversation saved to {file_name}")
     except Exception as e:
         st.error(f"Failed to save conversation: {e}")
+
 
 def load_conversation_from_file():
     """Load conversation and memory from a JSON file."""
@@ -88,6 +92,7 @@ def load_conversation_from_file():
             st.success("Conversation loaded successfully!")
     except Exception as e:
         st.error(f"Failed to load conversation: {e}")
+
 
 def main():
     # --- Page Configuration ---
@@ -181,8 +186,13 @@ def main():
                 response = st.session_state.conversation.run(prompt)
                 st.session_state.messages.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
-                    st.write(response)
-
+                    if csv_data is None:
+                        st.write(response)
+                    elif csv_data is not None:
+                        response_json = json.loads(response)
+                        display = response_json.get('contentx')
+                        st.write(display)
+                        
                 if csv_data is not None:
                     parsed_response = json.loads(response)
                     chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
@@ -201,6 +211,7 @@ def main():
         save_conversation_to_file()
     if st.sidebar.button("📂 Load Conversation"):
         load_conversation_from_file()
+
 
 if __name__ == "__main__":
     main()
