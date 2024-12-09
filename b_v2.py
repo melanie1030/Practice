@@ -176,7 +176,7 @@ def main():
                     Available columns: {csv_columns}.
                     """
                 else:
-                    prompt = user_input
+                    prompt = f"請根據以下用戶請求回覆（以 #zh-tw 進行回應）：{user_input}"
 
                 response = st.session_state.conversation.run(prompt)
                 st.session_state.messages.append({"role": "assistant", "content": response})
