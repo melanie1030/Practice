@@ -143,7 +143,7 @@ def main():
                         "chart_type": "box",  # Supported values: "bar", "line", "scatter", "box"
                         "x_column": "{csv_data.columns[0]}",  # Replace with the desired column name for X-axis
                         "y_column": "{csv_data.columns[1]}",  # Replace with the desired column name for Y-axis
-                        "contentx": "Your advice or something else you wanna say to the user as an assistant"
+                        "contentx": "Your advice or something else you wanna say to the user as an assistant,also please reply in #zh-tw"
                     }}
                     Based on this user request: {user_input}.
                     Here are the available columns in the CSV: {csv_columns}.
