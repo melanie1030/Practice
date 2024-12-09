@@ -176,7 +176,7 @@ def main():
                     Available columns: {csv_columns}.
                     """
                 else:
-                    prompt = f"請以繁體中文回答此問題：{user_input}"
+                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 response = st.session_state.conversation.run(prompt)
                 st.session_state.messages.append({"role": "assistant", "content": response})
