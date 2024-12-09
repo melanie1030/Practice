@@ -13,4 +13,4 @@ langchain
 python-dotenv
 faiss-cpu
 langchain_community
-fpdf
+fpdf2
