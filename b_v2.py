@@ -57,20 +57,23 @@ def generate_image_from_gpt_response(response, csv_data):
         return None
 
 def save_to_pdf(conversation, chart_image=None):
-    """Save conversation and chart as a PDF."""
+    """Save conversation and chart as a PDF with Unicode support."""
     try:
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
+
+        # 添加支援 Unicode 的字型
+        pdf.add_font("ArialUnicode", "", "ArialUnicodeMS.ttf", uni=True)  # 確保該字型文件在相同路徑
+        pdf.set_font("ArialUnicode", size=12)
 
         # Add title
-        pdf.set_font("Arial", style="B", size=16)
+        pdf.set_font("ArialUnicode", style="B", size=16)
         pdf.cell(200, 10, txt="Conversation and Analysis", ln=True, align="C")
         pdf.ln(10)
 
         # Add conversation
-        pdf.set_font("Arial", size=12)
+        pdf.set_font("ArialUnicode", size=12)
         pdf.cell(200, 10, txt="Conversation History:", ln=True, align="L")
         pdf.ln(5)
         for message in conversation:
