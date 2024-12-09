@@ -93,12 +93,17 @@ def generate_nlp_summary(api_key, analysis):
     {json.dumps(analysis, ensure_ascii=False, indent=2)}
     """
     try:
-        openai_api = ChatOpenAI(model="gpt-4-turbo", openai_api_key=api_key)
-        response = openai_api.run(prompt)
-        return response
+        response = st.session_state.chat_model(
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response['choices'][0]['message']['content']
     except Exception as e:
         st.error(f"Failed to generate NLP summary: {e}")
         return None
+
 
 
 # --- Main App ---
