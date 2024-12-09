@@ -170,7 +170,9 @@ def main():
                     if csv_data is None:
                         st.write(gpt_reply)
                     elif csv_data is not None:
-                        content_from_gpt = gpt_reply.get('contentx')
+                        gpt_reply_in_json = json.loads(gpt_reply)
+                        content_from_gpt = gpt_reply_in_json.get('contentx')
+                        st.write(content_from_gpt)
 
                 # Generate chart if CSV is uploaded
                 if csv_data is not None:
