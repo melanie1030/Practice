@@ -152,11 +152,40 @@ def main():
         # 生成回應
         with st.spinner("思考中..."):
             try:
-                prompt = f"請以繁體中文回答：{user_input}"
+                if csv_data is not None:
+                    csv_columns = ", ".join(csv_data.columns)
+                    prompt = f"""
+                    請以 JSON 格式回應：
+                    {{
+                        "chart_type": "line",
+                        "x_column": "{csv_data.columns[0]}",
+                        "y_column": "{csv_data.columns[1]}",
+                        "contentx": "以繁體中文回答"
+                    }}
+                    問題：{user_input}
+                    可用欄位：{csv_columns}
+                    """
+                else:
+                    prompt = f"請以繁體中文回答：{user_input}"
+
                 response = st.session_state.conversation.run(prompt)
                 st.session_state.messages.append({"role": "assistant", "content": response})
+
+                # 顯示回應
                 with st.chat_message("assistant"):
                     st.write(response)
+
+                if csv_data is not None:
+                    response_json = json.loads(response)
+                    chart_buf = generate_image_from_gpt_response(response_json, csv_data)
+                    if chart_buf:
+                        st.image(chart_buf, caption="生成的圖表", use_column_width=True)
+                        st.download_button(
+                            label="下載圖表",
+                            data=chart_buf,
+                            file_name="chart.png",
+                            mime="image/png"
+                        )
             except Exception as e:
                 st.error(f"發生錯誤：{e}")
 
