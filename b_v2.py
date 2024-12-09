@@ -167,7 +167,10 @@ def main():
                 # Add GPT response to chat
                 st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
                 with st.chat_message("assistant"):
-                    st.write(gpt_reply)
+                    if csv_data is None:
+                        st.write(gpt_reply)
+                    elif csv_data is not None:
+                        content_from_gpt = gpt_reply.get('contentx')
 
                 # Generate chart if CSV is uploaded
                 if csv_data is not None:
