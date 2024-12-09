@@ -89,26 +89,31 @@ def generate_chart(data, column_x, column_y, chart_type="line"):
 import openai  # 確保已導入 OpenAI 庫
 
 def generate_nlp_summary(api_key, analysis):
-    """Generate a natural language summary using OpenAI GPT."""
+    """Generate a natural language summary using OpenAI GPT (compatible with 1.0.0+)."""
+    import openai
+
     prompt = f"""
     Based on the following analysis, generate a concise summary in Traditional Chinese (#zh-tw):
     {json.dumps(analysis, ensure_ascii=False, indent=2)}
     """
     try:
-        # 使用 OpenAI 的 ChatCompletion API 進行直接調用
-        openai.api_key = api_key  # 設置 API 密鑰
+        # 設定 API Key
+        openai.api_key = api_key
+        
+        # 使用新版 ChatCompletion 方法
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-4",  # 選擇 GPT-4 模型
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
             ]
         )
-        # 返回助理生成的回覆
-        return response['choices'][0]['message']['content']
+        # 返回助理生成的內容
+        return response.choices[0].message.content.strip()
     except Exception as e:
         st.error(f"Failed to generate NLP summary: {e}")
         return None
+
 
 
 
