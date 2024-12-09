@@ -9,3 +9,6 @@ openpyxl
 requests
 langdetect
 matplotlib
+langchain
+python-dotenv
+faiss-cpu
