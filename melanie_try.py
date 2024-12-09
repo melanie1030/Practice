@@ -117,27 +117,47 @@ def main():
             save_chat_to_json(memory.chat_memory.messages)
 
     # --- Chat Interface ---
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
-        # Process user input through conversation chain
+        # Add user message to session state
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.write(user_input)
+
+        # Call GPT
         with st.spinner("Thinking..."):
             try:
                 response = conversation.run(input=user_input)
-                st.chat_message("user").write(user_input)
-                st.chat_message("assistant").write(response)
+
+                # Try to parse the response as JSON
+                try:
+                    parsed_response = json.loads(response)
+                except json.JSONDecodeError as e:
+                    st.error(f"Failed to parse GPT response as JSON: {e}")
+                    st.text_area("Raw GPT Response", response)
+                    return
+
+                # Add GPT response to chat
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                with st.chat_message("assistant"):
+                    st.write(parsed_response)
 
                 # Generate chart if CSV is uploaded
                 if csv_data is not None:
-                    parsed_response = json.loads(response)  # Validate JSON format
-                    chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
-                    if chart_buf:
-                        st.image(chart_buf, caption="Generated Chart", use_column_width=True)
-                        st.download_button(
-                            label="Download Chart",
-                            data=chart_buf,
-                            file_name="generated_chart.png",
-                            mime="image/png"
-                        )
+                    with st.spinner("Generating chart based on GPT response..."):
+                        chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
+                        if chart_buf:
+                            st.image(chart_buf, caption="Generated Chart", use_column_width=True)
+                            st.download_button(
+                                label="Download Chart",
+                                data=chart_buf,
+                                file_name="generated_chart.png",
+                                mime="image/png"
+                            )
+
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
