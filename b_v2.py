@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from openai import OpenAI
+from langchain.memory import ConversationBufferMemory  # 新增
+from langchain.llms import OpenAI as LangChainOpenAI  # 新增
+from langchain.chains import ConversationChain  # 新增
 import dotenv
 import os
 from io import BytesIO
@@ -15,11 +17,9 @@ dotenv.load_dotenv()
 # Define global variables
 OPENAI_MODELS = ["gpt-4-turbo", "gpt-3.5-turbo"]
 
-
 def initialize_client(api_key):
-    """Initialize OpenAI client with the provided API key."""
-    return OpenAI(api_key=api_key) if api_key else None
-
+    """Initialize LangChain's OpenAI client with the provided API key."""
+    return LangChainOpenAI(temperature=0.7, openai_api_key=api_key) if api_key else None
 
 def generate_image_from_gpt_response(response, csv_data):
     """Generate a chart based on GPT's response."""
@@ -58,7 +58,6 @@ def generate_image_from_gpt_response(response, csv_data):
         st.error(f"Failed to generate the chart: {e}")
         return None
 
-
 def save_chat_to_json(messages):
     """Save chat history as a JSON file."""
     try:
@@ -75,11 +74,10 @@ def save_chat_to_json(messages):
     except Exception as e:
         st.error(f"Failed to save chat history: {e}")
 
-
 def main():
     # --- Page Configuration ---
-    st.set_page_config(page_title="Chatbot with Data & Images", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot + 📊 Data Analysis + 🖼️ Image Upload")
+    st.set_page_config(page_title="Chatbot with Memory", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot + Memory + Data Analysis")
 
     # --- Sidebar Setup ---
     with st.sidebar:
@@ -87,10 +85,14 @@ def main():
         default_api_key = os.getenv("OPENAI_API_KEY", "")
         api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
 
-        client = initialize_client(api_key)
-        if not api_key or not client:
+        if not api_key:
             st.warning("⬅️ Please enter the API key to continue...")
             return
+
+        # Initialize memory and conversation chain
+        memory = ConversationBufferMemory()
+        client = initialize_client(api_key)
+        conversation = ConversationChain(llm=client, memory=memory)
 
         # Upload CSV
         st.subheader("📂 Upload a CSV File")
@@ -111,74 +113,32 @@ def main():
         # Download Chat History
         st.subheader("💾 Export Chat History")
         if st.button("Save Chat History"):
-            save_chat_to_json(st.session_state.messages)
+            save_chat_to_json(memory.chat_memory.messages)
 
     # --- Chat Interface ---
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display conversation history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
-
-    # User input
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         # Add user message to session state
         st.session_state.messages.append({"role": "user", "content": user_input})
-        # Display the user message immediately
         with st.chat_message("user"):
             st.write(user_input)
 
         # Call GPT
         with st.spinner("Thinking..."):
             try:
-                # Modify prompt based on CSV
-                if csv_data is not None:
-                    csv_columns = ", ".join(csv_data.columns)
-                    prompt = f"""
-                    Please respond only with a JSON object in the following format:
-                    {{
-                        "chart_type": "box",  # Supported values: "bar", "line", "scatter", "box"
-                        "x_column": "{csv_data.columns[0]}",  # Replace with the desired column name for X-axis
-                        "y_column": "{csv_data.columns[1]}",  # Replace with the desired column name for Y-axis
-                        "contentx": "Your advice or something else you wanna say to the user as an assistant,also please reply in #zh-tw"
-                    }}
-                    Based on this user request: {user_input}.
-                    Here are the available columns in the CSV: {csv_columns}.
-                    Do not include any additional text or explanation.
-                    Please dont choose id or name as X_column or Y_column
-                    """
-                else:
-                    prompt = user_input
-
-                response = client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-
-                # Extract GPT response
-                if hasattr(response, "choices") and len(response.choices) > 0:
-                    gpt_reply = response.choices[0].message.content
-                else:
-                    raise ValueError("Invalid GPT response structure.")
-
-                # Add GPT response to chat
-                st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
+                response = conversation.run(input=user_input)
+                st.session_state.messages.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
-                    if csv_data is None:
-                        st.write(gpt_reply)
-                    elif csv_data is not None:
-                        gpt_reply_in_json = json.loads(gpt_reply)
-                        content_from_gpt = gpt_reply_in_json.get('contentx')
-                        st.write(content_from_gpt)
+                    st.write(response)
 
                 # Generate chart if CSV is uploaded
                 if csv_data is not None:
                     with st.spinner("Generating chart based on GPT response..."):
                         try:
-                            parsed_response = json.loads(gpt_reply)  # Validate JSON format
+                            parsed_response = json.loads(response)  # Validate JSON format
                             chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
                             if chart_buf:
                                 st.image(chart_buf, caption="Generated Chart", use_column_width=True)
@@ -193,7 +153,6 @@ def main():
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
-
 
 if __name__ == "__main__":
     main()
