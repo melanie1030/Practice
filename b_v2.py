@@ -251,6 +251,8 @@ def main():
                         response_json = json.loads(response)
                         display = response_json.get('contentx')
                         st.write(display)
+
+                save_conversation_to_file()
                         
                 if csv_data is not None:
                     parsed_response = json.loads(response)
