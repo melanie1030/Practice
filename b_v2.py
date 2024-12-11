@@ -97,19 +97,27 @@ def save_conversation_to_pdf():
     except Exception as e:
         st.error(f"Failed to save conversation as PDF: {e}")
 
-def save_conversation_to_file():
+def save_conversation_to_json():
     """Save conversation and memory to a JSON file."""
     try:
         messages = st.session_state.messages
         memory = st.session_state.memory.load_memory_variables({})
         data = {"messages": messages, "memory": memory}
-
-        file_name = "conversation_history.json"
-        with open(file_name, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        st.success(f"Conversation saved to {file_name}")
+        
+        json_data = json.dumps(data, ensure_ascii=False, indent=4)
+        json_bytes = BytesIO(json_data.encode("utf-8"))
+        json_bytes.seek(0)
+        
+        file_name = f"conversation_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        st.download_button(
+            label="Download Conversation as JSON",
+            data=json_bytes,
+            file_name=file_name,
+            mime="application/json"
+        )
+        st.success("JSON file generated successfully!")
     except Exception as e:
-        st.error(f"Failed to save conversation: {e}")
+        st.error(f"Failed to save conversation as JSON: {e}")
 
 def load_conversation_from_file():
     """Load conversation and memory from a JSON file."""
@@ -242,8 +250,8 @@ def main():
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
-    if st.sidebar.button("💾 Save Conversation"):
-        save_conversation_to_file()
+    if st.sidebar.button("💾 Save Conversation as JSON"):
+        save_conversation_to_json()
     if st.sidebar.button("📂 Load Conversation"):
         load_conversation_from_file()
 
