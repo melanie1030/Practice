@@ -226,7 +226,7 @@ def main():
 
                 st.session_state.memory.save_context({"input": user_input}, {"output": response})
                 memory_content = st.session_state.memory.load_memory_variables({})
-                st.sidebar.text_area("Updated Memory", value=str(memory_content), height=200)
+                st.sidebar.text_area("Current Memory", value=str(memory_content), height=200)
 
                 if csv_data is not None:
                     parsed_response = json.loads(response)
