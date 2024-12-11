@@ -16,11 +16,9 @@ import os
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
 
-
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
-
 
 def generate_image_from_gpt_response(response, csv_data):
     """Generate a chart based on GPT's response."""
@@ -61,18 +59,15 @@ def generate_image_from_gpt_response(response, csv_data):
 def save_conversation_to_pdf():
     """Save conversation and memory to a PDF file."""
     try:
-        # Initialize PDF
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         pdf.set_font("Arial", size=12)
 
-        # Add a title
         pdf.set_font("Arial", style="B", size=16)
         pdf.cell(200, 10, txt="Chatbot Conversation History", ln=True, align="C")
         pdf.ln(10)
 
-        # Add conversation content
         for message in st.session_state.messages:
             role = "User" if message["role"] == "user" else "Assistant"
             pdf.set_font("Arial", style="B", size=12)
@@ -81,7 +76,6 @@ def save_conversation_to_pdf():
             if "content" in message:
                 pdf.multi_cell(0, 10, txt=message["content"])
             if "image" in message:
-                # Save image to a buffer and embed it
                 img = Image.open(BytesIO(message["image"]))
                 img_buf = BytesIO()
                 img.save(img_buf, format="PNG")
@@ -89,12 +83,10 @@ def save_conversation_to_pdf():
                 pdf.image(img_buf, x=10, y=None, w=100)
             pdf.ln(10)
 
-        # Save the PDF to a buffer
         pdf_buffer = BytesIO()
         pdf.output(pdf_buffer)
         pdf_buffer.seek(0)
 
-        # Allow user to download the PDF
         st.download_button(
             label="Download Conversation as PDF",
             data=pdf_buffer,
@@ -104,15 +96,6 @@ def save_conversation_to_pdf():
         st.success("PDF generated successfully!")
     except Exception as e:
         st.error(f"Failed to save conversation as PDF: {e}")
-
-
-def main():
-    # --- Existing main function content ---
-    
-    # Add a button in the sidebar to save conversation as PDF
-    if st.sidebar.button("🖨️ Save as PDF"):
-        save_conversation_to_pdf()
-
 
 def save_conversation_to_file():
     """Save conversation and memory to a JSON file."""
@@ -127,7 +110,6 @@ def save_conversation_to_file():
         st.success(f"Conversation saved to {file_name}")
     except Exception as e:
         st.error(f"Failed to save conversation: {e}")
-
 
 def load_conversation_from_file():
     """Load conversation and memory from a JSON file."""
@@ -149,13 +131,10 @@ def load_conversation_from_file():
     except Exception as e:
         st.error(f"Failed to load conversation: {e}")
 
-
 def main():
-    # --- Page Configuration ---
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory")
-    
-    # --- Sidebar Setup ---
+
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
@@ -172,19 +151,16 @@ def main():
                 st.warning("⬅️ Please enter the API key to initialize the chatbot.")
                 return
 
-        # Memory management buttons
         if st.button("🗑️ Clear Memory"):
             st.session_state.memory.clear()
             st.session_state.messages = []
             st.success("Memory cleared!")
 
-        # Show current memory state
         st.subheader("🧠 Memory State")
         if "memory" in st.session_state:
             memory_content = st.session_state.memory.load_memory_variables({})
             st.text_area("Current Memory", value=str(memory_content), height=200)
 
-        # Upload CSV
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
@@ -193,7 +169,6 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
-        # Upload Image
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
             img_bytes = BytesIO(uploaded_image.read())
@@ -202,12 +177,10 @@ def main():
 
         if st.sidebar.button("🖨️ Save as PDF"):
             save_conversation_to_pdf()
-        
-    # --- Chat Interface ---
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display conversation history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if "content" in message:
@@ -216,14 +189,12 @@ def main():
                 img = Image.open(BytesIO(message["image"]))
                 st.image(img, caption="Uploaded Image", use_column_width=True)
 
-    # User input
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
 
-        # Generate response
         with st.spinner("Thinking..."):
             try:
                 if csv_data is not None:
@@ -243,6 +214,7 @@ def main():
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 response = st.session_state.conversation.run(prompt)
+
                 st.session_state.messages.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
                     if csv_data is None:
@@ -251,7 +223,9 @@ def main():
                         response_json = json.loads(response)
                         display = response_json.get('contentx')
                         st.write(display)
-                        
+
+                st.session_state.memory.save_context({"input": user_input}, {"output": response})
+
                 if csv_data is not None:
                     parsed_response = json.loads(response)
                     chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
@@ -270,7 +244,6 @@ def main():
         save_conversation_to_file()
     if st.sidebar.button("📂 Load Conversation"):
         load_conversation_from_file()
-
 
 if __name__ == "__main__":
     main()
