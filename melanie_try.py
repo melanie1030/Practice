@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import json
 from PIL import Image
+from fpdf import FPDF
 from datetime import datetime
 from openai import OpenAI
 from langchain.chains import ConversationChain
@@ -12,15 +13,15 @@ from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
 
-# --- 初始化設定 ---
+# --- Initialize and Settings ---
 dotenv.load_dotenv()
 
 def initialize_client(api_key):
-    """根據 API 金鑰初始化 OpenAI 客戶端"""
+    """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
 
 def generate_image_from_gpt_response(response, csv_data):
-    """根據 GPT 回應生成圖表"""
+    """Generate a chart based on GPT's response."""
     try:
         chart_type = response.get("chart_type", "line")
         x_column = response.get("x_column", csv_data.columns[0])
@@ -39,7 +40,7 @@ def generate_image_from_gpt_response(response, csv_data):
                 plt.boxplot(csv_data[y_column], vert=True, patch_artist=True)
                 plt.xticks([1], [y_column])
             else:
-                raise ValueError("盒狀圖需要有效的 Y 軸資料欄位。")
+                raise ValueError("Boxplot requires a valid column for Y-axis.")
 
         plt.title(f"{y_column} vs {x_column} ({chart_type.capitalize()} Chart)", fontsize=16)
         plt.xlabel(x_column if chart_type != "box" else "", fontsize=14)
@@ -52,27 +53,76 @@ def generate_image_from_gpt_response(response, csv_data):
         buf.seek(0)
         return buf
     except Exception as e:
-        st.error(f"生成圖表失敗：{e}")
+        st.error(f"Failed to generate the chart: {e}")
         return None
 
-def save_conversation_to_file():
-    """保存對話內容和記憶體到 JSON 檔案"""
+def save_conversation_to_pdf():
+    """Save conversation and memory to a PDF file."""
+    try:
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+
+        pdf.set_font("Arial", style="B", size=16)
+        pdf.cell(200, 10, txt="Chatbot Conversation History", ln=True, align="C")
+        pdf.ln(10)
+
+        for message in st.session_state.messages:
+            role = "User" if message["role"] == "user" else "Assistant"
+            pdf.set_font("Arial", style="B", size=12)
+            pdf.cell(0, 10, txt=f"{role}:", ln=True)
+            pdf.set_font("Arial", size=12)
+            if "content" in message:
+                pdf.multi_cell(0, 10, txt=message["content"])
+            if "image" in message:
+                img = Image.open(BytesIO(message["image"]))
+                img_buf = BytesIO()
+                img.save(img_buf, format="PNG")
+                img_buf.seek(0)
+                pdf.image(img_buf, x=10, y=None, w=100)
+            pdf.ln(10)
+
+        pdf_buffer = BytesIO()
+        pdf.output(pdf_buffer)
+        pdf_buffer.seek(0)
+
+        st.download_button(
+            label="Download Conversation as PDF",
+            data=pdf_buffer,
+            file_name="conversation_history.pdf",
+            mime="application/pdf"
+        )
+        st.success("PDF generated successfully!")
+    except Exception as e:
+        st.error(f"Failed to save conversation as PDF: {e}")
+
+def save_conversation_to_json():
+    """Save conversation and memory to a JSON file."""
     try:
         messages = st.session_state.messages
         memory = st.session_state.memory.load_memory_variables({})
         data = {"messages": messages, "memory": memory}
-
-        file_name = "conversation_history.json"
-        with open(file_name, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        st.success(f"對話內容已保存到 {file_name}")
+        
+        json_data = json.dumps(data, ensure_ascii=False, indent=4)
+        json_bytes = BytesIO(json_data.encode("utf-8"))
+        json_bytes.seek(0)
+        
+        file_name = f"conversation_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        st.download_button(
+            label="Download Conversation as JSON",
+            data=json_bytes,
+            file_name=file_name,
+            mime="application/json"
+        )
+        st.success("JSON file generated successfully!")
     except Exception as e:
-        st.error(f"保存對話失敗：{e}")
+        st.error(f"Failed to save conversation as JSON: {e}")
 
 def load_conversation_from_file():
-    """從 JSON 檔案載入對話內容和記憶體"""
+    """Load conversation and memory from a JSON file."""
     try:
-        file_name = st.file_uploader("上傳對話記錄檔案", type="json")
+        file_name = st.file_uploader("Upload a conversation file", type="json")
         if file_name:
             with open(file_name, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -85,19 +135,17 @@ def load_conversation_from_file():
                     llm=st.session_state.chat_model,
                     memory=st.session_state.memory
                 )
-            st.success("對話記錄載入成功！")
+            st.success("Conversation loaded successfully!")
     except Exception as e:
-        st.error(f"載入對話記錄失敗：{e}")
+        st.error(f"Failed to load conversation: {e}")
 
 def main():
-    # --- 頁面設定 ---
-    st.set_page_config(page_title="Chatbot + 資料分析", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot + 📊 資料分析 + 🧠 記憶體")
+    st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory")
 
-    # --- 側邊欄 ---
     with st.sidebar:
-        st.subheader("🔒 輸入您的 API 金鑰")
-        api_key = st.text_input("OpenAI API 金鑰", type="password")
+        st.subheader("🔒 Enter Your API Key")
+        api_key = st.text_input("OpenAI API Key", type="password")
 
         if "conversation" not in st.session_state:
             if api_key:
@@ -108,86 +156,104 @@ def main():
                     memory=st.session_state.memory
                 )
             else:
-                st.warning("⬅️ 請輸入 API 金鑰以初始化 Chatbot。")
+                st.warning("⬅️ Please enter the API key to initialize the chatbot.")
                 return
 
-        # 記憶體管理按鈕
-        if st.button("🗑️ 清除記憶體"):
+        if st.button("🗑️ Clear Memory"):
             st.session_state.memory.clear()
             st.session_state.messages = []
-            st.success("記憶體已清除！")
+            st.success("Memory cleared!")
 
-        # 顯示當前記憶體
-        st.subheader("🧠 記憶體內容")
+        st.subheader("🧠 Memory State")
         if "memory" in st.session_state:
             memory_content = st.session_state.memory.load_memory_variables({})
-            st.text_area("當前記憶體", value=str(memory_content), height=200)
+            st.text_area("Current Memory", value=str(memory_content), height=200)
 
-        # 上傳 CSV
-        st.subheader("📂 上傳 CSV 檔案")
-        uploaded_file = st.file_uploader("選擇 CSV 檔案：", type=["csv"])
+        st.subheader("📂 Upload a CSV File")
+        uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
         if uploaded_file:
             csv_data = pd.read_csv(uploaded_file)
-            st.write("### 資料預覽")
+            st.write("### Data Preview")
             st.dataframe(csv_data)
 
-    # --- 聊天界面 ---
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
+        if uploaded_image:
+            img_bytes = BytesIO(uploaded_image.read())
+            st.session_state.messages.append({"role": "user", "image": img_bytes.getvalue()})
+            st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
+
+        if st.sidebar.button("🖨️ Save as PDF"):
+            save_conversation_to_pdf()
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # 顯示對話記錄
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if "content" in message:
                 st.write(message["content"])
+            if "image" in message:
+                img = Image.open(BytesIO(message["image"]))
+                st.image(img, caption="Uploaded Image", use_container_width=True)
 
-    # 使用者輸入
-    user_input = st.chat_input("Hi！問我任何問題...")
+    user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
 
-        # 生成回應
-        with st.spinner("思考中..."):
+        with st.spinner("Thinking..."):
             try:
                 if csv_data is not None:
                     csv_columns = ", ".join(csv_data.columns)
                     prompt = f"""
-                    請以 JSON 格式回應：
+                    Please respond with a JSON object in the format:
                     {{
-                        "chart_type": "line",
-                        "x_column": "{csv_data.columns[0]}",
+                        "chart_type": "line", 
+                        "x_column": "{csv_data.columns[0]}", 
                         "y_column": "{csv_data.columns[1]}",
-                        "contentx": "以繁體中文回答"
+                        "contentx": "Response in #zh-tw."
                     }}
-                    問題：{user_input}
-                    可用欄位：{csv_columns}
+                    Based on the request: {user_input}.
+                    Available columns: {csv_columns}.
                     """
                 else:
-                    prompt = f"請以繁體中文回答：{user_input}"
+                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 response = st.session_state.conversation.run(prompt)
-                st.session_state.messages.append({"role": "assistant", "content": response})
 
-                # 顯示回應
+                st.session_state.messages.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
-                    st.write(response)
+                    if csv_data is None:
+                        st.write(response)
+                    elif csv_data is not None:
+                        response_json = json.loads(response)
+                        display = response_json.get('contentx')
+                        st.write(display)
+
+                st.session_state.memory.save_context({"input": user_input}, {"output": response})
+                memory_content = st.session_state.memory.load_memory_variables({})
+                st.sidebar.text_area("Current Memory", value=str(memory_content), height=200)
 
                 if csv_data is not None:
-                    response_json = json.loads(response)
-                    chart_buf = generate_image_from_gpt_response(response_json, csv_data)
+                    parsed_response = json.loads(response)
+                    chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
                     if chart_buf:
-                        st.image(chart_buf, caption="生成的圖表", use_column_width=True)
+                        st.image(chart_buf, caption="Generated Chart", use_container_width=True)
                         st.download_button(
-                            label="下載圖表",
+                            label="Download Chart",
                             data=chart_buf,
-                            file_name="chart.png",
+                            file_name="generated_chart.png",
                             mime="image/png"
                         )
             except Exception as e:
-                st.error(f"發生錯誤：{e}")
+                st.error(f"An error occurred: {e}")
+
+    if st.sidebar.button("💾 Save Conversation as JSON"):
+        save_conversation_to_json()
+    if st.sidebar.button("📂 Load Conversation"):
+        load_conversation_from_file()
 
 if __name__ == "__main__":
     main()
