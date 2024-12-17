@@ -21,11 +21,15 @@ def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
 
-def display_code_line_by_line(code_snippet):
-    """Display code line by line with a delay to mimic GPT behavior."""
-    for line in code_snippet.split("\n"):
+def display_code_line_by_line_in_block(code_snippet):
+    """Display code one line at a time within a single code block."""
+    displayed_code = ""
+    code_lines = code_snippet.split("\n")
+    code_placeholder = st.empty()
+    for line in code_lines:
         if line.strip():
-            st.code(line, language="python")
+            displayed_code += line + "\n"
+            code_placeholder.code(displayed_code, language="python")
             time.sleep(0.2)
 
 def generate_image_from_gpt_response(response, csv_data):
@@ -35,7 +39,7 @@ def generate_image_from_gpt_response(response, csv_data):
         x_column = response.get("x_column", csv_data.columns[0])
         y_column = response.get("y_column", csv_data.columns[1])
 
-        # 新增功能：逐行顯示程式碼
+        # 新增功能：逐行顯示程式碼在同一區塊內
         code_snippet = f"""
         plt.figure(figsize=(10, 6))
         if chart_type == "line":
@@ -55,7 +59,7 @@ def generate_image_from_gpt_response(response, csv_data):
         plt.tight_layout()
         plt.show()
         """
-        display_code_line_by_line(code_snippet)
+        display_code_line_by_line_in_block(code_snippet)
 
         plt.figure(figsize=(10, 6))
 
