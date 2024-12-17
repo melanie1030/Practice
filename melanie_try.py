@@ -90,47 +90,6 @@ def generate_image_from_gpt_response(response, csv_data):
         st.error(f"Failed to generate the chart: {e}")
         return None
 
-def save_conversation_to_pdf():
-    """Save conversation and memory to a PDF file."""
-    try:
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-
-        pdf.set_font("Arial", style="B", size=16)
-        pdf.cell(200, 10, txt="Chatbot Conversation History", ln=True, align="C")
-        pdf.ln(10)
-
-        for message in st.session_state.messages:
-            role = "User" if message["role"] == "user" else "Assistant"
-            pdf.set_font("Arial", style="B", size=12)
-            pdf.cell(0, 10, txt=f"{role}:", ln=True)
-            pdf.set_font("Arial", size=12)
-            if "content" in message:
-                pdf.multi_cell(0, 10, txt=message["content"])
-            if "image" in message:
-                img = Image.open(BytesIO(message["image"]))
-                img_buf = BytesIO()
-                img.save(img_buf, format="PNG")
-                img_buf.seek(0)
-                pdf.image(img_buf, x=10, y=None, w=100)
-            pdf.ln(10)
-
-        pdf_buffer = BytesIO()
-        pdf.output(pdf_buffer)
-        pdf_buffer.seek(0)
-
-        st.download_button(
-            label="Download Conversation as PDF",
-            data=pdf_buffer,
-            file_name="conversation_history.pdf",
-            mime="application/pdf"
-        )
-        st.success("PDF generated successfully!")
-    except Exception as e:
-        st.error(f"Failed to save conversation as PDF: {e}")
-
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory")
@@ -175,9 +134,6 @@ def main():
             st.session_state.messages.append({"role": "user", "image": img_bytes.getvalue()})
             st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
 
-        if st.sidebar.button("🖨️ Save as PDF"):
-            save_conversation_to_pdf()
-
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -216,9 +172,10 @@ def main():
                 st.session_state.messages.append({"role": "assistant", "content": response})
 
                 with st.chat_message("assistant"):
-                    if csv_data is not None:
+                    try:
                         response_json = json.loads(response)
-                        st.write(response_json.get("contentx", ""))
+                        text_feedback = response_json.get("contentx", "這是我的分析：")
+                        st.write(text_feedback)
                         chart_buf = generate_image_from_gpt_response(response_json, csv_data)
                         if chart_buf:
                             st.image(chart_buf, caption="Generated Chart", use_container_width=True)
@@ -228,7 +185,7 @@ def main():
                                 file_name="generated_chart.png",
                                 mime="image/png"
                             )
-                    else:
+                    except (json.JSONDecodeError, TypeError):
                         st.write(response)
 
             except Exception as e:
