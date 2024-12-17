@@ -90,6 +90,47 @@ def generate_image_from_gpt_response(response, csv_data):
         st.error(f"Failed to generate the chart: {e}")
         return None
 
+def save_conversation_to_pdf():
+    """Save conversation and memory to a PDF file."""
+    try:
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+
+        pdf.set_font("Arial", style="B", size=16)
+        pdf.cell(200, 10, txt="Chatbot Conversation History", ln=True, align="C")
+        pdf.ln(10)
+
+        for message in st.session_state.messages:
+            role = "User" if message["role"] == "user" else "Assistant"
+            pdf.set_font("Arial", style="B", size=12)
+            pdf.cell(0, 10, txt=f"{role}:", ln=True)
+            pdf.set_font("Arial", size=12)
+            if "content" in message:
+                pdf.multi_cell(0, 10, txt=message["content"])
+            if "image" in message:
+                img = Image.open(BytesIO(message["image"]))
+                img_buf = BytesIO()
+                img.save(img_buf, format="PNG")
+                img_buf.seek(0)
+                pdf.image(img_buf, x=10, y=None, w=100)
+            pdf.ln(10)
+
+        pdf_buffer = BytesIO()
+        pdf.output(pdf_buffer)
+        pdf_buffer.seek(0)
+
+        st.download_button(
+            label="Download Conversation as PDF",
+            data=pdf_buffer,
+            file_name="conversation_history.pdf",
+            mime="application/pdf"
+        )
+        st.success("PDF generated successfully!")
+    except Exception as e:
+        st.error(f"Failed to save conversation as PDF: {e}")
+
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory")
@@ -110,6 +151,16 @@ def main():
                 st.warning("⬅️ Please enter the API key to initialize the chatbot.")
                 return
 
+        if st.button("🗑️ Clear Memory"):
+            st.session_state.memory.clear()
+            st.session_state.messages = []
+            st.success("Memory cleared!")
+
+        st.subheader("🧠 Memory State")
+        if "memory" in st.session_state:
+            memory_content = st.session_state.memory.load_memory_variables({})
+            st.text_area("Current Memory", value=str(memory_content), height=200)
+
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
@@ -118,8 +169,25 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
+        if uploaded_image:
+            img_bytes = BytesIO(uploaded_image.read())
+            st.session_state.messages.append({"role": "user", "image": img_bytes.getvalue()})
+            st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
+
+        if st.sidebar.button("🖨️ Save as PDF"):
+            save_conversation_to_pdf()
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if "content" in message:
+                st.write(message["content"])
+            if "image" in message:
+                img = Image.open(BytesIO(message["image"]))
+                st.image(img, caption="Uploaded Image", use_container_width=True)
 
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
