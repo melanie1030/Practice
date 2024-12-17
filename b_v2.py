@@ -181,7 +181,7 @@ def main():
         if uploaded_image:
             img_bytes = BytesIO(uploaded_image.read())
             st.session_state.messages.append({"role": "user", "image": img_bytes.getvalue()})
-            st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
+            st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
 
         if st.sidebar.button("🖨️ Save as PDF"):
             save_conversation_to_pdf()
@@ -195,7 +195,7 @@ def main():
                 st.write(message["content"])
             if "image" in message:
                 img = Image.open(BytesIO(message["image"]))
-                st.image(img, caption="Uploaded Image", use_column_width=True)
+                st.image(img, caption="Uploaded Image", use_container_width=True)
 
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
@@ -240,7 +240,7 @@ def main():
                     parsed_response = json.loads(response)
                     chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
                     if chart_buf:
-                        st.image(chart_buf, caption="Generated Chart", use_column_width=True)
+                        st.image(chart_buf, caption="Generated Chart", use_container_width=True)
                         st.download_button(
                             label="Download Chart",
                             data=chart_buf,
