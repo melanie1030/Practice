@@ -12,6 +12,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
+import time
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -20,6 +21,13 @@ def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
 
+def display_code_line_by_line(code_snippet):
+    """Display code line by line with a delay to mimic GPT behavior."""
+    for line in code_snippet.split("\n"):
+        if line.strip():
+            st.code(line, language="python")
+            time.sleep(0.2)
+
 def generate_image_from_gpt_response(response, csv_data):
     """Generate a chart based on GPT's response."""
     try:
@@ -27,7 +35,7 @@ def generate_image_from_gpt_response(response, csv_data):
         x_column = response.get("x_column", csv_data.columns[0])
         y_column = response.get("y_column", csv_data.columns[1])
 
-        # 新增功能：顯示程式碼
+        # 新增功能：逐行顯示程式碼
         code_snippet = f"""
         plt.figure(figsize=(10, 6))
         if chart_type == "line":
@@ -47,7 +55,7 @@ def generate_image_from_gpt_response(response, csv_data):
         plt.tight_layout()
         plt.show()
         """
-        st.code(code_snippet, language="python")
+        display_code_line_by_line(code_snippet)
 
         plt.figure(figsize=(10, 6))
 
