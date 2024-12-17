@@ -12,11 +12,6 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
-from PyPDF2 import PdfReader
-from docx import Document
-from pptx import Presentation
-import csv
-import io
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -25,39 +20,63 @@ def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
 
-def execute_code_and_generate_image(code: str):
-    """執行 Python 程式碼並生成圖表圖片"""
+def generate_image_from_gpt_response(response, csv_data):
+    """Generate a chart based on GPT's response."""
     try:
-        exec(code, globals())
-        if 'plt' in globals():
-            buf = BytesIO()
-            plt.savefig(buf, format="png")
-            buf.seek(0)
-            return buf
-        return None
-    except Exception as e:
-        return str(e)
+        chart_type = response.get("chart_type", "line")
+        x_column = response.get("x_column", csv_data.columns[0])
+        y_column = response.get("y_column", csv_data.columns[1])
 
-def read_file_content(file):
-    """讀取上傳文件的內容"""
-    try:
-        if file.type == "application/pdf":
-            reader = PdfReader(file)
-            return "".join([page.extract_text() for page in reader.pages])
-        elif file.type == "text/plain":
-            return file.getvalue().decode("utf-8")
-        elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            doc = Document(file)
-            return "\n".join([para.text for para in doc.paragraphs])
-        elif file.type == "text/csv":
-            content = io.StringIO(file.getvalue().decode("utf-8"))
-            return "\n".join([", ".join(row) for row in csv.reader(content)])
-        elif file.type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-            prs = Presentation(file)
-            return "\n".join([shape.text for slide in prs.slides for shape in slide.shapes if hasattr(shape, "text")])
+        # 新增功能：顯示程式碼
+        code_snippet = f"""
+        plt.figure(figsize=(10, 6))
+        if chart_type == "line":
+            plt.plot(csv_data['{x_column}'], csv_data['{y_column}'], marker='o')
+        elif chart_type == "bar":
+            plt.bar(csv_data['{x_column}'], csv_data['{y_column}'], color='skyblue')
+        elif chart_type == "scatter":
+            plt.scatter(csv_data['{x_column}'], csv_data['{y_column}'], alpha=0.7, edgecolors='b')
+        elif chart_type == "box":
+            plt.boxplot(csv_data['{y_column}'], vert=True, patch_artist=True)
+            plt.xticks([1], ['{y_column}'])
+
+        plt.title('{y_column} vs {x_column} ({chart_type.capitalize()} Chart)')
+        plt.xlabel('{x_column}' if chart_type != 'box' else '')
+        plt.ylabel('{y_column}')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+        """
+        st.code(code_snippet, language="python")
+
+        plt.figure(figsize=(10, 6))
+
+        if chart_type == "line":
+            plt.plot(csv_data[x_column], csv_data[y_column], marker='o')
+        elif chart_type == "bar":
+            plt.bar(csv_data[x_column], csv_data[y_column], color='skyblue')
+        elif chart_type == "scatter":
+            plt.scatter(csv_data[x_column], csv_data[y_column], alpha=0.7, edgecolors='b')
+        elif chart_type == "box":
+            if y_column in csv_data.columns:
+                plt.boxplot(csv_data[y_column], vert=True, patch_artist=True)
+                plt.xticks([1], [y_column])
+            else:
+                raise ValueError("Boxplot requires a valid column for Y-axis.")
+
+        plt.title(f"{y_column} vs {x_column} ({chart_type.capitalize()} Chart)", fontsize=16)
+        plt.xlabel(x_column if chart_type != "box" else "", fontsize=14)
+        plt.ylabel(y_column, fontsize=14)
+        plt.grid(True)
+
+        buf = BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+        return buf
     except Exception as e:
-        st.error(f"File processing failed: {e}")
-    return None
+        st.error(f"Failed to generate the chart: {e}")
+        return None
 
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
@@ -67,44 +86,29 @@ def main():
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
 
-        # 文件上傳功能
-        st.subheader("📄 Upload a Document")
-        uploaded_doc = st.file_uploader("Choose a file (txt, pdf, docx, csv, pptx):", 
-                                       type=["txt", "pdf", "docx", "csv", "pptx"])
-        if uploaded_doc:
-            doc_content = read_file_content(uploaded_doc)
-            if doc_content:
-                st.write("### File Content:")
-                st.text_area("Extracted Content:", doc_content, height=300)
-                st.session_state.messages.append({"role": "user", "content": doc_content})
+        if "conversation" not in st.session_state:
+            if api_key:
+                st.session_state.chat_model = ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key)
+                st.session_state.memory = ConversationBufferMemory()
+                st.session_state.conversation = ConversationChain(
+                    llm=st.session_state.chat_model,
+                    memory=st.session_state.memory
+                )
+            else:
+                st.warning("⬅️ Please enter the API key to initialize the chatbot.")
+                return
 
-        # CSV 上傳
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
-        csv_data = pd.read_csv(uploaded_file) if uploaded_file else None
+        csv_data = None
+        if uploaded_file:
+            csv_data = pd.read_csv(uploaded_file)
+            st.write("### Data Preview")
+            st.dataframe(csv_data)
 
-        # 其他功能按鈕
-        if st.sidebar.button("🗑️ Clear Memory"):
-            st.session_state.memory.clear()
-            st.session_state.messages = []
-            st.success("Memory cleared!")
-        if st.sidebar.button("💾 Save Conversation as JSON"):
-            save_conversation_to_json()
-
-    # 初始化聊天記錄與記憶體
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    if "conversation" not in st.session_state:
-        if api_key:
-            st.session_state.chat_model = ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key)
-            st.session_state.memory = ConversationBufferMemory()
-            st.session_state.conversation = ConversationChain(
-                llm=st.session_state.chat_model, memory=st.session_state.memory)
-        else:
-            st.warning("⬅️ Please enter the API key to initialize the chatbot.")
-            return
 
-    # 聊天與回應顯示
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
@@ -113,22 +117,42 @@ def main():
 
         with st.spinner("Thinking..."):
             try:
-                response = st.session_state.conversation.run(user_input)
-                with st.chat_message("assistant"):
-                    st.write(response)
+                if csv_data is not None:
+                    csv_columns = ", ".join(csv_data.columns)
+                    prompt = f"""
+                    Please respond with a JSON object in the format:
+                    {{
+                        "chart_type": "line", 
+                        "x_column": "{csv_data.columns[0]}", 
+                        "y_column": "{csv_data.columns[1]}"
+                    }}
+                    Based on the request: {user_input}.
+                    Available columns: {csv_columns}.
+                    """
+                else:
+                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
-                # 檢測並執行程式碼
-                if "```python" in response:
-                    code_start = response.find("```python") + len("```python")
-                    code_end = response.find("```", code_start)
-                    code = response[code_start:code_end].strip()
-                    image_buffer = execute_code_and_generate_image(code)
-                    if isinstance(image_buffer, BytesIO):
-                        st.image(image_buffer, caption="Generated Chart", use_container_width=True)
-                    elif isinstance(image_buffer, str):
-                        st.error(f"Code execution error: {image_buffer}")
+                response = st.session_state.conversation.run(prompt)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+
+                with st.chat_message("assistant"):
+                    if csv_data is not None:
+                        response_json = json.loads(response)
+                        st.write(response_json.get("contentx", ""))
+                        chart_buf = generate_image_from_gpt_response(response_json, csv_data)
+                        if chart_buf:
+                            st.image(chart_buf, caption="Generated Chart", use_container_width=True)
+                            st.download_button(
+                                label="Download Chart",
+                                data=chart_buf,
+                                file_name="generated_chart.png",
+                                mime="image/png"
+                            )
+                    else:
+                        st.write(response)
+
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
