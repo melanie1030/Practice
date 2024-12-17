@@ -160,7 +160,8 @@ def main():
                     {{
                         "chart_type": "line", 
                         "x_column": "{csv_data.columns[0]}", 
-                        "y_column": "{csv_data.columns[1]}"
+                        "y_column": "{csv_data.columns[1]}",
+                        "content": "根據 {csv_data.columns[0]} 和 {csv_data.columns[1]} 的數據分析，這是我的觀察：{{分析內容}}"
                     }}
                     Based on the request: {user_input}.
                     Available columns: {csv_columns}.
@@ -174,7 +175,7 @@ def main():
                 with st.chat_message("assistant"):
                     try:
                         response_json = json.loads(response)
-                        text_feedback = response_json.get("contentx", "這是我的分析：")
+                        text_feedback = response_json.get("content", "這是我的分析：")
                         st.write(text_feedback)
                         chart_buf = generate_image_from_gpt_response(response_json, csv_data)
                         if chart_buf:
