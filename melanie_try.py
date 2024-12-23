@@ -3,13 +3,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from io import BytesIO
 import json
-from PIL import Image
 import time
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
+from pygwalker import walk
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -17,54 +17,6 @@ dotenv.load_dotenv()
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key) if api_key else None
-
-def display_code_line_by_line_in_block(code_snippet):
-    """Display code one line at a time within a single code block."""
-    displayed_code = ""
-    code_lines = code_snippet.split("\n")
-    code_placeholder = st.empty()
-    for line in code_lines:
-        if line.strip():
-            displayed_code += line + "\n"
-            code_placeholder.code(displayed_code, language="python")
-            time.sleep(0.2)
-
-def generate_image_from_gpt_response(response, csv_data):
-    """Generate a chart based on GPT's response and save it in session_state."""
-    try:
-        chart_type = response.get("chart_type", "line")
-        x_column = response.get("x_column", csv_data.columns[0])
-        y_column = response.get("y_column", csv_data.columns[1])
-
-        # Generate the actual chart
-        plt.figure(figsize=(10, 6))
-        if chart_type == "line":
-            plt.plot(csv_data[x_column], csv_data[y_column], marker='o')
-        elif chart_type == "bar":
-            plt.bar(csv_data[x_column], csv_data[y_column], color='skyblue')
-        elif chart_type == "scatter":
-            plt.scatter(csv_data[x_column], csv_data[y_column], alpha=0.7, edgecolors='b')
-        elif chart_type == "box":
-            if y_column in csv_data.columns:
-                plt.boxplot(csv_data[y_column], vert=True, patch_artist=True)
-                plt.xticks([1], [y_column])
-            else:
-                raise ValueError("Boxplot requires a valid column for Y-axis.")
-
-        plt.title(f"{y_column} vs {x_column} ({chart_type.capitalize()} Chart)", fontsize=16)
-        plt.xlabel(x_column if chart_type != "box" else "", fontsize=14)
-        plt.ylabel(y_column, fontsize=14)
-        plt.grid(True)
-
-        # Save the chart to a buffer
-        buf = BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png")
-        buf.seek(0)
-        return buf
-    except Exception as e:
-        st.error(f"Failed to generate the chart: {e}")
-        return None
 
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
@@ -115,7 +67,7 @@ def main():
             if "code" in message:
                 st.code(message["code"], language="python")
             if "chart" in message:
-                st.image(message["chart"], caption="Generated Chart", use_container_width=True)
+                st.components.v1.html(message["chart"], height=600, scrolling=True)
 
     # User input
     user_input = st.chat_input("Hi! Ask me anything...")
@@ -132,10 +84,8 @@ def main():
                     prompt = f"""
                     Please respond with a JSON object in the format:
                     {{
-                        "chart_type": "line", 
-                        "x_column": "{csv_data.columns[0]}", 
-                        "y_column": "{csv_data.columns[1]}",
-                        "content": "根據 {csv_data.columns[0]} 和 {csv_data.columns[1]} 的數據分析，這是我的觀察：{{分析內容}}"
+                        "chart_type": "pygwalker", 
+                        "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{分析內容}}"
                     }}
                     Based on the request: {user_input}.
                     Available columns: {csv_columns}.
@@ -152,36 +102,12 @@ def main():
                 with st.chat_message("assistant"):
                     st.write(content)
 
-                # Display code snippet
-                code_snippet = f"""
-                plt.figure(figsize=(10, 6))
-                if chart_type == "line":
-                    plt.plot(csv_data['{response_json.get('x_column')}'], csv_data['{response_json.get('y_column')}'], marker='o')
-                elif chart_type == "bar":
-                    plt.bar(csv_data['{response_json.get('x_column')}'], csv_data['{response_json.get('y_column')}'], color='skyblue')
-                elif chart_type == "scatter":
-                    plt.scatter(csv_data['{response_json.get('x_column')}'], csv_data['{response_json.get('y_column')}'], alpha=0.7, edgecolors='b')
-                elif chart_type == "box":
-                    plt.boxplot(csv_data['{response_json.get('y_column')}'], vert=True, patch_artist=True)
-                    plt.xticks([1], ['{response_json.get('y_column')}'])
-                plt.title('{response_json.get('y_column')} vs {response_json.get('x_column')} ({response_json.get('chart_type').capitalize()} Chart)')
-                plt.xlabel('{response_json.get('x_column')}' if chart_type != 'box' else '')
-                plt.ylabel('{response_json.get('y_column')}')
-                plt.grid(True)
-                plt.tight_layout()
-                plt.show()
-                """
-                st.session_state.messages.append({"role": "assistant", "code": code_snippet})
-                with st.chat_message("assistant"):
-                    st.code(code_snippet, language="python")
-
-                # Generate chart
+                # Generate Pygwalker visualization
                 if csv_data is not None:
-                    chart_buf = generate_image_from_gpt_response(response_json, csv_data)
-                    if chart_buf:
-                        st.session_state.messages.append({"role": "assistant", "chart": chart_buf})
-                        with st.chat_message("assistant"):
-                            st.image(chart_buf, caption="Generated Chart", use_container_width=True)
+                    pygwalker_html = walk(csv_data, return_html=True)
+                    st.session_state.messages.append({"role": "assistant", "chart": pygwalker_html})
+                    with st.chat_message("assistant"):
+                        st.components.v1.html(pygwalker_html, height=600, scrolling=True)
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
