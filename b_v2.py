@@ -16,11 +16,7 @@ dotenv.load_dotenv()
 
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
-    system_prompt = """
-    You are an expert data analyst with years of experience in statistical analysis and data visualization.
-    Always provide in-depth insights, explain correlations clearly, and suggest actionable insights.
-    """
-    return ChatOpenAI(model="gpt-4-turbo", temperature=0.7, max_tokens=1500, openai_api_key=api_key, system=system_prompt) if api_key else None
+    return ChatOpenAI(model="gpt-4-turbo", temperature=0.7, max_tokens=1500, openai_api_key=api_key) if api_key else None
 
 def generate_chart(chart_type, x_column, y_column, csv_data):
     """Generate a chart based on user input."""
@@ -62,9 +58,14 @@ def main():
             if api_key:
                 st.session_state.chat_model = initialize_client(api_key)
                 st.session_state.memory = ConversationBufferMemory()
+                system_prompt = """
+                You are an expert data analyst with years of experience in statistical analysis and data visualization.
+                Always provide in-depth insights, explain correlations clearly, and suggest actionable insights.
+                """
                 st.session_state.conversation = ConversationChain(
                     llm=st.session_state.chat_model,
-                    memory=st.session_state.memory
+                    memory=st.session_state.memory,
+                    system_message=system_prompt
                 )
             else:
                 st.warning("⬅️ Please enter the API key to initialize the chatbot.")
