@@ -232,6 +232,7 @@ def main():
                         response_json = json.loads(response)
                         display = response_json.get('contentx')
                         st.write(display)
+                        st.write(st.session_state)
 
                 st.session_state.memory.save_context({"input": user_input}, {"output": response})
                 memory_content = st.session_state.memory.load_memory_variables({})
