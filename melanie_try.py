@@ -152,13 +152,6 @@ def main():
                 with st.chat_message("assistant"):
                     st.write(content)
 
-                # Generate chart
-                if csv_data is not None:
-                    chart_buf = generate_image_from_gpt_response(response_json, csv_data)
-                    if chart_buf:
-                        st.session_state.messages.append({"role": "assistant", "chart": chart_buf})
-                        st.image(chart_buf, caption="Generated Chart", use_container_width=True)
-
                 # Display code snippet
                 code_snippet = f"""
                 plt.figure(figsize=(10, 6))
@@ -181,6 +174,14 @@ def main():
                 st.session_state.messages.append({"role": "assistant", "code": code_snippet})
                 with st.chat_message("assistant"):
                     st.code(code_snippet, language="python")
+
+                # Generate chart
+                if csv_data is not None:
+                    chart_buf = generate_image_from_gpt_response(response_json, csv_data)
+                    if chart_buf:
+                        st.session_state.messages.append({"role": "assistant", "chart": chart_buf})
+                        with st.chat_message("assistant"):
+                            st.image(chart_buf, caption="Generated Chart", use_container_width=True)
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
