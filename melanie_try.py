@@ -100,7 +100,7 @@ def main():
 
         if "conversation" not in st.session_state:
             if api_key:
-                st.session_state.chat_model = ChatOpenAI(model="gpt-4o", temperature=0.5, openai_api_key=api_key)
+                st.session_state.chat_model = ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key)
                 st.session_state.memory = ConversationBufferMemory()
                 st.session_state.conversation = ConversationChain(
                     llm=st.session_state.chat_model,
