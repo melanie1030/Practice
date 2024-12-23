@@ -5,29 +5,15 @@ from io import BytesIO
 import json
 from PIL import Image
 from datetime import datetime
-from openai import OpenAI
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
-from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
 import time
 
-# --- Initialize and Settings ---
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain.chat_models import ChatOpenAI
+
 dotenv.load_dotenv()
-
-def initialize_client(api_key):
-    """Initialize OpenAI client with the provided API key."""
-    return OpenAI(api_key=api_key) if api_key else None
-
-def display_code_line_by_line_in_block(code_snippet):
-    """Display code one line at a time within a single code block."""
-    displayed_code = ""
-    code_lines = code_snippet.split("\n")
-    for line in code_lines:
-        if line.strip():
-            displayed_code += line + "\n"
-    return displayed_code
 
 def generate_chart_code_snippet(chart_type, x_column, y_column):
     """根據參數組裝 Python 繪圖程式碼字串。"""
@@ -59,7 +45,6 @@ def generate_image_from_gpt_response(response, csv_data):
         x_column = response.get("x_column", csv_data.columns[0])
         y_column = response.get("y_column", csv_data.columns[1])
 
-        # 生成實際圖表並儲存到 BytesIO
         plt.figure(figsize=(10, 6))
         if chart_type == "line":
             plt.plot(csv_data[x_column], csv_data[y_column], marker='o')
@@ -79,7 +64,6 @@ def generate_image_from_gpt_response(response, csv_data):
         plt.ylabel(y_column, fontsize=14)
         plt.grid(True)
 
-        # 存圖到 buffer
         buf = BytesIO()
         plt.tight_layout()
         plt.savefig(buf, format="png")
@@ -94,16 +78,38 @@ def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory")
 
-    # 設置側邊欄
+    # --- 側邊欄 ---
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
 
-        # 如果 memory/conversation 沒被初始化，就初始化
+        # 如果 memory/conversation 還沒初始化，就初始化
         if "conversation" not in st.session_state:
             if api_key:
-                st.session_state.chat_model = ChatOpenAI(model="gpt-4", temperature=0.5, openai_api_key=api_key)
+                # ★ 在這裡加入 system message，明確告訴模型它能讀 CSV 並生成圖表 ★
+                system_message = (
+                    "你是一個可以使用內部工具讀取 CSV 資料並且產生圖表的 AI 助手。"
+                    "使用者上傳的 CSV 會儲存在 csv_data，"
+                    "你可以依據所需 x_column 與 y_column 幫助他們做圖表。"
+                    "請直接輸出 JSON 格式（chart_type、x_column、y_column、content），"
+                    "並且回答以繁體中文。"
+                )
+
+                # 初始化 LLM、記憶體
+                st.session_state.chat_model = ChatOpenAI(
+                    model="gpt-4", 
+                    temperature=0.5, 
+                    openai_api_key=api_key
+                )
                 st.session_state.memory = ConversationBufferMemory()
+                
+                # 先把 system_message 塞到記憶體裡
+                st.session_state.memory.save_context(
+                    {"role": "system", "content": system_message}, 
+                    {}
+                )
+
+                # 建立對話鏈
                 st.session_state.conversation = ConversationChain(
                     llm=st.session_state.chat_model,
                     memory=st.session_state.memory
@@ -130,97 +136,91 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
-    # 如果尚未有 messages，就初始化一個空 list
+    # 如果沒有 messages，就初始化
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # 先把歷史紀錄整個回放（User 與 Assistant）
+    # 先把歷史紀錄回放
     for msg in st.session_state.messages:
         if msg["role"] == "user":
             with st.chat_message("user"):
                 st.write(msg["content"])
         elif msg["role"] == "assistant":
-            # 可能含有文字、程式碼、圖片
             with st.chat_message("assistant"):
-                # 文字
+                # 顯示文字
                 st.write(msg["content"])
-                # 程式碼
+                # 顯示程式碼
                 if "code" in msg and msg["code"] is not None:
                     st.code(msg["code"], language="python")
-                # 圖表
+                # 顯示圖表
                 if "chart_buf" in msg and msg["chart_buf"] is not None:
                     st.image(msg["chart_buf"], caption="Generated Chart", use_container_width=True)
 
     # 等待使用者輸入
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
-        # 先把使用者訊息存入 session_state.messages
+        # 儲存使用者訊息
         st.session_state.messages.append({"role": "user", "content": user_input})
 
-        # 即時在畫面上顯示使用者的訊息
+        # 即時顯示使用者訊息
         with st.chat_message("user"):
             st.write(user_input)
 
         with st.spinner("Thinking..."):
             try:
-                # 設計 prompt
+                # 準備 prompt
                 if csv_data is not None:
                     csv_columns = ", ".join(csv_data.columns)
                     prompt = f"""
-請你先以 JSON 格式回應，如下所示：
+請用 JSON 格式回應：
 {{
-    "chart_type": "line", 
-    "x_column": "{csv_data.columns[0]}", 
+    "chart_type": "line",
+    "x_column": "{csv_data.columns[0]}",
     "y_column": "{csv_data.columns[1]}",
-    "content": "根據 {csv_data.columns[0]} 和 {csv_data.columns[1]} 的數據分析，這是我的觀察：{{分析內容}}"
+    "content": "根據 {csv_data.columns[0]} 和 {csv_data.columns[1]} 的數據分析，這是我的觀察：{{在此處填入分析}}"
 }}
-需求：{user_input}
+使用者問題：{user_input}
 可用欄位：{csv_columns}
 """
                 else:
-                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
+                    prompt = f"請以繁體中文回答：{user_input}"
 
-                # 呼叫 LLM
                 response = st.session_state.conversation.run(prompt)
 
-                # 把助理回覆也先存到 messages，稍後要解析 JSON 才能知道是否有圖表資訊
-                # 先給一個「暫定」結構
+                # 建立助理訊息結構
                 assistant_msg = {
                     "role": "assistant",
-                    "content": "",    # 文字
-                    "code": None,     # 程式碼
-                    "chart_buf": None # 圖片 BytesIO
+                    "content": "",
+                    "code": None,
+                    "chart_buf": None
                 }
 
-                # 解析 JSON
+                # 嘗試解析 JSON
                 try:
                     response_json = json.loads(response)
-                    # 文字回饋
                     text_feedback = response_json.get("content", "")
                     assistant_msg["content"] = text_feedback
 
-                    # 如果有 CSV，再產生圖表與程式碼
                     if csv_data is not None:
                         chart_type = response_json.get("chart_type", "line")
                         x_column = response_json.get("x_column", csv_data.columns[0])
                         y_column = response_json.get("y_column", csv_data.columns[1])
 
-                        # 生成程式碼片段
+                        # 生成程式碼
                         code_snippet = generate_chart_code_snippet(chart_type, x_column, y_column)
                         assistant_msg["code"] = code_snippet
 
                         # 生成圖表
                         chart_buf = generate_image_from_gpt_response(response_json, csv_data)
                         assistant_msg["chart_buf"] = chart_buf
-
                 except (json.JSONDecodeError, TypeError):
-                    # 如果解析失敗，就直接把 response 當成文字
+                    # 如果 JSON 解析失敗，就把整段回應當作文字
                     assistant_msg["content"] = response
 
-                # 更新 session_state.messages
+                # 將助理訊息存入 session_state
                 st.session_state.messages.append(assistant_msg)
 
-                # 即時在介面上顯示助理回覆
+                # 即時顯示助理回應
                 with st.chat_message("assistant"):
                     st.write(assistant_msg["content"])
                     if assistant_msg["code"] is not None:
