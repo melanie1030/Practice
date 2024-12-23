@@ -16,7 +16,11 @@ dotenv.load_dotenv()
 
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
-    return ChatOpenAI(model="gpt-4-turbo", temperature=0.7, max_tokens=5500, openai_api_key=api_key)    if api_key else None
+    system_prompt = """
+    You are an expert data analyst with years of experience in statistical analysis and data visualization.
+    Always provide in-depth insights, explain correlations clearly, and suggest actionable insights.
+    """
+    return ChatOpenAI(model="gpt-4-turbo", temperature=0.7, max_tokens=1500, openai_api_key=api_key, system=system_prompt) if api_key else None
 
 def generate_chart(chart_type, x_column, y_column, csv_data):
     """Generate a chart based on user input."""
@@ -109,16 +113,15 @@ def main():
             try:
                 if csv_data is not None:
                     csv_columns = ", ".join(csv_data.columns)
+                    summary = csv_data.describe().to_dict()
                     prompt = f"""
-                    Please respond with a JSON object in the format:
-                    {{
-                        "chart_type": "line", 
-                        "x_column": "{csv_data.columns[0]}", 
-                        "y_column": "{csv_data.columns[1]}",
-                        "content": "Based on {csv_data.columns[0]} and {csv_data.columns[1]} data, here is my analysis: {{analysis}}"
-                    }}
-                    Based on the request: {user_input}.
-                    Available columns: {csv_columns}.
+                    Based on the uploaded CSV file with columns: {csv_columns},
+                    and the following statistical summary: {summary},
+                    provide an in-depth analysis including:
+                    1. Key statistical insights.
+                    2. Correlations between features.
+                    3. Identification of outliers.
+                    4. Possible business applications or actionable insights.
                     """
                 else:
                     prompt = f"Please respond to this question in Traditional Chinese: {user_input}"
