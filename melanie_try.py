@@ -4,21 +4,19 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import json
 from PIL import Image
-from datetime import datetime
-from openai import OpenAI
+import time
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
-import time
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
 
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
-    return OpenAI(api_key=api_key) if api_key else None
+    return ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key) if api_key else None
 
 def display_code_line_by_line_in_block(code_snippet):
     """Display code one line at a time within a single code block."""
@@ -37,28 +35,6 @@ def generate_image_from_gpt_response(response, csv_data):
         chart_type = response.get("chart_type", "line")
         x_column = response.get("x_column", csv_data.columns[0])
         y_column = response.get("y_column", csv_data.columns[1])
-
-        # Display generated code snippet
-        code_snippet = f"""
-        plt.figure(figsize=(10, 6))
-        if chart_type == "line":
-            plt.plot(csv_data['{x_column}'], csv_data['{y_column}'], marker='o')
-        elif chart_type == "bar":
-            plt.bar(csv_data['{x_column}'], csv_data['{y_column}'], color='skyblue')
-        elif chart_type == "scatter":
-            plt.scatter(csv_data['{x_column}'], csv_data['{y_column}'], alpha=0.7, edgecolors='b')
-        elif chart_type == "box":
-            plt.boxplot(csv_data['{y_column}'], vert=True, patch_artist=True)
-            plt.xticks([1], ['{y_column}'])
-
-        plt.title('{y_column} vs {x_column} ({chart_type.capitalize()} Chart)')
-        plt.xlabel('{x_column}' if chart_type != 'box' else '')
-        plt.ylabel('{y_column}')
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-        """
-        display_code_line_by_line_in_block(code_snippet)
 
         # Generate the actual chart
         plt.figure(figsize=(10, 6))
@@ -85,12 +61,6 @@ def generate_image_from_gpt_response(response, csv_data):
         plt.tight_layout()
         plt.savefig(buf, format="png")
         buf.seek(0)
-
-        # Save the buffer to session_state
-        if "charts" not in st.session_state:
-            st.session_state.charts = []
-        st.session_state.charts.append(buf)
-
         return buf
     except Exception as e:
         st.error(f"Failed to generate the chart: {e}")
@@ -106,7 +76,7 @@ def main():
 
         if "conversation" not in st.session_state:
             if api_key:
-                st.session_state.chat_model = ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key)
+                st.session_state.chat_model = initialize_client(api_key)
                 st.session_state.memory = ConversationBufferMemory()
                 st.session_state.conversation = ConversationChain(
                     llm=st.session_state.chat_model,
@@ -134,41 +104,27 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
-        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
-        if uploaded_image:
-            img_bytes = BytesIO(uploaded_image.read())
-            st.session_state.messages.append({"role": "user", "image": img_bytes.getvalue()})
-            st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
-
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display previously generated charts
-    if "charts" in st.session_state and st.session_state.charts:
-        st.write("### Previously Generated Charts")
-        for i, chart_buf in enumerate(st.session_state.charts):
-            st.image(chart_buf, caption=f"Chart {i + 1}", use_container_width=True)
-            st.download_button(
-                label=f"Download Chart {i + 1}",
-                data=chart_buf,
-                file_name=f"chart_{i + 1}.png",
-                mime="image/png"
-            )
-
+    # Display previously generated messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if "content" in message:
                 st.write(message["content"])
-            if "image" in message:
-                img = Image.open(BytesIO(message["image"]))
-                st.image(img, caption="Uploaded Image", use_container_width=True)
+            if "code" in message:
+                st.code(message["code"], language="python")
+            if "chart" in message:
+                st.image(message["chart"], caption="Generated Chart", use_container_width=True)
 
+    # User input
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
 
+        # Generate response
         with st.spinner("Thinking..."):
             try:
                 if csv_data is not None:
@@ -188,21 +144,43 @@ def main():
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 response = st.session_state.conversation.run(prompt)
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                response_json = json.loads(response)
 
+                # Display response content
+                content = response_json.get("content", "這是我的分析：")
+                st.session_state.messages.append({"role": "assistant", "content": content})
                 with st.chat_message("assistant"):
-                    try:
-                        response_json = json.loads(response)
-                        text_feedback = response_json.get("content", "這是我的分析：")
-                        st.write(text_feedback)
+                    st.write(content)
 
-                        # Generate and save chart
-                        chart_buf = generate_image_from_gpt_response(response_json, csv_data)
-                        if chart_buf:
-                            st.image(chart_buf, caption="Generated Chart", use_container_width=True)
+                # Generate chart
+                if csv_data is not None:
+                    chart_buf = generate_image_from_gpt_response(response_json, csv_data)
+                    if chart_buf:
+                        st.session_state.messages.append({"role": "assistant", "chart": chart_buf})
+                        st.image(chart_buf, caption="Generated Chart", use_container_width=True)
 
-                    except (json.JSONDecodeError, TypeError):
-                        st.write(response)
+                # Display code snippet
+                code_snippet = f"""
+                plt.figure(figsize=(10, 6))
+                if chart_type == "line":
+                    plt.plot(csv_data['{response_json.get('x_column')}'], csv_data['{response_json.get('y_column')}'], marker='o')
+                elif chart_type == "bar":
+                    plt.bar(csv_data['{response_json.get('x_column')}'], csv_data['{response_json.get('y_column')}'], color='skyblue')
+                elif chart_type == "scatter":
+                    plt.scatter(csv_data['{response_json.get('x_column')}'], csv_data['{response_json.get('y_column')}'], alpha=0.7, edgecolors='b')
+                elif chart_type == "box":
+                    plt.boxplot(csv_data['{response_json.get('y_column')}'], vert=True, patch_artist=True)
+                    plt.xticks([1], ['{response_json.get('y_column')}'])
+                plt.title('{response_json.get('y_column')} vs {response_json.get('x_column')} ({response_json.get('chart_type').capitalize()} Chart)')
+                plt.xlabel('{response_json.get('x_column')}' if chart_type != 'box' else '')
+                plt.ylabel('{response_json.get('y_column')}')
+                plt.grid(True)
+                plt.tight_layout()
+                plt.show()
+                """
+                st.session_state.messages.append({"role": "assistant", "code": code_snippet})
+                with st.chat_message("assistant"):
+                    st.code(code_snippet, language="python")
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
