@@ -14,4 +14,4 @@ python-dotenv
 faiss-cpu
 langchain_community
 fpdf2
-pygwalker
+
