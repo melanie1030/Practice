@@ -227,6 +227,7 @@ def main():
                 with st.chat_message("assistant"):
                     if csv_data is None:
                         st.write(response)
+                        st.write(st.session_state)
                     elif csv_data is not None:
                         response_json = json.loads(response)
                         display = response_json.get('contentx')
