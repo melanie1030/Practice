@@ -9,7 +9,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
-from pygwalker import walk
+import pygwalker as pyg
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -104,10 +104,10 @@ def main():
 
                 # Generate Pygwalker visualization
                 if csv_data is not None:
-                    pygwalker_html = walk(csv_data, return_html=True)
-                    st.session_state.messages.append({"role": "assistant", "chart": pygwalker_html})
+                    st_pygwalker = pyg.walk(csv_data)
+                    st.session_state.messages.append({"role": "assistant", "chart": st_pygwalker.to_html()})
                     with st.chat_message("assistant"):
-                        st.components.v1.html(pygwalker_html, height=600, scrolling=True)
+                        st.components.v1.html(st_pygwalker.to_html(), height=600, scrolling=True)
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
