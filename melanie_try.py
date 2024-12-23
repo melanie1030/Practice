@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import json
 from PIL import Image
-from fpdf import FPDF
 from datetime import datetime
 from openai import OpenAI
 from langchain.chains import ConversationChain
@@ -33,13 +32,13 @@ def display_code_line_by_line_in_block(code_snippet):
             time.sleep(0.2)
 
 def generate_image_from_gpt_response(response, csv_data):
-    """Generate a chart based on GPT's response."""
+    """Generate a chart based on GPT's response and save it in session_state."""
     try:
         chart_type = response.get("chart_type", "line")
         x_column = response.get("x_column", csv_data.columns[0])
         y_column = response.get("y_column", csv_data.columns[1])
 
-        # 新增功能：逐行顯示程式碼在同一區塊內
+        # Display generated code snippet
         code_snippet = f"""
         plt.figure(figsize=(10, 6))
         if chart_type == "line":
@@ -61,8 +60,8 @@ def generate_image_from_gpt_response(response, csv_data):
         """
         display_code_line_by_line_in_block(code_snippet)
 
+        # Generate the actual chart
         plt.figure(figsize=(10, 6))
-
         if chart_type == "line":
             plt.plot(csv_data[x_column], csv_data[y_column], marker='o')
         elif chart_type == "bar":
@@ -81,10 +80,17 @@ def generate_image_from_gpt_response(response, csv_data):
         plt.ylabel(y_column, fontsize=14)
         plt.grid(True)
 
+        # Save the chart to a buffer
         buf = BytesIO()
         plt.tight_layout()
         plt.savefig(buf, format="png")
         buf.seek(0)
+
+        # Save the buffer to session_state
+        if "charts" not in st.session_state:
+            st.session_state.charts = []
+        st.session_state.charts.append(buf)
+
         return buf
     except Exception as e:
         st.error(f"Failed to generate the chart: {e}")
@@ -137,6 +143,18 @@ def main():
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
+    # Display previously generated charts
+    if "charts" in st.session_state and st.session_state.charts:
+        st.write("### Previously Generated Charts")
+        for i, chart_buf in enumerate(st.session_state.charts):
+            st.image(chart_buf, caption=f"Chart {i + 1}", use_container_width=True)
+            st.download_button(
+                label=f"Download Chart {i + 1}",
+                data=chart_buf,
+                file_name=f"chart_{i + 1}.png",
+                mime="image/png"
+            )
+
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if "content" in message:
@@ -177,15 +195,12 @@ def main():
                         response_json = json.loads(response)
                         text_feedback = response_json.get("content", "這是我的分析：")
                         st.write(text_feedback)
+
+                        # Generate and save chart
                         chart_buf = generate_image_from_gpt_response(response_json, csv_data)
                         if chart_buf:
                             st.image(chart_buf, caption="Generated Chart", use_container_width=True)
-                            st.download_button(
-                                label="Download Chart",
-                                data=chart_buf,
-                                file_name="generated_chart.png",
-                                mime="image/png"
-                            )
+
                     except (json.JSONDecodeError, TypeError):
                         st.write(response)
 
