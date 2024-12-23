@@ -16,7 +16,7 @@ dotenv.load_dotenv()
 
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
-    return ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key) if api_key else None
+    return ChatOpenAI(model="gpt-4-turbo", temperature=0.7, max_tokens=1500, openai_api_key=api_key)    if api_key else None
 
 def generate_chart(chart_type, x_column, y_column, csv_data):
     """Generate a chart based on user input."""
