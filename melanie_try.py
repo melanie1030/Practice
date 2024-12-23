@@ -24,12 +24,10 @@ def display_code_line_by_line_in_block(code_snippet):
     """Display code one line at a time within a single code block."""
     displayed_code = ""
     code_lines = code_snippet.split("\n")
-    code_placeholder = st.empty()
     for line in code_lines:
         if line.strip():
             displayed_code += line + "\n"
-            code_placeholder.code(displayed_code, language="python")
-            time.sleep(0.2)
+    return displayed_code
 
 def generate_image_from_gpt_response(response, csv_data):
     """Generate a chart based on GPT's response and save it in session_state."""
@@ -58,7 +56,6 @@ def generate_image_from_gpt_response(response, csv_data):
         plt.tight_layout()
         plt.show()
         """
-        display_code_line_by_line_in_block(code_snippet)
 
         # Generate the actual chart
         plt.figure(figsize=(10, 6))
@@ -89,7 +86,7 @@ def generate_image_from_gpt_response(response, csv_data):
         # Save the buffer to session_state
         if "charts" not in st.session_state:
             st.session_state.charts = []
-        st.session_state.charts.append(buf)
+        st.session_state.charts.append({"code": code_snippet, "image": buf})
 
         return buf
     except Exception as e:
@@ -119,6 +116,7 @@ def main():
         if st.button("🗑️ Clear Memory"):
             st.session_state.memory.clear()
             st.session_state.messages = []
+            st.session_state.charts = []
             st.success("Memory cleared!")
 
         st.subheader("🧠 Memory State")
@@ -134,34 +132,21 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
-        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
-        if uploaded_image:
-            img_bytes = BytesIO(uploaded_image.read())
-            st.session_state.messages.append({"role": "user", "image": img_bytes.getvalue()})
-            st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
-
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
     # Display previously generated charts
     if "charts" in st.session_state and st.session_state.charts:
         st.write("### Previously Generated Charts")
-        for i, chart_buf in enumerate(st.session_state.charts):
-            st.image(chart_buf, caption=f"Chart {i + 1}", use_container_width=True)
+        for i, chart in enumerate(st.session_state.charts):
+            st.code(chart["code"], language="python")
+            st.image(chart["image"], caption=f"Chart {i + 1}", use_container_width=True)
             st.download_button(
                 label=f"Download Chart {i + 1}",
-                data=chart_buf,
+                data=chart["image"],
                 file_name=f"chart_{i + 1}.png",
                 mime="image/png"
             )
-
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if "content" in message:
-                st.write(message["content"])
-            if "image" in message:
-                img = Image.open(BytesIO(message["image"]))
-                st.image(img, caption="Uploaded Image", use_container_width=True)
 
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
