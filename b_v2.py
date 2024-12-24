@@ -11,6 +11,7 @@ import dotenv
 import os
 from streamlit_ace import st_ace
 import traceback
+import re
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -28,8 +29,22 @@ def execute_code(code):
     except Exception as e:
         return f"Error executing code:\n{traceback.format_exc()}"
 
+def extract_json_block(response: str) -> str:
+    """
+    從模型回傳的字串中，找出 JSON 物件部分
+    （假設模型用三反引號 ```json ... ``` 包起來）
+    """
+    pattern = r'```(?:json)?(.*)```'
+    match = re.search(pattern, response, re.DOTALL)
+    if match:
+        # 只取反引號之間的內容
+        json_str = match.group(1).strip()
+        return json_str
+    else:
+        # 如果沒找到，就回傳原字串
+        return response.strip()
+
 def main():
-    # 設定 Streamlit 頁面標題與配置
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas")
 
@@ -71,7 +86,6 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
-    # 儲存對話訊息
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -110,18 +124,21 @@ Available columns: {csv_columns}.
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 # 呼叫 LangChain
-                response = st.session_state.conversation.run(prompt)
+                raw_response = st.session_state.conversation.run(prompt)
 
-                # 為了 debug，可以先檢查原始輸出
-                st.write("Model raw response:", response)
+                # 為了 debug，先印出模型原始輸出
+                st.write("Model raw response:", raw_response)
 
-                # 嘗試轉成 JSON 格式
+                # 1) 擷取三反引號內的 JSON 區塊
+                json_str = extract_json_block(raw_response)
+
+                # 2) 嘗試轉成 JSON 格式
                 try:
-                    response_json = json.loads(response)
+                    response_json = json.loads(json_str)
                 except Exception as e:
                     st.error(f"json.loads parsing error: {e}")
-                    # 如果解析失敗，fallback 為最簡單的格式
-                    response_json = {"content": response, "code": ""}
+                    # 如果解析失敗，就 fallback 為最簡單的格式
+                    response_json = {"content": json_str, "code": ""}
 
                 # 顯示回覆的文字內容
                 content = response_json.get("content", "這是我的分析：")
