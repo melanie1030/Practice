@@ -45,8 +45,15 @@ def extract_json_block(response: str) -> str:
         return response.strip()
 
 def main():
+    # 使用 "wide" 版面，使主區可以盡可能寬
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas")
+
+    # 如果尚未在 session_state 建立變數，先初始化
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "ace_code" not in st.session_state:
+        st.session_state.ace_code = ""
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -86,99 +93,17 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
-    # 在 session_state 中保存對話訊息
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    # 在 session_state 中保存 Persistent Code Editor 的程式碼
-    if "ace_code" not in st.session_state:
-        st.session_state.ace_code = ""
-
-    # 使用 columns 分成左(主區) / 右(可收合編輯器)
-    col1, col2 = st.columns([3, 1], gap="medium")
-
-    with col1:
-        # 顯示先前生成的訊息（角色對話）
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                if "content" in message:
-                    st.write(message["content"])
-                if "code" in message:
-                    st.code(message["code"], language="python")
-
-        # 使用者輸入
-        user_input = st.chat_input("Hi! Ask me anything...")
-        if user_input:
-            # 記錄使用者訊息
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            with st.chat_message("user"):
-                st.write(user_input)
-
-            # 產生回覆
-            with st.spinner("Thinking..."):
-                try:
-                    if csv_data is not None:
-                        # 取得 CSV 欄位名稱
-                        csv_columns = ", ".join(csv_data.columns)
-                        # 使用雙大括號以顯示大括號字面量
-                        prompt = f"""Please respond with a JSON object in the format:
-{{
-    "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{{{分析內容}}}}",
-    "code": "生成一些使用matplotlib來生成分析圖表的python code"
-}}
-Based on the request: {user_input}.
-Available columns: {csv_columns}.
-"""
-                    else:
-                        prompt = f"請全部以繁體中文回答此問題：{user_input}"
-
-                    # 呼叫 LangChain
-                    raw_response = st.session_state.conversation.run(prompt)
-
-                    st.write("Model raw response:", raw_response)
-
-                    # 擷取三反引號中的 JSON 區塊
-                    json_str = extract_json_block(raw_response)
-
-                    try:
-                        response_json = json.loads(json_str)
-                    except Exception as e:
-                        st.error(f"json.loads parsing error: {e}")
-                        # 如果解析失敗，就 fallback 為最簡單的格式
-                        response_json = {"content": json_str, "code": ""}
-
-                    # 顯示回覆的文字內容
-                    content = response_json.get("content", "這是我的分析：")
-                    st.session_state.messages.append({"role": "assistant", "content": content})
-                    with st.chat_message("assistant"):
-                        st.write(content)
-
-                    # 如果有程式碼，則顯示在聊天記錄 & 存到 st.session_state
-                    code = response_json.get("code", "")
-                    if code:
-                        st.session_state.messages.append({"role": "assistant", "code": code})
-                        with st.chat_message("assistant"):
-                            st.code(code, language="python")
-                        # 將 GPT 回傳的 code 同步到常駐編輯器
-                        st.session_state.ace_code = code
-
-                except Exception as e:
-                    st.error(f"An error occurred: {e}")
-
-    # ================== 右側欄位：可收合的 Persistent Code Editor ==================
-    with col2:
-        # 使用 expander 做「拉布」收合
+        # ===================== 把「Persistent Code Editor」放在側邊的 expander 裡 =====================
         with st.expander("🖋️ Persistent Code Editor", expanded=False):
             # 顯示目前 st.session_state.ace_code 中的程式碼
             edited_code = st_ace(
                 value=st.session_state.ace_code,
                 language="python",
                 theme="monokai",
-                height=400,
+                height=300,
                 key="persistent_editor"
             )
-
-            # 使用者在編輯器中修改的內容，及時同步回 session_state
+            # 如果使用者改了內容，就更新回 session_state
             if edited_code != st.session_state.ace_code:
                 st.session_state.ace_code = edited_code
 
@@ -187,6 +112,74 @@ Available columns: {csv_columns}.
                 result = execute_code(st.session_state.ace_code)
                 st.write("### Execution Result")
                 st.text(result)
+
+    # ===================== 主區：聊天訊息 + GPT 回覆 =====================
+    # 顯示先前生成的訊息（角色對話）
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if "content" in message:
+                st.write(message["content"])
+            if "code" in message:
+                st.code(message["code"], language="python")
+
+    # 使用者輸入
+    user_input = st.chat_input("Hi! Ask me anything...")
+    if user_input:
+        # 記錄使用者訊息
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.write(user_input)
+
+        # 產生回覆
+        with st.spinner("Thinking..."):
+            try:
+                if csv_data is not None:
+                    # 取得 CSV 欄位名稱
+                    csv_columns = ", ".join(csv_data.columns)
+                    # 使用雙大括號以顯示大括號字面量
+                    prompt = f"""Please respond with a JSON object in the format:
+{{
+    "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{{{分析內容}}}}",
+    "code": "生成一些使用matplotlib來生成分析圖表的python code"
+}}
+Based on the request: {user_input}.
+Available columns: {csv_columns}.
+"""
+                else:
+                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
+
+                # 呼叫 LangChain
+                raw_response = st.session_state.conversation.run(prompt)
+
+                st.write("Model raw response:", raw_response)
+
+                # 擷取三反引號中的 JSON 區塊
+                json_str = extract_json_block(raw_response)
+
+                try:
+                    response_json = json.loads(json_str)
+                except Exception as e:
+                    st.error(f"json.loads parsing error: {e}")
+                    # 如果解析失敗，就 fallback 為最簡單的格式
+                    response_json = {"content": json_str, "code": ""}
+
+                # 顯示回覆的文字內容
+                content = response_json.get("content", "這是我的分析：")
+                st.session_state.messages.append({"role": "assistant", "content": content})
+                with st.chat_message("assistant"):
+                    st.write(content)
+
+                # 如果有程式碼，則顯示在聊天記錄 & 同步到 session_state.ace_code
+                code = response_json.get("code", "")
+                if code:
+                    st.session_state.messages.append({"role": "assistant", "code": code})
+                    with st.chat_message("assistant"):
+                        st.code(code, language="python")
+                    # 將 GPT 回傳的 code 同步到側邊編輯器
+                    st.session_state.ace_code = code
+
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
