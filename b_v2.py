@@ -94,8 +94,8 @@ def main():
                     {{
                         "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{分析內容}}",
                         "code": """
-                        Based on the request: {user_input}.
-                        Available columns: {csv_columns}.
+                    Based on the request: {user_input}.
+                    Available columns: {csv_columns}.
                     """
                 else:
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
