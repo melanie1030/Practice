@@ -89,15 +89,15 @@ def main():
             try:
                 if csv_data is not None:
                     csv_columns = ", ".join(csv_data.columns)
-                    prompt = f"""
-                    Please respond with a JSON object in the format:
-                    {{
-                        "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{分析內容}}",
-                        "code": """
-                    }}
-                    Based on the request: {user_input}.
-                    Available columns: {csv_columns}.
-                    """
+                    # Use double braces to escape braces in f-string
+                    prompt = f"""Please respond with a JSON object in the format:
+{{
+    "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{{{分析內容}}}}",
+    "code": ""
+}}
+Based on the request: {user_input}.
+Available columns: {csv_columns}.
+"""
                 else:
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
