@@ -94,7 +94,7 @@ def main():
     if "ace_code" not in st.session_state:
         st.session_state.ace_code = ""
 
-    # 以 columns 分成左 (主聊天區) / 右 (Persistent Code Editor)
+    # 使用 columns 分成左(主區) / 右(可收合編輯器)
     col1, col2 = st.columns([3, 1], gap="medium")
 
     with col1:
@@ -165,28 +165,28 @@ Available columns: {csv_columns}.
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 
-    # ===================== 右側欄位：Persistent Code Editor =====================
+    # ================== 右側欄位：可收合的 Persistent Code Editor ==================
     with col2:
-        st.write("## 🖋️ Persistent Code Editor")
+        # 使用 expander 做「拉布」收合
+        with st.expander("🖋️ Persistent Code Editor", expanded=False):
+            # 顯示目前 st.session_state.ace_code 中的程式碼
+            edited_code = st_ace(
+                value=st.session_state.ace_code,
+                language="python",
+                theme="monokai",
+                height=400,
+                key="persistent_editor"
+            )
 
-        # 顯示目前 st.session_state.ace_code 中的程式碼
-        edited_code = st_ace(
-            value=st.session_state.ace_code,
-            language="python",
-            theme="monokai",
-            height=400,
-            key="persistent_editor"
-        )
+            # 使用者在編輯器中修改的內容，及時同步回 session_state
+            if edited_code != st.session_state.ace_code:
+                st.session_state.ace_code = edited_code
 
-        # 使用者在編輯器中修改的內容，及時同步回 session_state
-        if edited_code != st.session_state.ace_code:
-            st.session_state.ace_code = edited_code
-
-        # 執行按鈕
-        if st.button("▶️ Execute Code", key="execute_code_persistent"):
-            result = execute_code(st.session_state.ace_code)
-            st.write("### Execution Result")
-            st.text(result)
+            # 執行按鈕
+            if st.button("▶️ Execute Code", key="execute_code_persistent"):
+                result = execute_code(st.session_state.ace_code)
+                st.write("### Execution Result")
+                st.text(result)
 
 if __name__ == "__main__":
     main()
