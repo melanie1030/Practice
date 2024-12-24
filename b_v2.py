@@ -3,65 +3,38 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from io import BytesIO
 import json
-from PIL import Image
 import time
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
+import pygwalker as pyg
+from streamlit_ace import st_ace
+import traceback
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
 
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
-    system_prompt = """
-    You are an expert data analyst with years of experience in statistical analysis and data visualization.
-    Always provide in-depth insights, explain correlations clearly, and suggest actionable insights.
-    """
-    return ChatOpenAI(
-        model="gpt-4-turbo",
-        temperature=0.7,
-        max_tokens=1500,
-        openai_api_key=api_key,
-        prefix_messages=[{"role": "system", "content": system_prompt}]
-    ) if api_key else None
+    return ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key) if api_key else None
 
-def generate_chart(chart_type, x_column, y_column, csv_data):
-    """Generate a chart based on user input."""
+def execute_code(code):
+    """Execute the given Python code and capture output."""
     try:
-        plt.figure(figsize=(10, 6))
-        if chart_type == "line":
-            plt.plot(csv_data[x_column], csv_data[y_column], marker='o')
-        elif chart_type == "bar":
-            plt.bar(csv_data[x_column], csv_data[y_column], color='skyblue')
-        elif chart_type == "scatter":
-            plt.scatter(csv_data[x_column], csv_data[y_column], alpha=0.7, edgecolors='b')
-        elif chart_type == "box":
-            plt.boxplot(csv_data[y_column], vert=True, patch_artist=True)
-            plt.xticks([1], [y_column])
-        plt.title(f"{y_column} vs {x_column} ({chart_type.capitalize()} Chart)", fontsize=16)
-        plt.xlabel(x_column if chart_type != "box" else "", fontsize=14)
-        plt.ylabel(y_column, fontsize=14)
-        plt.grid(True)
-
-        # Save the chart to a buffer
-        buf = BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png")
-        buf.seek(0)
-        return buf
+        exec_globals = {}
+        exec(code, exec_globals)
+        return "Code executed successfully. Output: " + str(exec_globals.get("output", "(No output returned)"))
     except Exception as e:
-        st.error(f"Failed to generate the chart: {e}")
-        return None
+        return f"Error executing code:\n{traceback.format_exc()}"
 
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
-    st.title("🤖 Chatbot + 🔢 Data Analysis + 🧠 Memory")
+    st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas")
 
     with st.sidebar:
-        st.subheader("🔐 Enter Your API Key")
+        st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
 
         if "conversation" not in st.session_state:
@@ -105,7 +78,7 @@ def main():
             if "code" in message:
                 st.code(message["code"], language="python")
             if "chart" in message:
-                st.image(message["chart"], caption="Generated Chart", use_container_width=True)
+                st.components.v1.html(message["chart"], height=600, scrolling=True)
 
     # User input
     user_input = st.chat_input("Hi! Ask me anything...")
@@ -119,40 +92,50 @@ def main():
             try:
                 if csv_data is not None:
                     csv_columns = ", ".join(csv_data.columns)
-                    summary = csv_data.describe().to_dict()
                     prompt = f"""
-                    Based on the uploaded CSV file with columns: {csv_columns},
-                    and the following statistical summary: {summary},
-                    provide an in-depth analysis including:
-                    1. Key statistical insights.
-                    2. Correlations between features.
-                    3. Identification of outliers.
-                    4. Possible business applications or actionable insights.
+                    Please respond with a JSON object in the format:
+                    {{
+                        "chart_type": "pygwalker", 
+                        "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{分析內容}}",
+                        "code": "# Python code example\nprint('Hello, world!')"
+                    }}
+                    Based on the request: {user_input}.
+                    Available columns: {csv_columns}.
                     """
                 else:
-                    prompt = f"Please respond to this question in Traditional Chinese: {user_input}"
+                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 response = st.session_state.conversation.run(prompt)
                 response_json = json.loads(response)
 
                 # Display response content
-                content = response_json.get("content", "Here is my analysis:")
+                content = response_json.get("content", "這是我的分析：")
                 st.session_state.messages.append({"role": "assistant", "content": content})
                 with st.chat_message("assistant"):
                     st.write(content)
 
-                # Generate chart
+                # Handle Code in Response
+                code = response_json.get("code")
+                if code:
+                    st.session_state.messages.append({"role": "assistant", "code": code})
+                    with st.chat_message("assistant"):
+                        st.code(code, language="python")
+
+                    # Display editable canvas
+                    st.write("### 🖋️ Edit and Execute Code")
+                    edited_code = st_ace(value=code, language="python", theme="monokai", height=300)
+
+                    if st.button("▶️ Execute Code"):
+                        result = execute_code(edited_code)
+                        st.write("### Execution Result")
+                        st.text(result)
+
+                # Generate Pygwalker visualization
                 if csv_data is not None:
-                    chart_buf = generate_chart(
-                        response_json.get("chart_type", "line"),
-                        response_json.get("x_column", csv_data.columns[0]),
-                        response_json.get("y_column", csv_data.columns[1]),
-                        csv_data
-                    )
-                    if chart_buf:
-                        st.session_state.messages.append({"role": "assistant", "chart": chart_buf})
-                        with st.chat_message("assistant"):
-                            st.image(chart_buf, caption="Generated Chart", use_container_width=True)
+                    st_pygwalker = pyg.walk(csv_data)
+                    st.session_state.messages.append({"role": "assistant", "chart": st_pygwalker.to_html()})
+                    with st.chat_message("assistant"):
+                        st.components.v1.html(st_pygwalker.to_html(), height=600, scrolling=True)
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
