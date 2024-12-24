@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from io import BytesIO
 import json
-import time
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
@@ -45,7 +43,6 @@ def extract_json_block(response: str) -> str:
         return response.strip()
 
 def main():
-    # 使用 "wide" 版面，使主區可以盡可能寬
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas")
 
@@ -54,6 +51,8 @@ def main():
         st.session_state.messages = []
     if "ace_code" not in st.session_state:
         st.session_state.ace_code = ""
+    if "editor_location" not in st.session_state:
+        st.session_state.editor_location = "Main"  # 預設編輯器顯示在主區
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -93,28 +92,17 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
-        # ===================== 把「Persistent Code Editor」放在側邊的 expander 裡 =====================
-        with st.expander("🖋️ Persistent Code Editor", expanded=False):
-            # 顯示目前 st.session_state.ace_code 中的程式碼
-            edited_code = st_ace(
-                value=st.session_state.ace_code,
-                language="python",
-                theme="monokai",
-                height=300,
-                key="persistent_editor"
-            )
-            # 如果使用者改了內容，就更新回 session_state
-            if edited_code != st.session_state.ace_code:
-                st.session_state.ace_code = edited_code
+        # 編輯器顯示位置
+        st.subheader("編輯器位置")
+        location = st.radio(
+            "選擇想要顯示編輯器的地方：",
+            ["Main", "Sidebar"],
+            index=0 if st.session_state.editor_location == "Main" else 1
+        )
+        # 同步回 session_state
+        st.session_state.editor_location = location
 
-            # 執行按鈕
-            if st.button("▶️ Execute Code", key="execute_code_persistent"):
-                result = execute_code(st.session_state.ace_code)
-                st.write("### Execution Result")
-                st.text(result)
-
-    # ===================== 主區：聊天訊息 + GPT 回覆 =====================
-    # 顯示先前生成的訊息（角色對話）
+    # ===================== 主區：顯示對話、接收輸入、聊天功能 =====================
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if "content" in message:
@@ -122,7 +110,6 @@ def main():
             if "code" in message:
                 st.code(message["code"], language="python")
 
-    # 使用者輸入
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         # 記錄使用者訊息
@@ -136,7 +123,6 @@ def main():
                 if csv_data is not None:
                     # 取得 CSV 欄位名稱
                     csv_columns = ", ".join(csv_data.columns)
-                    # 使用雙大括號以顯示大括號字面量
                     prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{{{分析內容}}}}",
@@ -148,19 +134,16 @@ Available columns: {csv_columns}.
                 else:
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
-                # 呼叫 LangChain
                 raw_response = st.session_state.conversation.run(prompt)
 
                 st.write("Model raw response:", raw_response)
 
                 # 擷取三反引號中的 JSON 區塊
                 json_str = extract_json_block(raw_response)
-
                 try:
                     response_json = json.loads(json_str)
                 except Exception as e:
                     st.error(f"json.loads parsing error: {e}")
-                    # 如果解析失敗，就 fallback 為最簡單的格式
                     response_json = {"content": json_str, "code": ""}
 
                 # 顯示回覆的文字內容
@@ -169,17 +152,52 @@ Available columns: {csv_columns}.
                 with st.chat_message("assistant"):
                     st.write(content)
 
-                # 如果有程式碼，則顯示在聊天記錄 & 同步到 session_state.ace_code
+                # 如果有程式碼，則顯示並更新到 ace_code
                 code = response_json.get("code", "")
                 if code:
                     st.session_state.messages.append({"role": "assistant", "code": code})
                     with st.chat_message("assistant"):
                         st.code(code, language="python")
-                    # 將 GPT 回傳的 code 同步到側邊編輯器
                     st.session_state.ace_code = code
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
+
+    # ===================== 根據 editor_location 決定編輯器要放在哪裡 =====================
+    if st.session_state.editor_location == "Main":
+        # 放在主區底部，用 expander 收合
+        with st.expander("🖋️ Persistent Code Editor (Main)", expanded=False):
+            edited_code = st_ace(
+                value=st.session_state.ace_code,
+                language="python",
+                theme="monokai",
+                height=300,
+                key="persistent_editor_main"
+            )
+            if edited_code != st.session_state.ace_code:
+                st.session_state.ace_code = edited_code
+
+            if st.button("▶️ Execute Code", key="execute_code_main"):
+                result = execute_code(st.session_state.ace_code)
+                st.write("### Execution Result")
+                st.text(result)
+    else:
+        # 放在側邊欄，用 expander 收合
+        with st.sidebar.expander("🖋️ Persistent Code Editor (Sidebar)", expanded=False):
+            edited_code = st_ace(
+                value=st.session_state.ace_code,
+                language="python",
+                theme="monokai",
+                height=300,
+                key="persistent_editor_sidebar"
+            )
+            if edited_code != st.session_state.ace_code:
+                st.session_state.ace_code = edited_code
+
+            if st.button("▶️ Execute Code", key="execute_code_sidebar"):
+                result = execute_code(st.session_state.ace_code)
+                st.write("### Execution Result")
+                st.text(result)
 
 if __name__ == "__main__":
     main()
