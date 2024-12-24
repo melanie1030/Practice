@@ -29,6 +29,7 @@ def execute_code(code):
         return f"Error executing code:\n{traceback.format_exc()}"
 
 def main():
+    # 設定 Streamlit 頁面標題與配置
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="centered")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas")
 
@@ -36,6 +37,7 @@ def main():
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
 
+        # 初始化 LangChain 與記憶
         if "conversation" not in st.session_state:
             if api_key:
                 st.session_state.chat_model = initialize_client(api_key)
@@ -45,19 +47,22 @@ def main():
                     memory=st.session_state.memory
                 )
             else:
-                st.warning("⬅️ Please enter the API key to initialize the chatbot.")
+                st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
                 return
 
+        # 清除記憶
         if st.button("🗑️ Clear Memory"):
             st.session_state.memory.clear()
             st.session_state.messages = []
             st.success("Memory cleared!")
 
+        # 顯示記憶狀態
         st.subheader("🧠 Memory State")
         if "memory" in st.session_state:
             memory_content = st.session_state.memory.load_memory_variables({})
             st.text_area("Current Memory", value=str(memory_content), height=200)
 
+        # 上傳 CSV
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
@@ -66,10 +71,11 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
+    # 儲存對話訊息
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display previously generated messages
+    # 顯示先前生成的訊息（角色對話）
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if "content" in message:
@@ -77,19 +83,21 @@ def main():
             if "code" in message:
                 st.code(message["code"], language="python")
 
-    # User input
+    # 使用者輸入
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
+        # 記錄使用者訊息
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
 
-        # Generate response
+        # 產生回覆
         with st.spinner("Thinking..."):
             try:
                 if csv_data is not None:
+                    # 取得 CSV 欄位名稱
                     csv_columns = ", ".join(csv_data.columns)
-                    # Use double braces to escape braces in f-string
+                    # 使用雙大括號以顯示大括號字面量
                     prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{{{分析內容}}}}",
@@ -101,26 +109,38 @@ Available columns: {csv_columns}.
                 else:
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
+                # 呼叫 LangChain
                 response = st.session_state.conversation.run(prompt)
-                response_json = json.loads(response)
 
-                # Display response content
+                # 為了 debug，可以先檢查原始輸出
+                st.write("Model raw response:", response)
+
+                # 嘗試轉成 JSON 格式
+                try:
+                    response_json = json.loads(response)
+                except Exception as e:
+                    st.error(f"json.loads parsing error: {e}")
+                    # 如果解析失敗，fallback 為最簡單的格式
+                    response_json = {"content": response, "code": ""}
+
+                # 顯示回覆的文字內容
                 content = response_json.get("content", "這是我的分析：")
                 st.session_state.messages.append({"role": "assistant", "content": content})
                 with st.chat_message("assistant"):
                     st.write(content)
 
-                # Handle Code in Response
-                code = response_json.get("code")
+                # 如果有程式碼，則顯示
+                code = response_json.get("code", "")
                 if code:
                     st.session_state.messages.append({"role": "assistant", "code": code})
                     with st.chat_message("assistant"):
                         st.code(code, language="python")
 
-                    # Display editable canvas
+                    # 顯示可編輯的 ACE Editor
                     st.write("### 🖋️ Edit and Execute Code")
                     edited_code = st_ace(value=code, language="python", theme="monokai", height=300)
 
+                    # 執行按鈕
                     if st.button("▶️ Execute Code"):
                         result = execute_code(edited_code)
                         st.write("### Execution Result")
