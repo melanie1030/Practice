@@ -14,14 +14,25 @@ import re
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
 
+UPLOAD_DIR = "uploaded_files"
+
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key) if api_key else None
 
-def execute_code(code):
+def save_uploaded_file(uploaded_file):
+    """保存上傳的檔案到指定目錄，並返回檔案路徑"""
+    if not os.path.exists(UPLOAD_DIR):
+        os.makedirs(UPLOAD_DIR)
+    file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+def execute_code(code, global_vars=None):
     """Execute the given Python code and capture output."""
     try:
-        exec_globals = {}
+        exec_globals = global_vars if global_vars else {}
         exec(code, exec_globals)
         return "Code executed successfully. Output: " + str(exec_globals.get("output", "(No output returned)"))
     except Exception as e:
@@ -87,19 +98,21 @@ def main():
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
+        uploaded_file_path = None
         if uploaded_file:
-            csv_data = pd.read_csv(uploaded_file)
+            # 保存檔案並記錄路徑
+            uploaded_file_path = save_uploaded_file(uploaded_file)
+            csv_data = pd.read_csv(uploaded_file_path)
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
         # 編輯器顯示位置
-        st.subheader("編輯器位置")
+        st.subheader("Editor Location")
         location = st.radio(
-            "選擇想要顯示編輯器的地方：",
+            "Choose where to display the editor:",
             ["Main", "Sidebar"],
             index=0 if st.session_state.editor_location == "Main" else 1
         )
-        # 同步回 session_state
         st.session_state.editor_location = location
 
     # ===================== 主區：顯示對話、接收輸入、聊天功能 =====================
@@ -178,7 +191,8 @@ Available columns: {csv_columns}.
                 st.session_state.ace_code = edited_code
 
             if st.button("▶️ Execute Code", key="execute_code_main"):
-                result = execute_code(st.session_state.ace_code)
+                global_vars = {"uploaded_file_path": uploaded_file_path}
+                result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
     else:
@@ -195,7 +209,8 @@ Available columns: {csv_columns}.
                 st.session_state.ace_code = edited_code
 
             if st.button("▶️ Execute Code", key="execute_code_sidebar"):
-                result = execute_code(st.session_state.ace_code)
+                global_vars = {"uploaded_file_path": uploaded_file_path}
+                result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
 
