@@ -9,7 +9,6 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 import dotenv
 import os
-import pygwalker as pyg
 from streamlit_ace import st_ace
 import traceback
 
@@ -77,8 +76,6 @@ def main():
                 st.write(message["content"])
             if "code" in message:
                 st.code(message["code"], language="python")
-            if "chart" in message:
-                st.components.v1.html(message["chart"], height=600, scrolling=True)
 
     # User input
     user_input = st.chat_input("Hi! Ask me anything...")
@@ -95,12 +92,10 @@ def main():
                     prompt = f"""
                     Please respond with a JSON object in the format:
                     {{
-                        "chart_type": "pygwalker", 
                         "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{分析內容}}",
-                        "code": "# Python code example\nprint('Hello, world!')"
-                    }}
-                    Based on the request: {user_input}.
-                    Available columns: {csv_columns}.
+                        "code": """
+                        Based on the request: {user_input}.
+                        Available columns: {csv_columns}.
                     """
                 else:
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
@@ -129,13 +124,6 @@ def main():
                         result = execute_code(edited_code)
                         st.write("### Execution Result")
                         st.text(result)
-
-                # Generate Pygwalker visualization
-                if csv_data is not None:
-                    st_pygwalker = pyg.walk(csv_data)
-                    st.session_state.messages.append({"role": "assistant", "chart": st_pygwalker.to_html()})
-                    with st.chat_message("assistant"):
-                        st.components.v1.html(st_pygwalker.to_html(), height=600, scrolling=True)
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
