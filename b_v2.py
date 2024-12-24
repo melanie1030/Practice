@@ -101,7 +101,7 @@ def main():
                     prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{{{分析內容}}}}",
-    "code": ""
+    "code": "生成一些使用matplotlib來生成分析圖表的python code"
 }}
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
