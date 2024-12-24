@@ -32,12 +32,12 @@ def execute_code(code):
 def extract_json_block(response: str) -> str:
     """
     從模型回傳的字串中，找出 JSON 物件部分
-    （假設模型用三反引號 ```json ... ``` 包起來）
+    （例如模型用三反引號 ```json ... ``` 包起來）
     """
     pattern = r'```(?:json)?(.*)```'
     match = re.search(pattern, response, re.DOTALL)
     if match:
-        # 只取反引號之間的內容
+        # 只取三反引號之間的內容
         json_str = match.group(1).strip()
         return json_str
     else:
@@ -86,8 +86,13 @@ def main():
             st.write("### Data Preview")
             st.dataframe(csv_data)
 
+    # 儲存對話訊息
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
+    # 用來存放（或持續更新）ACE Editor 的程式碼
+    if "ace_code" not in st.session_state:
+        st.session_state.ace_code = ""
 
     # 顯示先前生成的訊息（角色對話）
     for message in st.session_state.messages:
@@ -126,13 +131,11 @@ Available columns: {csv_columns}.
                 # 呼叫 LangChain
                 raw_response = st.session_state.conversation.run(prompt)
 
-                # 為了 debug，先印出模型原始輸出
                 st.write("Model raw response:", raw_response)
 
-                # 1) 擷取三反引號內的 JSON 區塊
+                # 擷取三反引號中的 JSON 區塊
                 json_str = extract_json_block(raw_response)
 
-                # 2) 嘗試轉成 JSON 格式
                 try:
                     response_json = json.loads(json_str)
                 except Exception as e:
@@ -146,25 +149,40 @@ Available columns: {csv_columns}.
                 with st.chat_message("assistant"):
                     st.write(content)
 
-                # 如果有程式碼，則顯示
+                # 如果有程式碼，則顯示在聊天記錄 & 存到 st.session_state
                 code = response_json.get("code", "")
                 if code:
                     st.session_state.messages.append({"role": "assistant", "code": code})
                     with st.chat_message("assistant"):
                         st.code(code, language="python")
-
-                    # 顯示可編輯的 ACE Editor
-                    st.write("### 🖋️ Edit and Execute Code")
-                    edited_code = st_ace(value=code, language="python", theme="monokai", height=300)
-
-                    # 執行按鈕
-                    if st.button("▶️ Execute Code"):
-                        result = execute_code(edited_code)
-                        st.write("### Execution Result")
-                        st.text(result)
+                    # 將 GPT 回傳的 code 同步到常駐編輯器
+                    st.session_state.ace_code = code
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
+
+    # ========== 這裡是「常駐」的程式碼編輯器與執行按鈕 ==========
+    st.write("---")
+    st.write("## 🖋️ Persistent Code Editor")
+
+    # 顯示目前 st.session_state.ace_code 中的程式碼
+    edited_code = st_ace(
+        value=st.session_state.ace_code,
+        language="python",
+        theme="monokai",
+        height=300,
+        key="persistent_editor"
+    )
+
+    # 使用者在編輯器中修改的內容，及時同步回 session_state
+    if edited_code != st.session_state.ace_code:
+        st.session_state.ace_code = edited_code
+
+    # 執行按鈕
+    if st.button("▶️ Execute Code", key="execute_code_persistent"):
+        result = execute_code(st.session_state.ace_code)
+        st.write("### Execution Result")
+        st.text(result)
 
 if __name__ == "__main__":
     main()
