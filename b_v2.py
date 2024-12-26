@@ -75,6 +75,7 @@ def initialize_client(api_key, model_name):
         openai_api_key=api_key
     ) if api_key else None
 
+
 # ============== 檔案處理/執行程式碼等功能 =============
 
 def save_uploaded_file(uploaded_file):
@@ -147,13 +148,10 @@ def main():
         st.session_state.uploaded_image_path = None
     if "image_base64" not in st.session_state:
         st.session_state.image_base64 = None
-    # Debug Mode
     if "debug_mode" not in st.session_state:
         st.session_state.debug_mode = False
-    # 深度分析模式
     if "deep_analysis_mode" not in st.session_state:
         st.session_state.deep_analysis_mode = False
-    # 深度分析過程中產生的回覆
     if "second_response" not in st.session_state:
         st.session_state.second_response = ""
     if "third_response" not in st.session_state:
@@ -161,16 +159,13 @@ def main():
     if "deep_analysis_image" not in st.session_state:
         st.session_state.deep_analysis_image = None
 
-    # ============ 側邊欄 ============
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
 
         selected_model = st.selectbox("選擇模型:", OPENAI_MODELS, index=0)
 
-        # Debug mode
         st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
-        # 深度分析模式
         st.session_state.deep_analysis_mode = st.checkbox("深度分析模式", value=False)
 
         # 初始化 LangChain 與記憶
@@ -185,10 +180,10 @@ def main():
             else:
                 st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
                 return
-        
-        # -- 顯示當前所使用的模型 (在 Debug Mode 下) --
+
+        # **在 Debug Mode 下顯示當前模型**
         if st.session_state.debug_mode:
-            debug_log(f"[DEBUG] Currently using model => {selected_model}")
+            debug_log(f"DEBUG: Currently using model => {selected_model}")
 
         # 清除記憶
         if st.button("🗑️ Clear Memory"):
@@ -227,18 +222,15 @@ def main():
                     st.error(f"Error reading CSV: {e}")
                 debug_log(f"[DEBUG] Error reading CSV: {e}")
 
-        # ===================== 圖片上傳功能 (改用 image_4o_succuess_handle_ver.py 方式) =====================
+        # ===================== 圖片上傳功能 =====================
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
-            # 1) 保留原本功能：save檔案 + debug
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
             debug_log(f"DEBUG: st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
-            # 2) 顯示圖片預覽
             st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
 
-            # 3) 原本做 base64 (若需保留)
             try:
                 with open(st.session_state.uploaded_image_path, "rb") as f:
                     img_bytes = f.read()
@@ -249,8 +241,6 @@ def main():
                     st.error(f"Error converting image to base64: {e}")
                 debug_log(f"[DEBUG] Error converting image to base64: {e}")
 
-            # 4) **新增**：像 image_4o_succuess_handle_ver.py 一樣，加入對話訊息
-            #    讓 GPT-4o 看到 "role=user" + "content" = [{"type": "image_url", ...}]
             try:
                 img_pil = Image.open(uploaded_image)
                 add_user_image(img_pil)
@@ -269,7 +259,7 @@ def main():
         )
         st.session_state.editor_location = location
 
-    # ============ 主區：顯示對話、接收輸入、聊天功能 ============
+    # ===================== 主區：顯示對話、接收輸入、聊天功能 =====================
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if "content" in message:
@@ -288,7 +278,6 @@ def main():
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
-                # 準備 CSV 欄位資訊（若有上傳）
                 if st.session_state.uploaded_file_path is not None:
                     try:
                         df_temp = pd.read_csv(st.session_state.uploaded_file_path)
@@ -301,7 +290,6 @@ def main():
                 else:
                     csv_columns = "無上傳檔案"
 
-                # 原本的 Prompt
                 prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "這是我的觀察：{{{{分析內容}}}}",
@@ -315,7 +303,6 @@ Important:
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
-
                 if st.session_state.image_base64:
                     prompt += "\nHere is the image data in base64 format:\n"
                     prompt += st.session_state.image_base64[:300] + "..."
@@ -330,7 +317,6 @@ Available columns: {csv_columns}.
                     st.write("Model raw response:", raw_response)
                 debug_log(f"[DEBUG] Model raw response => {raw_response}")
 
-                # 擷取三反引號中的 JSON 區塊
                 json_str = extract_json_block(raw_response)
                 try:
                     response_json = json.loads(json_str)
@@ -351,11 +337,10 @@ Available columns: {csv_columns}.
                         st.code(code, language="python")
                     st.session_state.ace_code = code
 
-                # =============== 若勾選「深度分析模式」就自動執行後續流程 ===============
+                # 深度分析模式自動執行產生的程式碼
                 if st.session_state.deep_analysis_mode and code:
                     st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
 
-                    # (1) 自動執行程式碼 → 產生圖表
                     global_vars = {
                         "uploaded_file_path": st.session_state.uploaded_file_path,
                         "uploaded_image_path": st.session_state.uploaded_image_path,
@@ -364,7 +349,6 @@ Available columns: {csv_columns}.
                     st.write("#### Execution Result")
                     st.text(exec_result)
 
-                    # (2) 取得程式碼執行後的圖表 (plt.gcf() → base64)
                     fig = plt.gcf()
                     buf = io.BytesIO()
                     fig.savefig(buf, format="png")
@@ -372,7 +356,6 @@ Available columns: {csv_columns}.
                     chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
                     st.session_state.deep_analysis_image = chart_base64
 
-                    # (3) 呼叫 GPT-4o 來解析該圖表 (第二次回覆)
                     deep_model = ChatOpenAI(
                         model="gpt-4o", 
                         temperature=0.5, 
@@ -393,7 +376,6 @@ Available columns: {csv_columns}.
                         st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
                         st.write(second_raw_response)
 
-                        # (4) 第三次對話：將「第一次回覆 + 第二次回覆」整合給 GPT
                         final_model = ChatOpenAI(
                             model="gpt-4o",
                             temperature=0.5,
@@ -414,7 +396,6 @@ Available columns: {csv_columns}.
                             st.write(third_raw_response)
 
                             st.write("#### [深度分析] 圖表：")
-                            # 顯示圖表
                             img_data = base64.b64decode(st.session_state.deep_analysis_image)
                             st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
 
@@ -422,8 +403,6 @@ Available columns: {csv_columns}.
                 if st.session_state.debug_mode:
                     st.error(f"An error occurred: {e}")
                 debug_log(f"[DEBUG] An error occurred: {e}")
-
-    # ============ Editor 區域 ============
 
     debug_log(f"DEBUG: editor_location = {st.session_state.editor_location}")
     debug_log(f"DEBUG: final st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
@@ -452,7 +431,6 @@ Available columns: {csv_columns}.
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
-
     else:
         with st.sidebar.expander("🖋️ Persistent Code Editor (Sidebar)", expanded=False):
             edited_code = st_ace(
