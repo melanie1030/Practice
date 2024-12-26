@@ -18,13 +18,7 @@ dotenv.load_dotenv()
 
 UPLOAD_DIR = "uploaded_files"
 
-OPENAI_MODELS = [
-    "gpt-4o",  # 假設可解析圖片的實驗模型
-    "gpt-4-turbo",
-    "gpt-3.5-turbo-16k",
-    "gpt-4",
-    "gpt-4-32k"
-]
+OPENAI_MODELS = ["gpt-4o"]
 
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
