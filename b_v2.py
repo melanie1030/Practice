@@ -13,6 +13,8 @@ from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 from streamlit_ace import st_ace
+from PIL import Image
+from io import BytesIO
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -27,6 +29,33 @@ OPENAI_MODELS = [
     "gpt-4-32k"
 ]
 
+# ============== 與 image_4o_succuess_handle_ver.py 相同的處理圖片函式 ==============
+
+def load_image_base64(image_pil):
+    """Convert a PIL Image to Base64 encoding."""
+    buffer = BytesIO()
+    fmt = image_pil.format if image_pil.format else "PNG"
+    image_pil.save(buffer, format=fmt)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+def add_user_image(image_pil):
+    """
+    產生一個 "role": "user"、
+    "content": [
+      {"type": "image_url", "image_url": {"url": "data:image/png;base64,xxx"}}
+    ] 的對話訊息
+    並放入 st.session_state.messages，讓 GPT-4o 把它視為圖片訊息。
+    """
+    img_base64 = load_image_base64(image_pil)
+    st.session_state.messages.append({
+        "role": "user",
+        "content": [
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}} 
+        ]
+    })
+
+# ============== Debug/Log 輔助函式 ==============
+
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
         st.write(msg)
@@ -37,6 +66,8 @@ def debug_error(msg):
         st.error(msg)
         print(msg)
 
+# ============== 初始化 ChatOpenAI ==============
+
 def initialize_client(api_key, model_name):
     return ChatOpenAI(
         model=model_name,
@@ -44,15 +75,19 @@ def initialize_client(api_key, model_name):
         openai_api_key=api_key
     ) if api_key else None
 
+# ============== 檔案處理/執行程式碼等功能 ==============
+
 def save_uploaded_file(uploaded_file):
     if not os.path.exists(UPLOAD_DIR):
         os.makedirs(UPLOAD_DIR)
     file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
-
     debug_log(f"DEBUG: saving file to {file_path}")
+
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
+
     debug_log(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
+
     return file_path
 
 def execute_code(code, global_vars=None):
@@ -82,10 +117,17 @@ def extract_json_block(response: str) -> str:
     else:
         return response.strip()
 
+# ============== 主程式 ==============
+
 def main():
-    st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
+    st.set_page_config(
+        page_title="Chatbot + Data Analysis",
+        page_icon="🤖",
+        layout="wide"
+    )
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas (With Debug & Deep Analysis)")
 
+    # 初始化 session_state 變數
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "ace_code" not in st.session_state:
@@ -109,6 +151,7 @@ def main():
     if "deep_analysis_image" not in st.session_state:
         st.session_state.deep_analysis_image = None
 
+    # 側邊欄
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
@@ -118,6 +161,7 @@ def main():
         st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
         st.session_state.deep_analysis_mode = st.checkbox("深度分析模式", value=False)
 
+        # 初始化 ChatOpenAI
         if "conversation" not in st.session_state:
             if api_key:
                 st.session_state.chat_model = initialize_client(api_key, selected_model)
@@ -133,6 +177,7 @@ def main():
         if st.session_state.debug_mode:
             debug_log(f"DEBUG: Currently using model => {selected_model}")
 
+        # 清除記憶
         if st.button("🗑️ Clear Memory"):
             st.session_state.memory.clear()
             st.session_state.messages = []
@@ -146,18 +191,20 @@ def main():
             st.session_state.deep_analysis_image = None
             st.success("Memory cleared!")
 
+        # 顯示記憶狀態
         st.subheader("🧠 Memory State")
         if "memory" in st.session_state:
             memory_content = st.session_state.memory.load_memory_variables({})
             st.text_area("Current Memory", value=str(memory_content), height=200)
 
-        # --- CSV 上傳 ---
+        # CSV 上傳
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
         if uploaded_file:
             st.session_state.uploaded_file_path = save_uploaded_file(uploaded_file)
             debug_log(f"DEBUG: st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
+
             try:
                 csv_data = pd.read_csv(st.session_state.uploaded_file_path)
                 st.write("### Data Preview")
@@ -167,24 +214,28 @@ def main():
                     st.error(f"Error reading CSV: {e}")
                 debug_log(f"[DEBUG] Error reading CSV: {e}")
 
-        # --- 圖片上傳 ---
+        # 圖片上傳 (改用 image_4o_succuess_handle_ver.py 方式)
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
+            # 保存圖片
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
             debug_log(f"DEBUG: st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
+            # 在介面顯示圖片
             st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
+
+            # 將該圖片以 PIL 讀取、轉成 Base64，然後加入對話訊息
             try:
-                with open(st.session_state.uploaded_image_path, "rb") as f:
-                    img_bytes = f.read()
-                st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                debug_log("DEBUG: Image has been converted to base64.")
+                img_pil = Image.open(uploaded_image)
+                add_user_image(img_pil)  
+                st.success("圖像已上傳 (並已放入對話) !")
             except Exception as e:
                 if st.session_state.debug_mode:
-                    st.error(f"Error converting image to base64: {e}")
-                debug_log(f"[DEBUG] Error converting image to base64: {e}")
+                    st.error(f"Error adding user image: {e}")
+                debug_log(f"[DEBUG] Error adding user image: {e}")
 
+        # 編輯器顯示位置
         st.subheader("Editor Location")
         location = st.radio(
             "Choose where to display the editor:",
@@ -193,14 +244,27 @@ def main():
         )
         st.session_state.editor_location = location
 
-    # --- 顯示歷史訊息 ---
+    # 顯示對話歷史
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
+            # 如果是 content -> 文字 or code -> python code
             if "content" in message:
-                st.write(message["content"])
+                # 可能有多個 chunk (如 text, image_url)
+                the_contents = message["content"]
+                if isinstance(the_contents, list):
+                    # e.g. [{"type":"text","text":"..."},{"type":"image_url","image_url":{"url":"..."}}]
+                    for chunk in the_contents:
+                        if chunk["type"] == "text":
+                            st.write(chunk["text"])
+                        elif chunk["type"] == "image_url":
+                            st.image(chunk["image_url"].get("url", ""))
+                else:
+                    # 若 content 不是 list，就直接顯示
+                    st.write(the_contents)
             if "code" in message:
                 st.code(message["code"], language="python")
 
+    # 用戶輸入
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
@@ -212,41 +276,36 @@ def main():
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
-                # --- 決定使用哪種 prompt ---
-                if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                    # [情境] 有上傳圖片 -> 只給 user_input 與 圖片 Base64
-                    # 避免將 CSV & JSON 格式也混進去
-                    prompt = f"User input: {user_input}\nHere is the image data in base64:\n{st.session_state.image_base64[:300]}..."
+                # 讀取 CSV 欄位 (若有上傳)
+                if st.session_state.uploaded_file_path is not None:
+                    try:
+                        df_temp = pd.read_csv(st.session_state.uploaded_file_path)
+                        csv_columns = ", ".join(df_temp.columns)
+                    except Exception as e:
+                        csv_columns = "無法讀取欄位"
+                        if st.session_state.debug_mode:
+                            st.error(f"Error reading columns: {e}")
+                        debug_log(f"[DEBUG] Error reading columns: {e}")
                 else:
-                    # [情境] 沒有上傳圖片 -> 維持舊有複雜 JSON 邏輯
-                    if st.session_state.uploaded_file_path is not None:
-                        try:
-                            df_temp = pd.read_csv(st.session_state.uploaded_file_path)
-                            csv_columns = ", ".join(df_temp.columns)
-                        except Exception as e:
-                            csv_columns = "無法讀取欄位"
-                            if st.session_state.debug_mode:
-                                st.error(f"Error reading columns: {e}")
-                            debug_log(f"[DEBUG] Error reading columns: {e}")
-                    else:
-                        csv_columns = "無上傳檔案"
+                    csv_columns = "無上傳檔案"
 
-                    prompt = f"""Please respond with a JSON object in the format:
+                # 準備 Prompt
+                prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "這是我的觀察：{{{{分析內容}}}}",
     "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# 讀取 CSV 檔案 (請直接使用 st.session_state.uploaded_file_path 變數)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# 在這裡加入你要的繪圖或分析邏輯\\n\\n# 例如使用 st.pyplot() 來顯示圖表:\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
 }}
 Important:
-1) Must use st.session_state.uploaded_file_path as the CSV path (instead of a hardcoded path)
+1) Must use st.session_state.uploaded_file_path as the CSV path
 2) Must use st.pyplot() to display any matplotlib figure
-3) Return only valid JSON (escape any special characters if needed)
+3) Return only valid JSON
 
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
 
-                    if csv_columns == "無上傳檔案":
-                        prompt = f"請全部以繁體中文回答此問題：{user_input}"
+                if csv_columns == "無上傳檔案":
+                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 debug_log(f"DEBUG: Prompt used => {prompt}")
 
@@ -255,6 +314,7 @@ Available columns: {csv_columns}.
                     st.write("Model raw response:", raw_response)
                 debug_log(f"[DEBUG] Model raw response => {raw_response}")
 
+                # 擷取 JSON 區塊
                 json_str = extract_json_block(raw_response)
                 try:
                     response_json = json.loads(json_str)
@@ -275,7 +335,7 @@ Available columns: {csv_columns}.
                         st.code(code, language="python")
                     st.session_state.ace_code = code
 
-                # --- 若勾選深度分析模式 & 有程式碼 -> 執行程式、二次解析圖表 ---
+                # 深度分析模式
                 if st.session_state.deep_analysis_mode and code:
                     st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
 
@@ -345,6 +405,7 @@ Available columns: {csv_columns}.
     debug_log(f"DEBUG: final st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
     debug_log(f"DEBUG: final st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
+    # Editor 區域
     if st.session_state.editor_location == "Main":
         with st.expander("🖋️ Persistent Code Editor (Main)", expanded=False):
             edited_code = st_ace(
@@ -368,7 +429,6 @@ Available columns: {csv_columns}.
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
-
     else:
         with st.sidebar.expander("🖋️ Persistent Code Editor (Sidebar)", expanded=False):
             edited_code = st_ace(
