@@ -8,27 +8,38 @@ import os
 import dotenv
 import base64
 import io
+
+# -- LangChain 相關 --
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
+
+# -- Editor --
 from streamlit_ace import st_ace
 
-# --- 這裡匯入 openai 以便用 client.chat.completions.create ---
-import openai
+# -- 以下為您測試成功的 openai<1.0.0 方式 --
+from openai import OpenAI
+from PIL import Image
+from audio_recorder_streamlit import audio_recorder  # 如果有需要保留錄音功能，可保留
+import random
 
-# --- Initialize and Settings ---
+# --- dotenv 加載環境 ---
 dotenv.load_dotenv()
 
+# === 全域設定 ===
 UPLOAD_DIR = "uploaded_files"
 
 OPENAI_MODELS = [
-    "gpt-4o",  # 假設可解析圖片的實驗模型
+    "gpt-4o",       # 假設可解析圖片的實驗模型
     "gpt-4-turbo",
     "gpt-3.5-turbo-16k",
     "gpt-4",
     "gpt-4-32k"
 ]
 
+# -------------------------------------------------
+# 以下區塊: b_v2.py 裡的輔助函式
+# -------------------------------------------------
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
         st.write(msg)
@@ -40,6 +51,9 @@ def debug_error(msg):
         print(msg)
 
 def initialize_client(api_key, model_name):
+    """
+    原 b_v2 用 LangChain ChatOpenAI
+    """
     return ChatOpenAI(
         model=model_name,
         temperature=0.5,
@@ -47,18 +61,18 @@ def initialize_client(api_key, model_name):
     ) if api_key else None
 
 def save_uploaded_file(uploaded_file):
+    """將上傳檔案存至指定資料夾"""
     if not os.path.exists(UPLOAD_DIR):
         os.makedirs(UPLOAD_DIR)
     file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
-
     debug_log(f"DEBUG: saving file to {file_path}")
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
-
-    debug_log(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
+    debug_log(f"DEBUG: files in {UPLOAD_DIR}: " + str(os.listdir(UPLOAD_DIR)))
     return file_path
 
 def execute_code(code, global_vars=None):
+    """執行使用者產生的Python程式碼"""
     try:
         exec_globals = global_vars if global_vars else {}
         debug_log("DEBUG: Ready to exec the following code:")
@@ -77,6 +91,7 @@ def execute_code(code, global_vars=None):
             return "Error executing code (hidden in non-debug mode)."
 
 def extract_json_block(response: str) -> str:
+    """從文字中擷取 JSON 內容的區塊 (以 ```json ... ``` 為主)"""
     pattern = r'```(?:json)?(.*)```'
     match = re.search(pattern, response, re.DOTALL)
     if match:
@@ -85,10 +100,62 @@ def extract_json_block(response: str) -> str:
     else:
         return response.strip()
 
-def main():
-    st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
-    st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas (With Debug & Deep Analysis)")
+# -------------------------------------------------
+# 以下區塊: from openai import OpenAI 方式所需
+#         參考您給的 snippet
+# -------------------------------------------------
 
+def initialize_openai_client(api_key):
+    """Initialize OpenAI client with the provided API key."""
+    return OpenAI(api_key=api_key) if api_key else None
+
+def load_image_base64(image):
+    """Convert a PIL Image to Base64 encoding."""
+    buffer = io.BytesIO()
+    # 若 image.format 不存在，可手動指定 PNG
+    image.save(buffer, format=image.format if image.format else "PNG")
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+def add_user_image(image):
+    """Add an image message to st.session_state.messages (compat with streaming logic)."""
+    img_base64 = load_image_base64(image)
+    # 加到 messages 末尾
+    st.session_state.messages.append({
+        "role": "user",
+        "content": [
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
+        ]
+    })
+
+def reset_session_messages():
+    """Clear conversation history from the session."""
+    if "messages" in st.session_state:
+        st.session_state.pop("messages")
+
+def stream_llm_response(client, model_params):
+    """
+    以 for-chunk 方式串流回傳文字。
+    參考您給的 snippet: client.chat.completions.create(...)
+    """
+    for chunk in client.chat.completions.create(
+            model=model_params.get("model", "gpt-4o"),
+            messages=st.session_state.messages,
+            temperature=model_params.get("temperature", 0.3),
+            max_tokens=4096,
+            stream=True):
+        chunk_text = chunk.choices[0].delta.content or ""
+        yield chunk_text
+
+# -------------------------------------------------
+# 合併主程式 main()
+# -------------------------------------------------
+def main():
+    st.set_page_config(page_title="Chatbot + Data Analysis + StreamingImage", 
+                       page_icon="🤖", 
+                       layout="wide")
+    st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Editor + (OpenAI streaming for only-image)")
+
+    # --- 初始化 session state 變數 ---
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "ace_code" not in st.session_state:
@@ -114,14 +181,11 @@ def main():
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
-        api_key = st.text_input("OpenAI API Key", type="password")
+        default_api_key = os.getenv("OPENAI_API_KEY", "")
+        api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
 
-        selected_model = st.selectbox("選擇模型:", OPENAI_MODELS, index=0)
-
-        st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
-        st.session_state.deep_analysis_mode = st.checkbox("深度分析模式", value=False)
-
-        # 初始化 langchain 對話
+        # -- LangChain ChatOpenAI 初始化 (b_v2)
+        selected_model = st.selectbox("選擇模型 (for b_v2 logic):", OPENAI_MODELS, index=0)
         if "conversation" not in st.session_state:
             if api_key:
                 st.session_state.chat_model = initialize_client(api_key, selected_model)
@@ -131,16 +195,21 @@ def main():
                     memory=st.session_state.memory
                 )
             else:
-                st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
+                st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人 (LangChain).")
                 return
 
-        if st.session_state.debug_mode:
-            debug_log(f"DEBUG: Currently using model => {selected_model}")
+        st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
+        st.session_state.deep_analysis_mode = st.checkbox("深度分析模式", value=False)
 
-        # 設定 openai.api_key (用於「只有圖片時」的 streaming API)
-        openai.api_key = api_key
+        # -- openai client (from openai import OpenAI)
+        #    用於「只有圖片時」的 streaming chat
+        if "client_4o" not in st.session_state:
+            st.session_state.client_4o = initialize_openai_client(api_key)
+        else:
+            # 若後續要更新key
+            st.session_state.client_4o = initialize_openai_client(api_key)
 
-        if st.button("🗑️ Clear Memory"):
+        if st.button("🗑️ Clear Memory (b_v2 & messages)"):
             st.session_state.memory.clear()
             st.session_state.messages = []
             st.session_state.ace_code = ""
@@ -153,14 +222,31 @@ def main():
             st.session_state.deep_analysis_image = None
             st.success("Memory cleared!")
 
-        st.subheader("🧠 Memory State")
+        st.subheader("🧠 Memory State (LangChain b_v2)")
         if "memory" in st.session_state:
             memory_content = st.session_state.memory.load_memory_variables({})
             st.text_area("Current Memory", value=str(memory_content), height=200)
 
-        # --- CSV 上傳 ---
-        st.subheader("📂 Upload a CSV File")
-        uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
+        # -- 圖像上傳/拍照 (4o snippet) (可以和 b_v2 的功能共存)
+        st.write("### 4o: 上傳圖像或拍照 (Streaming only-image scenario)")
+        uploaded_img_4o = st.file_uploader("選擇一張圖片:", type=["png", "jpg", "jpeg"], key="4o_uploader")
+        if uploaded_img_4o:
+            img = Image.open(uploaded_img_4o)
+            add_user_image(img)
+            st.success("圖像已上傳至 messages!")
+
+        camera_img = st.camera_input("拍照")
+        if camera_img:
+            cimg = Image.open(camera_img)
+            add_user_image(cimg)
+            st.success("拍照已成功，已加入messages!")
+
+        # -- 重置對話 (4o snippet)
+        st.button("🗑️ 清除對話 (stream messages)", on_click=reset_session_messages)
+
+        # -- CSV 上傳 (b_v2)
+        st.subheader("📂 Upload a CSV File (b_v2 style)")
+        uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"], key="b_v2_csv")
         csv_data = None
         if uploaded_file:
             st.session_state.uploaded_file_path = save_uploaded_file(uploaded_file)
@@ -174,9 +260,9 @@ def main():
                     st.error(f"Error reading CSV: {e}")
                 debug_log(f"[DEBUG] Error reading CSV: {e}")
 
-        # --- 圖片上傳 ---
-        st.subheader("🖼️ Upload an Image")
-        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
+        # -- 圖片上傳 (b_v2)；可以與 4o snippet 併存
+        st.subheader("🖼️ Upload an Image (b_v2 style)")
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"], key="b_v2_image")
         if uploaded_image:
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
             debug_log(f"DEBUG: st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
@@ -192,6 +278,7 @@ def main():
                     st.error(f"Error converting image to base64: {e}")
                 debug_log(f"[DEBUG] Error converting image to base64: {e}")
 
+        # -- Editor Location
         st.subheader("Editor Location")
         location = st.radio(
             "Choose where to display the editor:",
@@ -200,92 +287,92 @@ def main():
         )
         st.session_state.editor_location = location
 
-    # --- 顯示歷史訊息 ---
+    # ---- 顯示對話歷史 (messages) ----
+    st.write("## Current Messages:")
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # 逐則輸出 messages
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if "content" in message:
-                st.write(message["content"])
-            if "code" in message:
+        role = message["role"]
+        with st.chat_message(role):
+            # message["content"] 可能是list( 4o snippet )或單純string(b_v2)
+            contents = message["content"]
+            if isinstance(contents, list):
+                # 4o snippet: content是list of dict
+                for c in contents:
+                    if c["type"] == "text":
+                        st.write(c.get("text", ""))
+                    elif c["type"] == "image_url":
+                        st.image(c["image_url"].get("url", ""), caption="User's image")
+            else:
+                # b_v2: 直接是string
+                st.write(contents)
+
+            if "code" in message:  # b_v2: 可能有 code
                 st.code(message["code"], language="python")
 
-    # --- 使用者輸入 ---
-    user_input = st.chat_input("Hi! Ask me anything...")
+    # ---- User input for b_v2 logic ----
+    user_input = st.chat_input("b_v2 or 4o: Hi! Ask me anything ...")
     if user_input:
-        # 先在對話記憶中加上使用者訊息
+        # 先把這次 user_input 加入對話
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
 
-        # 改為在外層就顯示 spinner => "Thinking..."
         with st.spinner("Thinking..."):
             try:
-                debug_log(f"DEBUG: Currently st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
-                debug_log(f"DEBUG: Currently st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
+                debug_log(f"DEBUG: uploaded_file_path = {st.session_state.uploaded_file_path}")
+                debug_log(f"DEBUG: uploaded_image_path = {st.session_state.uploaded_image_path}")
 
-                # ================
-                # 1) 如果只有「圖片」沒有「CSV」，則改用 openai 的 stream API 來回應
-                # ================
-                if (st.session_state.uploaded_image_path is not None) and (st.session_state.uploaded_file_path is None):
-                    debug_log("DEBUG: Detected 'only image' scenario => using openai ChatCompletion streaming...")
+                # 判斷「只有圖片且沒有 CSV」 => 代表 b_v2_image or 4o_uploader/camera 有圖，但 CSV 是 None
+                # 但是現在 messages 可能也有 4o snippet 的圖
+                # 我們以 b_v2 方式判斷: st.session_state.uploaded_file_path is None => 沒CSV
+                # 且 (st.session_state.uploaded_image_path is not None or messages裡面有 image_url)
+                
+                # 簡化: 如果 "uploaded_file_path" is None (沒csv) AND "uploaded_image_path" is not None => only image
+                only_image = False
+                if (st.session_state.uploaded_file_path is None) and (st.session_state.uploaded_image_path is not None):
+                    only_image = True
 
-                    # 為了讓模型知道使用者的圖片內容，我們把 base64 (或文字描述) 也一併附加到最後一筆 user message
-                    last_msg_index = len(st.session_state.messages) - 1
-                    if last_msg_index >= 0:
-                        new_content = (
-                            f"{st.session_state.messages[last_msg_index]['content']}\n"
-                            f"Here is the image data in base64:\n{st.session_state.image_base64}"
-                        )
-                        st.session_state.messages[last_msg_index]["content"] = new_content
+                # 另外一種檢查: messages 中是否存在 image_url?
+                # 但這可能會與 b_v2 相衝，先用上面 simpler method
 
-                    # 轉換為 openai messages 結構
-                    openai_messages = [
-                        {"role": m["role"], "content": m["content"]}
-                        for m in st.session_state.messages
-                    ]
+                if only_image and st.session_state.client_4o is not None:
+                    # 改用 streaming approach (client_4o)
 
-                    if st.session_state.debug_mode:
-                        debug_log(f"DEBUG: openai_messages => {openai_messages}")
+                    debug_log("DEBUG: Only Image scenario => using client.chat.completions.create streaming...")
 
-                    # 呼叫 streaming
-                    response_text = ""
+                    # 這裡 content 可能是文字 + base64（若 b_v2 圖片），或者 snippet 中 user_image
+                    # 不過我們已經把 user_input append 了 => messages
+                    # 預備 streaming: model_params
+                    model_params = {
+                        "model": "gpt-4o",  # 或可改成 selected_model
+                        "temperature": 0.3
+                    }
+                    # 直接呼叫 stream_llm_response
+                    full_response = ""
                     with st.chat_message("assistant"):
                         stream_placeholder = st.empty()
                         try:
-                            for chunk in openai.ChatCompletion.create(
-                                model=selected_model if selected_model else "gpt-4o",
-                                messages=openai_messages,
-                                temperature=0.3,
-                                max_tokens=4096,
-                                stream=True
-                            ):
-                                # 逐塊擷取文字
-                                chunk_delta = chunk["choices"][0].get("delta", {})
-                                chunk_text = chunk_delta.get("content", "")
-                                if chunk_text:
-                                    response_text += chunk_text
-                                    # 即時更新畫面
-                                    stream_placeholder.markdown(response_text)
+                            for chunk_text in stream_llm_response(st.session_state.client_4o, model_params):
+                                full_response += chunk_text
+                                stream_placeholder.markdown(full_response)
                         except Exception as e:
-                            # 若串流錯誤，可在 Debug Mode 印出
                             if st.session_state.debug_mode:
-                                st.error(f"Error in streaming: {e}")
-                            debug_log(f"DEBUG: Streaming error => {e}")
+                                st.error(f"Streaming error: {e}")
+                            debug_log(f"[DEBUG] Streaming error: {e}")
 
-                    if st.session_state.debug_mode:
-                        debug_log(f"DEBUG: streaming final response => {response_text}")
-
-                    # 將模型最終回應寫入對話記憶
-                    st.session_state.messages.append({"role": "assistant", "content": response_text})
+                    # 將串流最終結果寫回 messages
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
 
                 else:
-                    # ================
-                    # 2) 否則（有 CSV 或者沒有任何檔案），維持舊有 JSON+LangChain 方式
-                    # ================
-                    if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                        # [情境] 有上傳圖片 + 不符合「只有圖片沒 csv」條件(代表也上傳了csv?)
+                    # 其餘情況 => 走舊有 b_v2 JSON + LangChain logic
+                    # 例如 => 有 CSV 或完全沒上傳檔案
+                    if st.session_state.uploaded_image_path and st.session_state.image_base64:
+                        # [情境] 有上傳圖片 + (也許CSV?? or not??) => 舊邏輯
                         prompt = f"User input: {user_input}\nHere is the image data in base64:\n{st.session_state.image_base64}..."
                     else:
-                        # [情境] 沒有圖片 or 有CSV
                         if st.session_state.uploaded_file_path is not None:
                             try:
                                 df_temp = pd.read_csv(st.session_state.uploaded_file_path)
@@ -311,18 +398,18 @@ Important:
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
-
                         if csv_columns == "無上傳檔案":
                             prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
-                    debug_log(f"DEBUG: Prompt used => {prompt}")
+                    debug_log(f"DEBUG: Prompt => {prompt}")
 
+                    # 用LangChain conversation
                     raw_response = st.session_state.conversation.run(prompt)
                     if st.session_state.debug_mode:
                         st.write("Model raw response:", raw_response)
                     debug_log(f"[DEBUG] Model raw response => {raw_response}")
 
-                    # 嘗試擷取 JSON 區塊
+                    # 嘗試解析 JSON
                     json_str = extract_json_block(raw_response)
                     try:
                         response_json = json.loads(json_str)
@@ -343,7 +430,7 @@ Available columns: {csv_columns}.
                             st.code(code, language="python")
                         st.session_state.ace_code = code
 
-                    # --- 若勾選深度分析模式 & 有程式碼 -> 執行程式、二次解析圖表 ---
+                    # 若深度分析 => 執行並再送 GPT-4o 做二階/三階回覆
                     if st.session_state.deep_analysis_mode and code:
                         st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
 
@@ -362,6 +449,7 @@ Available columns: {csv_columns}.
                         chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
                         st.session_state.deep_analysis_image = chart_base64
 
+                        # 第二階段
                         deep_model = ChatOpenAI(
                             model="gpt-4o",
                             temperature=0.5,
@@ -381,6 +469,7 @@ Available columns: {csv_columns}.
                             st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
                             st.write(second_raw_response)
 
+                            # 第三階段
                             final_model = ChatOpenAI(
                                 model="gpt-4o",
                                 temperature=0.5,
@@ -409,10 +498,12 @@ Available columns: {csv_columns}.
                     st.error(f"An error occurred: {e}")
                 debug_log(f"[DEBUG] An error occurred: {e}")
 
+    # --- Debug logs ---
     debug_log(f"DEBUG: editor_location = {st.session_state.editor_location}")
     debug_log(f"DEBUG: final st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
     debug_log(f"DEBUG: final st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
+    # --- 顯示 Code Editor ---
     if st.session_state.editor_location == "Main":
         with st.expander("🖋️ Persistent Code Editor (Main)", expanded=False):
             edited_code = st_ace(
@@ -436,7 +527,6 @@ Available columns: {csv_columns}.
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
-
     else:
         with st.sidebar.expander("🖋️ Persistent Code Editor (Sidebar)", expanded=False):
             edited_code = st_ace(
@@ -461,5 +551,6 @@ Available columns: {csv_columns}.
                 st.write("### Execution Result")
                 st.text(result)
 
+# --- 程式入口 ---
 if __name__ == "__main__":
     main()
