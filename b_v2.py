@@ -216,6 +216,7 @@ def main():
         with st.chat_message("user"):
             st.write(user_input)
 
+        # 改為在外層就顯示 spinner => "Thinking..."
         with st.spinner("Thinking..."):
             try:
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
@@ -225,8 +226,9 @@ def main():
                 # 1) 如果只有「圖片」沒有「CSV」，則改用 openai 的 stream API 來回應
                 # ================
                 if (st.session_state.uploaded_image_path is not None) and (st.session_state.uploaded_file_path is None):
+                    debug_log("DEBUG: Detected 'only image' scenario => using openai ChatCompletion streaming...")
+
                     # 為了讓模型知道使用者的圖片內容，我們把 base64 (或文字描述) 也一併附加到最後一筆 user message
-                    # （此處為了保證對話上下文，我們就把 base64 直接接到 user_input 後）
                     last_msg_index = len(st.session_state.messages) - 1
                     if last_msg_index >= 0:
                         new_content = (
@@ -235,33 +237,42 @@ def main():
                         )
                         st.session_state.messages[last_msg_index]["content"] = new_content
 
-                    # 接著用 openai 原生 API 做 streaming
-                    # 先準備 openai 需要的 messages 結構
-                    # LangChain 的對話記憶 messages 其實已經是 [{"role": "...", "content": "..."}] 相容結構，可直接用
-                    openai_messages = st.session_state.messages
+                    # 轉換為 openai messages 結構
+                    openai_messages = [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in st.session_state.messages
+                    ]
 
-                    # 準備呼叫參數
-                    model_params = {
-                        "model": selected_model if selected_model else "gpt-4o",
-                        "temperature": 0.3
-                    }
+                    if st.session_state.debug_mode:
+                        debug_log(f"DEBUG: openai_messages => {openai_messages}")
 
                     # 呼叫 streaming
                     response_text = ""
                     with st.chat_message("assistant"):
                         stream_placeholder = st.empty()
-                        for chunk in openai.ChatCompletion.create(
-                            model=model_params.get("model", "gpt-4o"),
-                            messages=openai_messages,
-                            temperature=model_params.get("temperature", 0.3),
-                            max_tokens=4096
-                        ):
-                            chunk_delta = chunk["choices"][0].get("delta", {})
-                            chunk_text = chunk_delta.get("content", "")
-                            if chunk_text:
-                                response_text += chunk_text
-                                # 即時更新畫面
-                                stream_placeholder.markdown(response_text)
+                        try:
+                            for chunk in openai.ChatCompletion.create(
+                                model=selected_model if selected_model else "gpt-4o",
+                                messages=openai_messages,
+                                temperature=0.3,
+                                max_tokens=4096,
+                                stream=True
+                            ):
+                                # 逐塊擷取文字
+                                chunk_delta = chunk["choices"][0].get("delta", {})
+                                chunk_text = chunk_delta.get("content", "")
+                                if chunk_text:
+                                    response_text += chunk_text
+                                    # 即時更新畫面
+                                    stream_placeholder.markdown(response_text)
+                        except Exception as e:
+                            # 若串流錯誤，可在 Debug Mode 印出
+                            if st.session_state.debug_mode:
+                                st.error(f"Error in streaming: {e}")
+                            debug_log(f"DEBUG: Streaming error => {e}")
+
+                    if st.session_state.debug_mode:
+                        debug_log(f"DEBUG: streaming final response => {response_text}")
 
                     # 將模型最終回應寫入對話記憶
                     st.session_state.messages.append({"role": "assistant", "content": response_text})
@@ -271,7 +282,7 @@ def main():
                     # 2) 否則（有 CSV 或者沒有任何檔案），維持舊有 JSON+LangChain 方式
                     # ================
                     if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                        # [情境] 有上傳圖片 + 不符合「只有圖片沒 csv」條件(代表也上傳了csv?)，維持舊邏輯
+                        # [情境] 有上傳圖片 + 不符合「只有圖片沒 csv」條件(代表也上傳了csv?)
                         prompt = f"User input: {user_input}\nHere is the image data in base64:\n{st.session_state.image_base64}..."
                     else:
                         # [情境] 沒有圖片 or 有CSV
