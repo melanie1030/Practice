@@ -12,7 +12,7 @@ import random
 dotenv.load_dotenv()
 
 # 定義全域變數
-OPENAI_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
+OPENAI_MODELS = ["gpt-4o"]
 
 # --- 輔助函數 ---
 
