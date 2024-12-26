@@ -7,7 +7,6 @@ import re
 import os
 import dotenv
 import base64
-import io
 
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
@@ -21,12 +20,27 @@ UPLOAD_DIR = "uploaded_files"
 
 # 可自由新增/刪除你想要的模型名稱
 OPENAI_MODELS = [
-    "gpt-4o",               # 假設可以解析圖片的實驗模型
+    "gpt-4o",
     "gpt-4-turbo",
     "gpt-3.5-turbo-16k",
     "gpt-4",
     "gpt-4-32k"
 ]
+
+
+def debug_log(msg):
+    """只有在 debug_mode == True 時才顯示 debug 訊息."""
+    if st.session_state.get("debug_mode", False):
+        st.write(msg)
+        print(msg)
+
+
+def debug_error(msg):
+    """只有在 debug_mode == True 時才顯示 error 訊息."""
+    if st.session_state.get("debug_mode", False):
+        st.error(msg)
+        print(msg)
+
 
 def initialize_client(api_key, model_name):
     """Initialize OpenAI client with the provided API key and model."""
@@ -44,15 +58,13 @@ def save_uploaded_file(uploaded_file):
     file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
 
     # Debug: 顯示即將寫入的路徑
-    st.write(f"DEBUG: saving file to {file_path}")
-    print(f"[DEBUG] Saving file to: {file_path}")
+    debug_log(f"DEBUG: saving file to {file_path}")
 
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
     # Debug: 列出該目錄下的檔案
-    st.write(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
-    print(f"[DEBUG] Files in {UPLOAD_DIR}:", os.listdir(UPLOAD_DIR))
+    debug_log(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
 
     return file_path
 
@@ -62,16 +74,22 @@ def execute_code(code, global_vars=None):
     try:
         exec_globals = global_vars if global_vars else {}
         # Debug: 顯示要執行的程式碼
-        st.write("DEBUG: Ready to exec the following code:")
-        st.code(code, language="python")
+        debug_log("DEBUG: Ready to exec the following code:")
+        if st.session_state.get("debug_mode", False):
+            st.code(code, language="python")
 
-        print("[DEBUG] Exec code with global_vars:", list(exec_globals.keys()))
+        debug_log("[DEBUG] Exec code with global_vars: " + str(list(exec_globals.keys())))
         exec(code, exec_globals)
         return "Code executed successfully. Output: " + str(exec_globals.get("output", "(No output returned)"))
     except Exception as e:
         error_msg = f"Error executing code:\n{traceback.format_exc()}"
-        print("[DEBUG] Execution error:", error_msg)
-        return error_msg
+        debug_log("[DEBUG] Execution error: " + error_msg)
+        # 只有 debug_mode 時才顯示完整錯誤
+        if st.session_state.get("debug_mode", False):
+            return error_msg
+        else:
+            # 若 debug_mode == False，就不顯示詳細錯誤
+            return "Error executing code (hidden in non-debug mode)."
 
 
 def extract_json_block(response: str) -> str:
@@ -108,23 +126,15 @@ def main():
     if "image_base64" not in st.session_state:
         st.session_state.image_base64 = None
 
-    # 深度分析模式用到的變數（新增）
-    if "deep_analysis_mode" not in st.session_state:
-        st.session_state.deep_analysis_mode = False
-    # 下面這些用來存多次對話的結果
-    if "second_response" not in st.session_state:
-        st.session_state.second_response = ""
-    if "third_response" not in st.session_state:
-        st.session_state.third_response = ""
-    if "deep_analysis_image" not in st.session_state:
-        st.session_state.deep_analysis_image = None  # 圖表的 base64
-
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
 
         # 新增：選擇要使用的模型
         selected_model = st.selectbox("選擇模型:", OPENAI_MODELS, index=0)
+
+        # 新增：Debug Mode
+        st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
 
         # 初始化 LangChain 與記憶
         if "conversation" not in st.session_state:
@@ -147,10 +157,6 @@ def main():
             st.session_state.uploaded_file_path = None
             st.session_state.uploaded_image_path = None
             st.session_state.image_base64 = None
-            st.session_state.deep_analysis_mode = False
-            st.session_state.second_response = ""
-            st.session_state.third_response = ""
-            st.session_state.deep_analysis_image = None
             st.success("Memory cleared!")
 
         # 顯示記憶狀態
@@ -167,9 +173,7 @@ def main():
         if uploaded_file:
             # 保存檔案並記錄路徑
             st.session_state.uploaded_file_path = save_uploaded_file(uploaded_file)
-            # Debug: 確認是否拿到路徑
-            st.write("DEBUG: st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-            print("[DEBUG] st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
+            debug_log(f"DEBUG: st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
 
             # 讀取檔案到 DataFrame
             try:
@@ -177,8 +181,10 @@ def main():
                 st.write("### Data Preview")
                 st.dataframe(csv_data)
             except Exception as e:
-                st.error(f"Error reading CSV: {e}")
-                print("[DEBUG] Error reading CSV:", e)
+                # 只有 debug_mode==True 才顯示詳細錯誤
+                if st.session_state.debug_mode:
+                    st.error(f"Error reading CSV: {e}")
+                debug_log(f"[DEBUG] Error reading CSV: {e}")
 
         # ===================== 圖片上傳功能 =====================
         st.subheader("🖼️ Upload an Image")
@@ -186,8 +192,7 @@ def main():
         if uploaded_image:
             # 保存圖片並記錄路徑
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
-            st.write("DEBUG: st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
-            print("[DEBUG] st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
+            debug_log(f"DEBUG: st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
             # 顯示圖片預覽
             st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
@@ -197,14 +202,11 @@ def main():
                 with open(st.session_state.uploaded_image_path, "rb") as f:
                     img_bytes = f.read()
                 st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                st.write("DEBUG: Image has been converted to base64.")
+                debug_log("DEBUG: Image has been converted to base64.")
             except Exception as e:
-                st.error(f"Error converting image to base64: {e}")
-                print("[DEBUG] Error converting image to base64:", e)
-
-        # ===================== 新增：深度分析模式 =====================
-        st.subheader("深度分析模式")
-        st.session_state.deep_analysis_mode = st.checkbox("啟用深度分析模式", value=False)
+                if st.session_state.debug_mode:
+                    st.error(f"Error converting image to base64: {e}")
+                debug_log(f"[DEBUG] Error converting image to base64: {e}")
 
         # 編輯器顯示位置
         st.subheader("Editor Location")
@@ -233,11 +235,8 @@ def main():
         # 產生回覆
         with st.spinner("Thinking..."):
             try:
-                # Debug: 檢查已上傳檔案路徑
-                st.write("DEBUG: Currently st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-                st.write("DEBUG: Currently st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
-                print("[DEBUG] Currently st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-                print("[DEBUG] Currently st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
+                debug_log(f"DEBUG: Currently st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
+                debug_log(f"DEBUG: Currently st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
                 # 準備 CSV 欄位資訊（若有上傳）
                 if st.session_state.uploaded_file_path is not None:
@@ -246,12 +245,12 @@ def main():
                         csv_columns = ", ".join(df_temp.columns)
                     except Exception as e:
                         csv_columns = "無法讀取欄位"
-                        st.error(f"Error reading columns: {e}")
-                        print("[DEBUG] Error reading columns:", e)
+                        if st.session_state.debug_mode:
+                            st.error(f"Error reading columns: {e}")
+                        debug_log(f"[DEBUG] Error reading columns: {e}")
                 else:
                     csv_columns = "無上傳檔案"
 
-                # 原本的 Prompt
                 prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "這是我的觀察：{{{{分析內容}}}}",
@@ -266,29 +265,29 @@ Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
 
-                # 若已上傳圖片，可將 base64 字串一併傳入 GPT（選擇性）
                 if st.session_state.image_base64:
                     prompt += "\nHere is the image data in base64 format:\n"
                     prompt += st.session_state.image_base64[:300] + "..."
 
-                # 如果沒有上傳檔案，就改成全繁體
                 if csv_columns == "無上傳檔案":
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
-                st.write("DEBUG: Prompt used =>", prompt)
-                print("[DEBUG] Prompt used =>", prompt)
+                debug_log(f"DEBUG: Prompt used => {prompt}")
 
                 raw_response = st.session_state.conversation.run(prompt)
-                st.write("Model raw response:", raw_response)
-                print("[DEBUG] Model raw response =>", raw_response)
+                if st.session_state.debug_mode:
+                    st.write("Model raw response:", raw_response)
+                debug_log(f"[DEBUG] Model raw response => {raw_response}")
 
                 # 擷取三反引號中的 JSON 區塊
                 json_str = extract_json_block(raw_response)
                 try:
                     response_json = json.loads(json_str)
                 except Exception as e:
-                    st.error(f"json.loads parsing error: {e}")
-                    print("[DEBUG] json.loads parsing error:", e)
+                    # 若 debug_mode=False，就不顯示這個 error
+                    debug_log(f"json.loads parsing error: {e}")
+                    # 若要在 debug 模式下顯示此錯誤：
+                    debug_error(f"json.loads parsing error: {e}")
                     response_json = {"content": json_str, "code": ""}
 
                 # 顯示回覆的文字內容
@@ -305,91 +304,16 @@ Available columns: {csv_columns}.
                         st.code(code, language="python")
                     st.session_state.ace_code = code
 
-                # =============== 若勾選「深度分析模式」就自動再走後續流程 ===============
-                if st.session_state.deep_analysis_mode and code:
-                    st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
-                    # 1) 自動執行程式碼 → 產生圖表
-                    global_vars = {
-                        "uploaded_file_path": st.session_state.uploaded_file_path,
-                        "uploaded_image_path": st.session_state.uploaded_image_path,
-                    }
-                    exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
-                    st.write("#### Execution Result")
-                    st.text(exec_result)
-
-                    # 2) 取得程式碼執行後的圖表
-                    # 這裡簡單做法：用 plt.gcf() 拿當前 figure，再轉 base64
-                    fig = plt.gcf()
-                    buf = io.BytesIO()
-                    fig.savefig(buf, format="png")
-                    buf.seek(0)
-                    chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
-                    st.session_state.deep_analysis_image = chart_base64
-
-                    # 3) 呼叫 4o 模型（或任何你想要的模型）來解析該圖表
-                    #    這裡直接 new 一個 ChatOpenAI，指定 model="gpt-4o" (若你要)
-                    #    或可根據 st.session_state.selected_model 動態選擇
-                    deep_model = ChatOpenAI(
-                        model="gpt-4o", 
-                        temperature=0.5, 
-                        openai_api_key=api_key
-                    ) if api_key else None
-
-                    if deep_model:
-                        # 第二次對話
-                        prompt_2 = f"""
-這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
-{chart_base64[:300]}...
-
-請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
-"""
-                        st.write("DEBUG: Deep Analysis Prompt => ", prompt_2)
-                        second_raw_response = deep_model.call_as_llm(prompt_2)
-                        st.session_state.second_response = second_raw_response
-                        # 顯示第二次回覆
-                        st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
-                        st.write(second_raw_response)
-
-                        # 4) 第三次對話：將「第一次回覆 + 第二次回覆」整合給 GPT 整理文字
-                        final_model = ChatOpenAI(
-                            model="gpt-4o",
-                            temperature=0.5,
-                            openai_api_key=api_key
-                        ) if api_key else None
-                        if final_model:
-                            prompt_3 = f"""
-第一階段回覆內容：{content}
-第二階段圖表解析內容：{second_raw_response}
-
-請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
-"""
-                            st.write("DEBUG: Final Summary Prompt => ", prompt_3)
-                            third_raw_response = final_model.call_as_llm(prompt_3)
-                            st.session_state.third_response = third_raw_response
-
-                            st.write("#### [深度分析] 結論 (第三次回覆) :")
-                            st.write(third_raw_response)
-
-                            # 最終顯示：回覆 + 圖片
-                            st.write("#### [深度分析] 圖片：")
-                            # 把圖表 base64 再轉成可顯示的
-                            img_data = base64.b64decode(st.session_state.deep_analysis_image)
-                            st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
-
             except Exception as e:
-                st.error(f"An error occurred: {e}")
-                print("[DEBUG] An error occurred:", e)
+                # 只有 debug_mode==True 時顯示詳細錯誤
+                if st.session_state.debug_mode:
+                    st.error(f"An error occurred: {e}")
+                debug_log(f"[DEBUG] An error occurred: {e}")
 
     # ===================== 根據 editor_location 決定編輯器要放在哪裡 =====================
-    # Debug: 顯示目前 editor_location
-    st.write("DEBUG: editor_location =", st.session_state.editor_location)
-    print("[DEBUG] editor_location =", st.session_state.editor_location)
-
-    # Debug: 顯示目前 uploaded_file_path
-    st.write("DEBUG: final st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-    st.write("DEBUG: final st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
-    print("[DEBUG] final st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-    print("[DEBUG] final st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
+    debug_log(f"DEBUG: editor_location = {st.session_state.editor_location}")
+    debug_log(f"DEBUG: final st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
+    debug_log(f"DEBUG: final st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
     if st.session_state.editor_location == "Main":
         # 放在主區底部，用 expander 收合
@@ -405,15 +329,12 @@ Available columns: {csv_columns}.
                 st.session_state.ace_code = edited_code
 
             if st.button("▶️ Execute Code", key="execute_code_main"):
-                # 在全局變數中注入檔案路徑
                 global_vars = {
                     "uploaded_file_path": st.session_state.uploaded_file_path,
                     "uploaded_image_path": st.session_state.uploaded_image_path,
                 }
-                st.write("DEBUG: executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
-                st.write("DEBUG: executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
-                print("[DEBUG] executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
-                print("[DEBUG] executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
+                debug_log(f"DEBUG: executing code with uploaded_file_path = {st.session_state.uploaded_file_path}")
+                debug_log(f"DEBUG: executing code with uploaded_image_path = {st.session_state.uploaded_image_path}")
 
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
@@ -437,10 +358,8 @@ Available columns: {csv_columns}.
                     "uploaded_file_path": st.session_state.uploaded_file_path,
                     "uploaded_image_path": st.session_state.uploaded_image_path,
                 }
-                st.write("DEBUG: executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
-                st.write("DEBUG: executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
-                print("[DEBUG] executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
-                print("[DEBUG] executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
+                debug_log(f"DEBUG: executing code with uploaded_file_path = {st.session_state.uploaded_file_path}")
+                debug_log(f"DEBUG: executing code with uploaded_image_path = {st.session_state.uploaded_image_path}")
 
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
