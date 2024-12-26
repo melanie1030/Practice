@@ -18,10 +18,23 @@ dotenv.load_dotenv()
 
 UPLOAD_DIR = "uploaded_files"
 
+# 可自由新增/刪除你想要的模型名稱
+OPENAI_MODELS = [
+    "gpt-4o",
+    "gpt-4-turbo",
+    "gpt-3.5-turbo-16k",
+    "gpt-4",
+    "gpt-4-32k"
+]
 
-def initialize_client(api_key):
-    """Initialize OpenAI client with the provided API key."""
-    return ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key) if api_key else None
+def initialize_client(api_key, model_name):
+    """Initialize OpenAI client with the provided API key and model."""
+    # 用 ChatOpenAI 建立模型物件
+    return ChatOpenAI(
+        model=model_name,
+        temperature=0.5,
+        openai_api_key=api_key
+    ) if api_key else None
 
 
 def save_uploaded_file(uploaded_file):
@@ -99,10 +112,14 @@ def main():
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
 
+        # 新增：選擇要使用的模型
+        selected_model = st.selectbox("選擇模型:", OPENAI_MODELS, index=0)
+
         # 初始化 LangChain 與記憶
         if "conversation" not in st.session_state:
             if api_key:
-                st.session_state.chat_model = initialize_client(api_key)
+                # 這裡將使用者選擇的模型名稱傳入 initialize_client
+                st.session_state.chat_model = initialize_client(api_key, selected_model)
                 st.session_state.memory = ConversationBufferMemory()
                 st.session_state.conversation = ConversationChain(
                     llm=st.session_state.chat_model,
@@ -149,7 +166,7 @@ def main():
                 st.error(f"Error reading CSV: {e}")
                 print("[DEBUG] Error reading CSV:", e)
 
-        # ===================== 圖片上傳 (新增功能) =====================
+        # ===================== 圖片上傳功能 =====================
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
@@ -216,10 +233,7 @@ def main():
                 else:
                     csv_columns = "無上傳檔案"
 
-                # ============= 這裡是修改後的 Prompt 產生區塊 (保持 JSON 格式) =============
-                # 1) 提示 API 使用 st.session_state.uploaded_file_path 讀取 CSV
-                # 2) 請 API 產生使用 st.pyplot() 顯示圖表的程式碼
-                # 3) 用原先的 "content" 與 "code" 回傳
+                # 原本的 Prompt (示範)
                 prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "這是我的觀察：{{{{分析內容}}}}",
@@ -239,7 +253,7 @@ Available columns: {csv_columns}.
                     prompt += "\nHere is the image data in base64 format:\n"
                     prompt += st.session_state.image_base64[:300] + "..."  # 只示範前 300 字符，以免太長
 
-                # 如果沒有上傳檔案，就改成全繁體 (只是示範原邏輯保持不變)
+                # 如果沒有上傳檔案，就改成全繁體
                 if csv_columns == "無上傳檔案":
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
