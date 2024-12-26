@@ -7,6 +7,7 @@ import re
 import os
 import dotenv
 import base64
+import io
 
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
@@ -20,7 +21,7 @@ UPLOAD_DIR = "uploaded_files"
 
 # 可自由新增/刪除你想要的模型名稱
 OPENAI_MODELS = [
-    "gpt-4o",
+    "gpt-4o",               # 假設可以解析圖片的實驗模型
     "gpt-4-turbo",
     "gpt-3.5-turbo-16k",
     "gpt-4",
@@ -29,7 +30,6 @@ OPENAI_MODELS = [
 
 def initialize_client(api_key, model_name):
     """Initialize OpenAI client with the provided API key and model."""
-    # 用 ChatOpenAI 建立模型物件
     return ChatOpenAI(
         model=model_name,
         temperature=0.5,
@@ -108,6 +108,17 @@ def main():
     if "image_base64" not in st.session_state:
         st.session_state.image_base64 = None
 
+    # 深度分析模式用到的變數（新增）
+    if "deep_analysis_mode" not in st.session_state:
+        st.session_state.deep_analysis_mode = False
+    # 下面這些用來存多次對話的結果
+    if "second_response" not in st.session_state:
+        st.session_state.second_response = ""
+    if "third_response" not in st.session_state:
+        st.session_state.third_response = ""
+    if "deep_analysis_image" not in st.session_state:
+        st.session_state.deep_analysis_image = None  # 圖表的 base64
+
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
@@ -118,7 +129,6 @@ def main():
         # 初始化 LangChain 與記憶
         if "conversation" not in st.session_state:
             if api_key:
-                # 這裡將使用者選擇的模型名稱傳入 initialize_client
                 st.session_state.chat_model = initialize_client(api_key, selected_model)
                 st.session_state.memory = ConversationBufferMemory()
                 st.session_state.conversation = ConversationChain(
@@ -137,6 +147,10 @@ def main():
             st.session_state.uploaded_file_path = None
             st.session_state.uploaded_image_path = None
             st.session_state.image_base64 = None
+            st.session_state.deep_analysis_mode = False
+            st.session_state.second_response = ""
+            st.session_state.third_response = ""
+            st.session_state.deep_analysis_image = None
             st.success("Memory cleared!")
 
         # 顯示記憶狀態
@@ -188,6 +202,10 @@ def main():
                 st.error(f"Error converting image to base64: {e}")
                 print("[DEBUG] Error converting image to base64:", e)
 
+        # ===================== 新增：深度分析模式 =====================
+        st.subheader("深度分析模式")
+        st.session_state.deep_analysis_mode = st.checkbox("啟用深度分析模式", value=False)
+
         # 編輯器顯示位置
         st.subheader("Editor Location")
         location = st.radio(
@@ -233,7 +251,7 @@ def main():
                 else:
                     csv_columns = "無上傳檔案"
 
-                # 原本的 Prompt (示範)
+                # 原本的 Prompt
                 prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "這是我的觀察：{{{{分析內容}}}}",
@@ -251,7 +269,7 @@ Available columns: {csv_columns}.
                 # 若已上傳圖片，可將 base64 字串一併傳入 GPT（選擇性）
                 if st.session_state.image_base64:
                     prompt += "\nHere is the image data in base64 format:\n"
-                    prompt += st.session_state.image_base64[:300] + "..."  # 只示範前 300 字符，以免太長
+                    prompt += st.session_state.image_base64[:300] + "..."
 
                 # 如果沒有上傳檔案，就改成全繁體
                 if csv_columns == "無上傳檔案":
@@ -286,6 +304,77 @@ Available columns: {csv_columns}.
                     with st.chat_message("assistant"):
                         st.code(code, language="python")
                     st.session_state.ace_code = code
+
+                # =============== 若勾選「深度分析模式」就自動再走後續流程 ===============
+                if st.session_state.deep_analysis_mode and code:
+                    st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
+                    # 1) 自動執行程式碼 → 產生圖表
+                    global_vars = {
+                        "uploaded_file_path": st.session_state.uploaded_file_path,
+                        "uploaded_image_path": st.session_state.uploaded_image_path,
+                    }
+                    exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
+                    st.write("#### Execution Result")
+                    st.text(exec_result)
+
+                    # 2) 取得程式碼執行後的圖表
+                    # 這裡簡單做法：用 plt.gcf() 拿當前 figure，再轉 base64
+                    fig = plt.gcf()
+                    buf = io.BytesIO()
+                    fig.savefig(buf, format="png")
+                    buf.seek(0)
+                    chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
+                    st.session_state.deep_analysis_image = chart_base64
+
+                    # 3) 呼叫 4o 模型（或任何你想要的模型）來解析該圖表
+                    #    這裡直接 new 一個 ChatOpenAI，指定 model="gpt-4o" (若你要)
+                    #    或可根據 st.session_state.selected_model 動態選擇
+                    deep_model = ChatOpenAI(
+                        model="gpt-4o", 
+                        temperature=0.5, 
+                        openai_api_key=api_key
+                    ) if api_key else None
+
+                    if deep_model:
+                        # 第二次對話
+                        prompt_2 = f"""
+這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
+{chart_base64[:300]}...
+
+請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
+"""
+                        st.write("DEBUG: Deep Analysis Prompt => ", prompt_2)
+                        second_raw_response = deep_model.call_as_llm(prompt_2)
+                        st.session_state.second_response = second_raw_response
+                        # 顯示第二次回覆
+                        st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
+                        st.write(second_raw_response)
+
+                        # 4) 第三次對話：將「第一次回覆 + 第二次回覆」整合給 GPT 整理文字
+                        final_model = ChatOpenAI(
+                            model="gpt-4o",
+                            temperature=0.5,
+                            openai_api_key=api_key
+                        ) if api_key else None
+                        if final_model:
+                            prompt_3 = f"""
+第一階段回覆內容：{content}
+第二階段圖表解析內容：{second_raw_response}
+
+請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
+"""
+                            st.write("DEBUG: Final Summary Prompt => ", prompt_3)
+                            third_raw_response = final_model.call_as_llm(prompt_3)
+                            st.session_state.third_response = third_raw_response
+
+                            st.write("#### [深度分析] 結論 (第三次回覆) :")
+                            st.write(third_raw_response)
+
+                            # 最終顯示：回覆 + 圖片
+                            st.write("#### [深度分析] 圖片：")
+                            # 把圖表 base64 再轉成可顯示的
+                            img_data = base64.b64decode(st.session_state.deep_analysis_image)
+                            st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
