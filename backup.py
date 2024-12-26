@@ -1,340 +1,186 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import json
-import traceback
-import re
-import os
+from openai import OpenAI
 import dotenv
-import base64
-
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
-from langchain.chat_models import ChatOpenAI
-from streamlit_ace import st_ace
+import os
+from io import BytesIO
+import json
+from PIL import Image
+from datetime import datetime
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
 
-UPLOAD_DIR = "uploaded_files"
+# Define global variables
+OPENAI_MODELS = ["gpt-4-turbo", "gpt-3.5-turbo"]
 
 
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
-    return ChatOpenAI(model="gpt-4-turbo", temperature=0.5, openai_api_key=api_key) if api_key else None
+    return OpenAI(api_key=api_key) if api_key else None
 
 
-def save_uploaded_file(uploaded_file):
-    """保存上傳的檔案到指定目錄，並返回檔案路徑"""
-    if not os.path.exists(UPLOAD_DIR):
-        os.makedirs(UPLOAD_DIR)
-    file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
-
-    # Debug: 顯示即將寫入的路徑
-    st.write(f"DEBUG: saving file to {file_path}")
-    print(f"[DEBUG] Saving file to: {file_path}")
-
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    # Debug: 列出該目錄下的檔案
-    st.write(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
-    print(f"[DEBUG] Files in {UPLOAD_DIR}:", os.listdir(UPLOAD_DIR))
-
-    return file_path
-
-
-def execute_code(code, global_vars=None):
-    """Execute the given Python code and capture output."""
+def generate_image_from_gpt_response(response, csv_data):
+    """Generate a chart based on GPT's response."""
     try:
-        exec_globals = global_vars if global_vars else {}
-        # Debug: 顯示要執行的程式碼
-        st.write("DEBUG: Ready to exec the following code:")
-        st.code(code, language="python")
+        chart_type = response.get("chart_type", "line")  # Default to line chart
+        x_column = response.get("x_column", csv_data.columns[0])
+        y_column = response.get("y_column", csv_data.columns[1])
 
-        print("[DEBUG] Exec code with global_vars:", list(exec_globals.keys()))
-        exec(code, exec_globals)
-        return "Code executed successfully. Output: " + str(exec_globals.get("output", "(No output returned)"))
+        plt.figure(figsize=(10, 6))
+
+        if chart_type == "line":
+            plt.plot(csv_data[x_column], csv_data[y_column], marker='o')
+        elif chart_type == "bar":
+            plt.bar(csv_data[x_column], csv_data[y_column], color='skyblue')
+        elif chart_type == "scatter":
+            plt.scatter(csv_data[x_column], csv_data[y_column], alpha=0.7, edgecolors='b')
+
+        plt.title(f"{y_column} vs {x_column} ({chart_type.capitalize()} Chart)", fontsize=16)
+        plt.xlabel(x_column, fontsize=14)
+        plt.ylabel(y_column, fontsize=14)
+        plt.grid(True)
+
+        # Save chart to buffer
+        buf = BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+        return buf
     except Exception as e:
-        error_msg = f"Error executing code:\n{traceback.format_exc()}"
-        print("[DEBUG] Execution error:", error_msg)
-        return error_msg
+        st.error(f"Failed to generate the chart: {e}")
+        return None
 
 
-def extract_json_block(response: str) -> str:
-    """
-    從模型回傳的字串中，找出 JSON 物件部分
-    （例如模型用三反引號 ```json ... ``` 包起來）
-    """
-    pattern = r'```(?:json)?(.*)```'
-    match = re.search(pattern, response, re.DOTALL)
-    if match:
-        # 只取三反引號之間的內容
-        json_str = match.group(1).strip()
-        return json_str
-    else:
-        # 如果沒找到，就回傳原字串
-        return response.strip()
+def save_chat_to_json(messages):
+    """Save chat history as a JSON file."""
+    try:
+        chat_json = json.dumps(messages, ensure_ascii=False, indent=4)
+        json_bytes = BytesIO(chat_json.encode("utf-8"))
+        json_bytes.seek(0)
+        file_name = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        st.download_button(
+            label="Download Chat History",
+            data=json_bytes,
+            file_name=file_name,
+            mime="application/json",
+        )
+    except Exception as e:
+        st.error(f"Failed to save chat history: {e}")
 
 
 def main():
-    st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
-    st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas (With Debug Logs)")
+    # --- Page Configuration ---
+    st.set_page_config(page_title="Chatbot with Data & Images", page_icon="🤖", layout="centered")
+    st.title("🤖 Chatbot + 📊 Data Analysis + 🖼️ Image Upload")
 
-    # 如果尚未在 session_state 建立變數，先初始化
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "ace_code" not in st.session_state:
-        st.session_state.ace_code = ""
-    if "editor_location" not in st.session_state:
-        st.session_state.editor_location = "Main"  # 預設編輯器顯示在主區
-    if "uploaded_file_path" not in st.session_state:
-        st.session_state.uploaded_file_path = None
-    # 新增：存放圖片的路徑與 base64 編碼
-    if "uploaded_image_path" not in st.session_state:
-        st.session_state.uploaded_image_path = None
-    if "image_base64" not in st.session_state:
-        st.session_state.image_base64 = None
-
+    # --- Sidebar Setup ---
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
-        api_key = st.text_input("OpenAI API Key", type="password")
+        default_api_key = os.getenv("OPENAI_API_KEY", "")
+        api_key = st.text_input("OpenAI API Key", value=default_api_key, type="password")
 
-        # 初始化 LangChain 與記憶
-        if "conversation" not in st.session_state:
-            if api_key:
-                st.session_state.chat_model = initialize_client(api_key)
-                st.session_state.memory = ConversationBufferMemory()
-                st.session_state.conversation = ConversationChain(
-                    llm=st.session_state.chat_model,
-                    memory=st.session_state.memory
-                )
-            else:
-                st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
-                return
+        client = initialize_client(api_key)
+        if not api_key or not client:
+            st.warning("⬅️ Please enter the API key to continue...")
+            return
 
-        # 清除記憶
-        if st.button("🗑️ Clear Memory"):
-            st.session_state.memory.clear()
-            st.session_state.messages = []
-            st.session_state.ace_code = ""
-            st.session_state.uploaded_file_path = None
-            st.session_state.uploaded_image_path = None
-            st.session_state.image_base64 = None
-            st.success("Memory cleared!")
-
-        # 顯示記憶狀態
-        st.subheader("🧠 Memory State")
-        if "memory" in st.session_state:
-            memory_content = st.session_state.memory.load_memory_variables({})
-            st.text_area("Current Memory", value=str(memory_content), height=200)
-
-        # ===================== CSV 上傳 =====================
+        # Upload CSV
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
-
         if uploaded_file:
-            # 保存檔案並記錄路徑
-            st.session_state.uploaded_file_path = save_uploaded_file(uploaded_file)
-            # Debug: 確認是否拿到路徑
-            st.write("DEBUG: st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-            print("[DEBUG] st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
+            csv_data = pd.read_csv(uploaded_file)
+            st.write("### Data Preview")
+            st.dataframe(csv_data)
 
-            # 讀取檔案到 DataFrame
-            try:
-                csv_data = pd.read_csv(st.session_state.uploaded_file_path)
-                st.write("### Data Preview")
-                st.dataframe(csv_data)
-            except Exception as e:
-                st.error(f"Error reading CSV: {e}")
-                print("[DEBUG] Error reading CSV:", e)
-
-        # ===================== 圖片上傳 (新增功能) =====================
+        # Upload Image
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
-            # 保存圖片並記錄路徑
-            st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
-            st.write("DEBUG: st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
-            print("[DEBUG] st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
+            image = Image.open(uploaded_image)
+            st.image(image, caption="Uploaded Image", use_column_width=True)
 
-            # 顯示圖片預覽
-            st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
+        # Download Chat History
+        st.subheader("💾 Export Chat History")
+        if st.button("Save Chat History"):
+            save_chat_to_json(st.session_state.messages)
 
-            # 將圖片轉成 base64 編碼（若你想要在 prompt 中傳遞給 GPT）
-            try:
-                with open(st.session_state.uploaded_image_path, "rb") as f:
-                    img_bytes = f.read()
-                st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                st.write("DEBUG: Image has been converted to base64.")
-            except Exception as e:
-                st.error(f"Error converting image to base64: {e}")
-                print("[DEBUG] Error converting image to base64:", e)
+    # --- Chat Interface ---
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-        # 編輯器顯示位置
-        st.subheader("Editor Location")
-        location = st.radio(
-            "Choose where to display the editor:",
-            ["Main", "Sidebar"],
-            index=0 if st.session_state.editor_location == "Main" else 1
-        )
-        st.session_state.editor_location = location
-
-    # ===================== 主區：顯示對話、接收輸入、聊天功能 =====================
+    # Display conversation history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            if "content" in message:
-                st.write(message["content"])
-            if "code" in message:
-                st.code(message["code"], language="python")
+            st.write(message["content"])
 
+    # User input
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
-        # 記錄使用者訊息
+        # Add user message to session state
         st.session_state.messages.append({"role": "user", "content": user_input})
+        # Display the user message immediately
         with st.chat_message("user"):
             st.write(user_input)
 
-        # 產生回覆
+        # Call GPT
         with st.spinner("Thinking..."):
             try:
-                # Debug: 檢查已上傳檔案路徑
-                st.write("DEBUG: Currently st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-                st.write("DEBUG: Currently st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
-                print("[DEBUG] Currently st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-                print("[DEBUG] Currently st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
-
-                # 準備 CSV 欄位資訊（若有上傳）
-                if st.session_state.uploaded_file_path is not None:
-                    try:
-                        df_temp = pd.read_csv(st.session_state.uploaded_file_path)
-                        csv_columns = ", ".join(df_temp.columns)
-                    except Exception as e:
-                        csv_columns = "無法讀取欄位"
-                        st.error(f"Error reading columns: {e}")
-                        print("[DEBUG] Error reading columns:", e)
+                # Modify prompt based on CSV
+                if csv_data is not None:
+                    csv_columns = ", ".join(csv_data.columns)
+                    prompt = f"""
+                    Please respond only with a JSON object in the following format:
+                    {{
+                        "chart_type": "bar",  # Supported values: "bar", "line", "scatter"
+                        "x_column": "{csv_data.columns[0]}",  # Replace with the desired column name for X-axis
+                        "y_column": "{csv_data.columns[1]}",  # Replace with the desired column name for Y-axis
+                        "contentx": "Your advice or something else you wanna say to the user as an assistant"
+                    }}
+                    Based on this user request: {user_input}.
+                    Here are the available columns in the CSV: {csv_columns}.
+                    Do not include any additional text or explanation.
+                    """
                 else:
-                    csv_columns = "無上傳檔案"
+                    prompt = user_input
 
-                # 準備 prompt
-                prompt = f"""Please respond with a JSON object in the format:
-{{
-    "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{{{分析內容}}}}",
-    "code": "生成一些使用matplotlib來生成分析圖表的python code"
-}}
-Based on the request: {user_input}.
-Available columns: {csv_columns}.
-"""
+                response = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role": "user", "content": prompt}]
+                )
 
-                # 若已上傳圖片，可將 base64 字串一併傳入 GPT（選擇性）
-                if st.session_state.image_base64:
-                    prompt += "\nHere is the image data in base64 format:\n"
-                    prompt += st.session_state.image_base64[:300] + "..."  # 只示範前 300 字符，以免太長
+                # Extract GPT response
+                if hasattr(response, "choices") and len(response.choices) > 0:
+                    gpt_reply = response.choices[0].message.content
+                else:
+                    raise ValueError("Invalid GPT response structure.")
 
-                # 如果沒有上傳檔案，就改成全繁體
-                if csv_columns == "無上傳檔案":
-                    prompt = f"請全部以繁體中文回答此問題：{user_input}"
-
-                st.write("DEBUG: Prompt used =>", prompt)
-                print("[DEBUG] Prompt used =>", prompt)
-
-                raw_response = st.session_state.conversation.run(prompt)
-                st.write("Model raw response:", raw_response)
-                print("[DEBUG] Model raw response =>", raw_response)
-
-                # 擷取三反引號中的 JSON 區塊
-                json_str = extract_json_block(raw_response)
-                try:
-                    response_json = json.loads(json_str)
-                except Exception as e:
-                    st.error(f"json.loads parsing error: {e}")
-                    print("[DEBUG] json.loads parsing error:", e)
-                    response_json = {"content": json_str, "code": ""}
-
-                # 顯示回覆的文字內容
-                content = response_json.get("content", "這是我的分析：")
-                st.session_state.messages.append({"role": "assistant", "content": content})
+                # Add GPT response to chat
+                st.session_state.messages.append({"role": "assistant", "content": gpt_reply})
                 with st.chat_message("assistant"):
-                    st.write(content)
+                    st.write(gpt_reply)
 
-                # 如果有程式碼，則顯示並更新到 ace_code
-                code = response_json.get("code", "")
-                if code:
-                    st.session_state.messages.append({"role": "assistant", "code": code})
-                    with st.chat_message("assistant"):
-                        st.code(code, language="python")
-                    st.session_state.ace_code = code
+                # Generate chart if CSV is uploaded
+                if csv_data is not None:
+                    with st.spinner("Generating chart based on GPT response..."):
+                        try:
+                            parsed_response = json.loads(gpt_reply)  # Validate JSON format
+                            chart_buf = generate_image_from_gpt_response(parsed_response, csv_data)
+                            if chart_buf:
+                                st.image(chart_buf, caption="Generated Chart", use_column_width=True)
+                                st.download_button(
+                                    label="Download Chart",
+                                    data=chart_buf,
+                                    file_name="generated_chart.png",
+                                    mime="image/png"
+                                )
+                        except json.JSONDecodeError:
+                            st.error("Failed to parse GPT response for chart generation. Please check the response format.")
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
-                print("[DEBUG] An error occurred:", e)
-
-    # ===================== 根據 editor_location 決定編輯器要放在哪裡 =====================
-    # Debug: 顯示目前 editor_location
-    st.write("DEBUG: editor_location =", st.session_state.editor_location)
-    print("[DEBUG] editor_location =", st.session_state.editor_location)
-
-    # Debug: 顯示目前 uploaded_file_path
-    st.write("DEBUG: final st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-    st.write("DEBUG: final st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
-    print("[DEBUG] final st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
-    print("[DEBUG] final st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
-
-    if st.session_state.editor_location == "Main":
-        # 放在主區底部，用 expander 收合
-        with st.expander("🖋️ Persistent Code Editor (Main)", expanded=False):
-            edited_code = st_ace(
-                value=st.session_state.ace_code,
-                language="python",
-                theme="monokai",
-                height=300,
-                key="persistent_editor_main"
-            )
-            if edited_code != st.session_state.ace_code:
-                st.session_state.ace_code = edited_code
-
-            if st.button("▶️ Execute Code", key="execute_code_main"):
-                # 在全局變數中注入檔案路徑
-                global_vars = {
-                    "uploaded_file_path": st.session_state.uploaded_file_path,
-                    "uploaded_image_path": st.session_state.uploaded_image_path,
-                }
-                st.write("DEBUG: executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
-                st.write("DEBUG: executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
-                print("[DEBUG] executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
-                print("[DEBUG] executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
-
-                result = execute_code(st.session_state.ace_code, global_vars=global_vars)
-                st.write("### Execution Result")
-                st.text(result)
-
-    else:
-        # 放在側邊欄，用 expander 收合
-        with st.sidebar.expander("🖋️ Persistent Code Editor (Sidebar)", expanded=False):
-            edited_code = st_ace(
-                value=st.session_state.ace_code,
-                language="python",
-                theme="monokai",
-                height=300,
-                key="persistent_editor_sidebar"
-            )
-            if edited_code != st.session_state.ace_code:
-                st.session_state.ace_code = edited_code
-
-            if st.button("▶️ Execute Code", key="execute_code_sidebar"):
-                global_vars = {
-                    "uploaded_file_path": st.session_state.uploaded_file_path,
-                    "uploaded_image_path": st.session_state.uploaded_image_path,
-                }
-                st.write("DEBUG: executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
-                st.write("DEBUG: executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
-                print("[DEBUG] executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
-                print("[DEBUG] executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
-
-                result = execute_code(st.session_state.ace_code, global_vars=global_vars)
-                st.write("### Execution Result")
-                st.text(result)
 
 
 if __name__ == "__main__":
