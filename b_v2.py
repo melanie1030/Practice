@@ -8,6 +8,8 @@ import os
 import dotenv
 import base64
 import io
+
+from PIL import Image  # <--- 新增：用於 load_image_base64
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
@@ -54,6 +56,16 @@ def save_uploaded_file(uploaded_file):
 
     debug_log(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
     return file_path
+
+# --- 新增：使用 BytesIO 轉成 Base64 的函式 ---
+def load_image_base64(image_path):
+    """Convert an image to Base64 encoding using BytesIO + PIL."""
+    img = Image.open(image_path)
+    buffer = io.BytesIO()
+    # 利用原始的 image.format，若沒有就用 "PNG"
+    fmt = img.format if img.format else "PNG"
+    img.save(buffer, format=fmt)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 def execute_code(code, global_vars=None):
     try:
@@ -176,10 +188,21 @@ def main():
 
             st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
             try:
-                with open(st.session_state.uploaded_image_path, "rb") as f:
-                    img_bytes = f.read()
-                st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                debug_log("DEBUG: Image has been converted to base64.")
+                # 新增：使用 load_image_base64() 函式
+                debug_log("DEBUG: using load_image_base64 (via BytesIO).")
+                st.session_state.image_base64 = load_image_base64(st.session_state.uploaded_image_path)
+
+                # --- 保留原有程式碼（不移除），僅以註解方式保留 ---
+                #
+                # with open(st.session_state.uploaded_image_path, "rb") as f:
+                #     img_bytes = f.read()
+                # st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                # debug_log("DEBUG: Image has been converted to base64. (old method)")
+                #
+                # --- end of old code block ---
+
+                debug_log("DEBUG: Image has been converted to base64. (new method)")
+
             except Exception as e:
                 if st.session_state.debug_mode:
                     st.error(f"Error converting image to base64: {e}")
