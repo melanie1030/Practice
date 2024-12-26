@@ -41,6 +41,30 @@ def debug_error(msg):
         st.error(msg)
         print(msg)
 
+# ============== 與 image_4o_succuess_handle_ver.py 相同的 2 個函式 ==============
+
+from PIL import Image
+from io import BytesIO
+
+def load_image_base64(image_pil):
+    """Convert a PIL Image to Base64 encoding."""
+    buffer = BytesIO()
+    # 若圖片沒有 format 屬性，預設用 PNG
+    fmt = image_pil.format if image_pil.format else "PNG"
+    image_pil.save(buffer, format=fmt)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+def add_user_image(image_pil):
+    """
+    產生一個 "role": "user"、"content": [{"type": "image_url", "image_url": {"url": ...}}] 的對話訊息，
+    並放入 st.session_state.messages，讓 GPT-4o 將其視為圖片訊息。
+    """
+    img_base64 = load_image_base64(image_pil)
+    st.session_state.messages.append({
+        "role": "user",
+        "content": [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}]
+    })
+
 # ============== 初始化 ChatOpenAI =============
 
 def initialize_client(api_key, model_name):
@@ -200,15 +224,18 @@ def main():
                     st.error(f"Error reading CSV: {e}")
                 debug_log(f"[DEBUG] Error reading CSV: {e}")
 
-        # ===================== 圖片上傳功能 =====================
+        # ===================== 圖片上傳功能 (改用 image_4o_succuess_handle_ver.py 方式) =====================
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
+            # 1) 保留原本功能：save檔案 + debug
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
             debug_log(f"DEBUG: st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
+            # 2) 顯示圖片預覽
             st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
 
+            # 3) 原本做 base64 (若需保留)
             try:
                 with open(st.session_state.uploaded_image_path, "rb") as f:
                     img_bytes = f.read()
@@ -218,6 +245,17 @@ def main():
                 if st.session_state.debug_mode:
                     st.error(f"Error converting image to base64: {e}")
                 debug_log(f"[DEBUG] Error converting image to base64: {e}")
+
+            # 4) **新增**：像 image_4o_succuess_handle_ver.py 一樣，加入對話訊息
+            #    讓 GPT-4o 看到 "role=user" + "content" = [{"type": "image_url", ...}]
+            try:
+                img_pil = Image.open(uploaded_image)
+                add_user_image(img_pil)
+                st.success("圖像已上傳! (並已加入對話訊息)")
+            except Exception as e:
+                if st.session_state.debug_mode:
+                    st.error(f"Error adding user image: {e}")
+                debug_log(f"[DEBUG] Error adding user image: {e}")
 
         # 編輯器顯示位置
         st.subheader("Editor Location")
