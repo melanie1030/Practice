@@ -7,6 +7,7 @@ import re
 import os
 import dotenv
 import base64
+
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
@@ -89,7 +90,6 @@ def main():
         st.session_state.editor_location = "Main"  # 預設編輯器顯示在主區
     if "uploaded_file_path" not in st.session_state:
         st.session_state.uploaded_file_path = None
-    # 新增：存放圖片的路徑與 base64 編碼
     if "uploaded_image_path" not in st.session_state:
         st.session_state.uploaded_image_path = None
     if "image_base64" not in st.session_state:
@@ -216,12 +216,20 @@ def main():
                 else:
                     csv_columns = "無上傳檔案"
 
-                # 準備 prompt
+                # ============= 這裡是修改後的 Prompt 產生區塊 (保持 JSON 格式) =============
+                # 1) 提示 API 使用 st.session_state.uploaded_file_path 讀取 CSV
+                # 2) 請 API 產生使用 st.pyplot() 顯示圖表的程式碼
+                # 3) 用原先的 "content" 與 "code" 回傳
                 prompt = f"""Please respond with a JSON object in the format:
 {{
-    "content": "根據 {csv_columns} 的數據分析，這是我的觀察：{{{{分析內容}}}}",
-    "code": "生成一些使用matplotlib來生成分析圖表的python code"
+    "content": "這是我的觀察：{{{{分析內容}}}}",
+    "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# 讀取 CSV 檔案 (請直接使用 st.session_state.uploaded_file_path 變數)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# 在這裡加入你要的繪圖或分析邏輯\\n\\n# 例如使用 st.pyplot() 來顯示圖表:\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
 }}
+Important:
+1) Must use st.session_state.uploaded_file_path as the CSV path (instead of a hardcoded path)
+2) Must use st.pyplot() to display any matplotlib figure
+3) Return only valid JSON (escape any special characters if needed)
+
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
@@ -231,7 +239,7 @@ Available columns: {csv_columns}.
                     prompt += "\nHere is the image data in base64 format:\n"
                     prompt += st.session_state.image_base64[:300] + "..."  # 只示範前 300 字符，以免太長
 
-                # 如果沒有上傳檔案，就改成全繁體
+                # 如果沒有上傳檔案，就改成全繁體 (只是示範原邏輯保持不變)
                 if csv_columns == "無上傳檔案":
                     prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
