@@ -6,6 +6,7 @@ import traceback
 import re
 import os
 import dotenv
+import base64
 
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
@@ -89,6 +90,11 @@ def main():
         st.session_state.editor_location = "Main"  # 預設編輯器顯示在主區
     if "uploaded_file_path" not in st.session_state:
         st.session_state.uploaded_file_path = None
+    # 新增：存放圖片的路徑與 base64 編碼
+    if "uploaded_image_path" not in st.session_state:
+        st.session_state.uploaded_image_path = None
+    if "image_base64" not in st.session_state:
+        st.session_state.image_base64 = None
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -113,6 +119,8 @@ def main():
             st.session_state.messages = []
             st.session_state.ace_code = ""
             st.session_state.uploaded_file_path = None
+            st.session_state.uploaded_image_path = None
+            st.session_state.image_base64 = None
             st.success("Memory cleared!")
 
         # 顯示記憶狀態
@@ -121,7 +129,7 @@ def main():
             memory_content = st.session_state.memory.load_memory_variables({})
             st.text_area("Current Memory", value=str(memory_content), height=200)
 
-        # 上傳 CSV
+        # ===================== CSV 上傳 =====================
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
@@ -141,6 +149,28 @@ def main():
             except Exception as e:
                 st.error(f"Error reading CSV: {e}")
                 print("[DEBUG] Error reading CSV:", e)
+
+        # ===================== 圖片上傳 (新增功能) =====================
+        st.subheader("🖼️ Upload an Image")
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
+        if uploaded_image:
+            # 保存圖片並記錄路徑
+            st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
+            st.write("DEBUG: st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
+            print("[DEBUG] st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
+
+            # 顯示圖片預覽
+            st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
+
+            # 將圖片轉成 base64 編碼（若你想要在 prompt 中傳遞給 GPT）
+            try:
+                with open(st.session_state.uploaded_image_path, "rb") as f:
+                    img_bytes = f.read()
+                st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                st.write("DEBUG: Image has been converted to base64.")
+            except Exception as e:
+                st.error(f"Error converting image to base64: {e}")
+                print("[DEBUG] Error converting image to base64:", e)
 
         # 編輯器顯示位置
         st.subheader("Editor Location")
@@ -171,10 +201,12 @@ def main():
             try:
                 # Debug: 檢查已上傳檔案路徑
                 st.write("DEBUG: Currently st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
+                st.write("DEBUG: Currently st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
                 print("[DEBUG] Currently st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
+                print("[DEBUG] Currently st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
 
+                # 準備 CSV 欄位資訊（若有上傳）
                 if st.session_state.uploaded_file_path is not None:
-                    # CSV 檔案的欄位名稱
                     try:
                         df_temp = pd.read_csv(st.session_state.uploaded_file_path)
                         csv_columns = ", ".join(df_temp.columns)
@@ -194,6 +226,11 @@ def main():
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
+
+                # 若已上傳圖片，可將 base64 字串一併傳入 GPT（選擇性）
+                if st.session_state.image_base64:
+                    prompt += "\nHere is the image data in base64 format:\n"
+                    prompt += st.session_state.image_base64[:300] + "..."  # 只示範前 300 字符，以免太長
 
                 # 如果沒有上傳檔案，就改成全繁體
                 if csv_columns == "無上傳檔案":
@@ -240,7 +277,9 @@ Available columns: {csv_columns}.
 
     # Debug: 顯示目前 uploaded_file_path
     st.write("DEBUG: final st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
+    st.write("DEBUG: final st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
     print("[DEBUG] final st.session_state.uploaded_file_path =", st.session_state.uploaded_file_path)
+    print("[DEBUG] final st.session_state.uploaded_image_path =", st.session_state.uploaded_image_path)
 
     if st.session_state.editor_location == "Main":
         # 放在主區底部，用 expander 收合
@@ -257,9 +296,14 @@ Available columns: {csv_columns}.
 
             if st.button("▶️ Execute Code", key="execute_code_main"):
                 # 在全局變數中注入檔案路徑
-                global_vars = {"uploaded_file_path": st.session_state.uploaded_file_path}
+                global_vars = {
+                    "uploaded_file_path": st.session_state.uploaded_file_path,
+                    "uploaded_image_path": st.session_state.uploaded_image_path,
+                }
                 st.write("DEBUG: executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
+                st.write("DEBUG: executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
                 print("[DEBUG] executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
+                print("[DEBUG] executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
 
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
@@ -279,9 +323,14 @@ Available columns: {csv_columns}.
                 st.session_state.ace_code = edited_code
 
             if st.button("▶️ Execute Code", key="execute_code_sidebar"):
-                global_vars = {"uploaded_file_path": st.session_state.uploaded_file_path}
+                global_vars = {
+                    "uploaded_file_path": st.session_state.uploaded_file_path,
+                    "uploaded_image_path": st.session_state.uploaded_image_path,
+                }
                 st.write("DEBUG: executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
+                st.write("DEBUG: executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
                 print("[DEBUG] executing code with uploaded_file_path =", st.session_state.uploaded_file_path)
+                print("[DEBUG] executing code with uploaded_image_path =", st.session_state.uploaded_image_path)
 
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
