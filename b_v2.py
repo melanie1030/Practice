@@ -52,6 +52,7 @@ def save_uploaded_file(uploaded_file):
     debug_log(f"DEBUG: saving file to {file_path}")
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
+
     debug_log(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
     return file_path
 
@@ -212,11 +213,9 @@ def main():
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
-                # --- 決定使用哪種 prompt ---
                 if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                    # [情境] 有上傳圖片 -> 只給 user_input 與 圖片 Base64
-                    # 避免將 CSV & JSON 格式也混進去
-                    prompt = f"User input: {user_input}\nHere is the image data in base64:\n{st.session_state.image_base64[:300]}..."
+                    # [情境] 有上傳圖片 -> 只給 user_input 與 圖片 Base64 (送出全部 base64，不截斷)
+                    prompt = f"User input: {user_input}\nHere is the image data in base64:\n{st.session_state.image_base64}..."
                 else:
                     # [情境] 沒有上傳圖片 -> 維持舊有複雜 JSON 邏輯
                     if st.session_state.uploaded_file_path is not None:
