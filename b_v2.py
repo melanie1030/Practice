@@ -75,7 +75,6 @@ def initialize_client(api_key, model_name):
         openai_api_key=api_key
     ) if api_key else None
 
-
 # ============== 檔案處理/執行程式碼等功能 =============
 
 def save_uploaded_file(uploaded_file):
@@ -186,6 +185,10 @@ def main():
             else:
                 st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
                 return
+        
+        # -- 顯示當前所使用的模型 (在 Debug Mode 下) --
+        if st.session_state.debug_mode:
+            debug_log(f"[DEBUG] Currently using model => {selected_model}")
 
         # 清除記憶
         if st.button("🗑️ Clear Memory"):
