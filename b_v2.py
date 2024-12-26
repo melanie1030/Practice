@@ -254,8 +254,7 @@ def main():
                             model=model_params.get("model", "gpt-4o"),
                             messages=openai_messages,
                             temperature=model_params.get("temperature", 0.3),
-                            max_tokens=4096,
-                            stream=True
+                            max_tokens=4096
                         ):
                             chunk_delta = chunk["choices"][0].get("delta", {})
                             chunk_text = chunk_delta.get("content", "")
