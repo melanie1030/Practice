@@ -8,13 +8,11 @@ import os
 import dotenv
 import base64
 import io
+
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chat_models import ChatOpenAI
 from streamlit_ace import st_ace
-
-# --- 這裡匯入 openai 以便用 client.chat.completions.create ---
-import openai
 
 # --- Initialize and Settings ---
 dotenv.load_dotenv()
@@ -54,7 +52,6 @@ def save_uploaded_file(uploaded_file):
     debug_log(f"DEBUG: saving file to {file_path}")
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
-
     debug_log(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
     return file_path
 
@@ -121,7 +118,6 @@ def main():
         st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
         st.session_state.deep_analysis_mode = st.checkbox("深度分析模式", value=False)
 
-        # 初始化 langchain 對話
         if "conversation" not in st.session_state:
             if api_key:
                 st.session_state.chat_model = initialize_client(api_key, selected_model)
@@ -136,9 +132,6 @@ def main():
 
         if st.session_state.debug_mode:
             debug_log(f"DEBUG: Currently using model => {selected_model}")
-
-        # 設定 openai.api_key (用於「只有圖片時」的 streaming API)
-        openai.api_key = api_key
 
         if st.button("🗑️ Clear Memory"):
             st.session_state.memory.clear()
@@ -208,97 +201,37 @@ def main():
             if "code" in message:
                 st.code(message["code"], language="python")
 
-    # --- 使用者輸入 ---
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
-        # 先在對話記憶中加上使用者訊息
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
 
-        # 改為在外層就顯示 spinner => "Thinking..."
         with st.spinner("Thinking..."):
             try:
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
                 debug_log(f"DEBUG: Currently st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
 
-                # ================
-                # 1) 如果只有「圖片」沒有「CSV」，則改用 openai 的 stream API 來回應
-                # ================
-                if (st.session_state.uploaded_image_path is not None) and (st.session_state.uploaded_file_path is None):
-                    debug_log("DEBUG: Detected 'only image' scenario => using openai ChatCompletion streaming...")
-
-                    # 為了讓模型知道使用者的圖片內容，我們把 base64 (或文字描述) 也一併附加到最後一筆 user message
-                    last_msg_index = len(st.session_state.messages) - 1
-                    if last_msg_index >= 0:
-                        new_content = (
-                            f"{st.session_state.messages[last_msg_index]['content']}\n"
-                            f"Here is the image data in base64:\n{st.session_state.image_base64}"
-                        )
-                        st.session_state.messages[last_msg_index]["content"] = new_content
-
-                    # 轉換為 openai messages 結構
-                    openai_messages = [
-                        {"role": m["role"], "content": m["content"]}
-                        for m in st.session_state.messages
-                    ]
-
-                    if st.session_state.debug_mode:
-                        debug_log(f"DEBUG: openai_messages => {openai_messages}")
-
-                    # 呼叫 streaming
-                    response_text = ""
-                    with st.chat_message("assistant"):
-                        stream_placeholder = st.empty()
-                        try:
-                            for chunk in openai.ChatCompletion.create(
-                                model=selected_model if selected_model else "gpt-4o",
-                                messages=openai_messages,
-                                temperature=0.3,
-                                max_tokens=4096,
-                                stream=True
-                            ):
-                                # 逐塊擷取文字
-                                chunk_delta = chunk["choices"][0].get("delta", {})
-                                chunk_text = chunk_delta.get("content", "")
-                                if chunk_text:
-                                    response_text += chunk_text
-                                    # 即時更新畫面
-                                    stream_placeholder.markdown(response_text)
-                        except Exception as e:
-                            # 若串流錯誤，可在 Debug Mode 印出
-                            if st.session_state.debug_mode:
-                                st.error(f"Error in streaming: {e}")
-                            debug_log(f"DEBUG: Streaming error => {e}")
-
-                    if st.session_state.debug_mode:
-                        debug_log(f"DEBUG: streaming final response => {response_text}")
-
-                    # 將模型最終回應寫入對話記憶
-                    st.session_state.messages.append({"role": "assistant", "content": response_text})
-
+                # --- 決定使用哪種 prompt ---
+                if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
+                    # [情境] 有上傳圖片 -> 只給 user_input 與 圖片 Base64
+                    # 避免將 CSV & JSON 格式也混進去
+                    prompt = f"User input: {user_input}\nHere is the image data in base64:\n{st.session_state.image_base64[:300]}..."
                 else:
-                    # ================
-                    # 2) 否則（有 CSV 或者沒有任何檔案），維持舊有 JSON+LangChain 方式
-                    # ================
-                    if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                        # [情境] 有上傳圖片 + 不符合「只有圖片沒 csv」條件(代表也上傳了csv?)
-                        prompt = f"User input: {user_input}\nHere is the image data in base64:\n{st.session_state.image_base64}..."
+                    # [情境] 沒有上傳圖片 -> 維持舊有複雜 JSON 邏輯
+                    if st.session_state.uploaded_file_path is not None:
+                        try:
+                            df_temp = pd.read_csv(st.session_state.uploaded_file_path)
+                            csv_columns = ", ".join(df_temp.columns)
+                        except Exception as e:
+                            csv_columns = "無法讀取欄位"
+                            if st.session_state.debug_mode:
+                                st.error(f"Error reading columns: {e}")
+                            debug_log(f"[DEBUG] Error reading columns: {e}")
                     else:
-                        # [情境] 沒有圖片 or 有CSV
-                        if st.session_state.uploaded_file_path is not None:
-                            try:
-                                df_temp = pd.read_csv(st.session_state.uploaded_file_path)
-                                csv_columns = ", ".join(df_temp.columns)
-                            except Exception as e:
-                                csv_columns = "無法讀取欄位"
-                                if st.session_state.debug_mode:
-                                    st.error(f"Error reading columns: {e}")
-                                debug_log(f"[DEBUG] Error reading columns: {e}")
-                        else:
-                            csv_columns = "無上傳檔案"
+                        csv_columns = "無上傳檔案"
 
-                        prompt = f"""Please respond with a JSON object in the format:
+                    prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "這是我的觀察：{{{{分析內容}}}}",
     "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# 讀取 CSV 檔案 (請直接使用 st.session_state.uploaded_file_path 變數)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# 在這裡加入你要的繪圖或分析邏輯\\n\\n# 例如使用 st.pyplot() 來顯示圖表:\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
@@ -312,97 +245,96 @@ Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
 
-                        if csv_columns == "無上傳檔案":
-                            prompt = f"請全部以繁體中文回答此問題：{user_input}"
+                    if csv_columns == "無上傳檔案":
+                        prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
-                    debug_log(f"DEBUG: Prompt used => {prompt}")
+                debug_log(f"DEBUG: Prompt used => {prompt}")
 
-                    raw_response = st.session_state.conversation.run(prompt)
-                    if st.session_state.debug_mode:
-                        st.write("Model raw response:", raw_response)
-                    debug_log(f"[DEBUG] Model raw response => {raw_response}")
+                raw_response = st.session_state.conversation.run(prompt)
+                if st.session_state.debug_mode:
+                    st.write("Model raw response:", raw_response)
+                debug_log(f"[DEBUG] Model raw response => {raw_response}")
 
-                    # 嘗試擷取 JSON 區塊
-                    json_str = extract_json_block(raw_response)
-                    try:
-                        response_json = json.loads(json_str)
-                    except Exception as e:
-                        debug_log(f"json.loads parsing error: {e}")
-                        debug_error(f"json.loads parsing error: {e}")
-                        response_json = {"content": json_str, "code": ""}
+                json_str = extract_json_block(raw_response)
+                try:
+                    response_json = json.loads(json_str)
+                except Exception as e:
+                    debug_log(f"json.loads parsing error: {e}")
+                    debug_error(f"json.loads parsing error: {e}")
+                    response_json = {"content": json_str, "code": ""}
 
-                    content = response_json.get("content", "這是我的分析：")
-                    st.session_state.messages.append({"role": "assistant", "content": content})
+                content = response_json.get("content", "這是我的分析：")
+                st.session_state.messages.append({"role": "assistant", "content": content})
+                with st.chat_message("assistant"):
+                    st.write(content)
+
+                code = response_json.get("code", "")
+                if code:
+                    st.session_state.messages.append({"role": "assistant", "code": code})
                     with st.chat_message("assistant"):
-                        st.write(content)
+                        st.code(code, language="python")
+                    st.session_state.ace_code = code
 
-                    code = response_json.get("code", "")
-                    if code:
-                        st.session_state.messages.append({"role": "assistant", "code": code})
-                        with st.chat_message("assistant"):
-                            st.code(code, language="python")
-                        st.session_state.ace_code = code
+                # --- 若勾選深度分析模式 & 有程式碼 -> 執行程式、二次解析圖表 ---
+                if st.session_state.deep_analysis_mode and code:
+                    st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
 
-                    # --- 若勾選深度分析模式 & 有程式碼 -> 執行程式、二次解析圖表 ---
-                    if st.session_state.deep_analysis_mode and code:
-                        st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
+                    global_vars = {
+                        "uploaded_file_path": st.session_state.uploaded_file_path,
+                        "uploaded_image_path": st.session_state.uploaded_image_path,
+                    }
+                    exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
+                    st.write("#### Execution Result")
+                    st.text(exec_result)
 
-                        global_vars = {
-                            "uploaded_file_path": st.session_state.uploaded_file_path,
-                            "uploaded_image_path": st.session_state.uploaded_image_path,
-                        }
-                        exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
-                        st.write("#### Execution Result")
-                        st.text(exec_result)
+                    fig = plt.gcf()
+                    buf = io.BytesIO()
+                    fig.savefig(buf, format="png")
+                    buf.seek(0)
+                    chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
+                    st.session_state.deep_analysis_image = chart_base64
 
-                        fig = plt.gcf()
-                        buf = io.BytesIO()
-                        fig.savefig(buf, format="png")
-                        buf.seek(0)
-                        chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
-                        st.session_state.deep_analysis_image = chart_base64
-
-                        deep_model = ChatOpenAI(
-                            model="gpt-4o",
-                            temperature=0.5,
-                            openai_api_key=api_key
-                        ) if api_key else None
-                        if deep_model:
-                            prompt_2 = f"""
+                    deep_model = ChatOpenAI(
+                        model="gpt-4o",
+                        temperature=0.5,
+                        openai_api_key=api_key
+                    ) if api_key else None
+                    if deep_model:
+                        prompt_2 = f"""
 這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
 {chart_base64[:300]}...
 
 請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
 """
-                            debug_log(f"DEBUG: Deep Analysis Prompt => {prompt_2}")
-                            second_raw_response = deep_model.call_as_llm(prompt_2)
-                            st.session_state.second_response = second_raw_response
+                        debug_log(f"DEBUG: Deep Analysis Prompt => {prompt_2}")
+                        second_raw_response = deep_model.call_as_llm(prompt_2)
+                        st.session_state.second_response = second_raw_response
 
-                            st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
-                            st.write(second_raw_response)
+                        st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
+                        st.write(second_raw_response)
 
-                            final_model = ChatOpenAI(
-                                model="gpt-4o",
-                                temperature=0.5,
-                                openai_api_key=api_key
-                            ) if api_key else None
-                            if final_model:
-                                prompt_3 = f"""
+                        final_model = ChatOpenAI(
+                            model="gpt-4o",
+                            temperature=0.5,
+                            openai_api_key=api_key
+                        ) if api_key else None
+                        if final_model:
+                            prompt_3 = f"""
 第一階段回覆內容：{content}
 第二階段圖表解析內容：{second_raw_response}
 
 請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
 """
-                                debug_log(f"DEBUG: Final Summary Prompt => {prompt_3}")
-                                third_raw_response = final_model.call_as_llm(prompt_3)
-                                st.session_state.third_response = third_raw_response
+                            debug_log(f"DEBUG: Final Summary Prompt => {prompt_3}")
+                            third_raw_response = final_model.call_as_llm(prompt_3)
+                            st.session_state.third_response = third_raw_response
 
-                                st.write("#### [深度分析] 結論 (第三次回覆) :")
-                                st.write(third_raw_response)
+                            st.write("#### [深度分析] 結論 (第三次回覆) :")
+                            st.write(third_raw_response)
 
-                                st.write("#### [深度分析] 圖表：")
-                                img_data = base64.b64decode(st.session_state.deep_analysis_image)
-                                st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
+                            st.write("#### [深度分析] 圖表：")
+                            img_data = base64.b64decode(st.session_state.deep_analysis_image)
+                            st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
 
             except Exception as e:
                 if st.session_state.debug_mode:
