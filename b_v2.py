@@ -265,7 +265,7 @@ def main():
                 # --- 決定使用哪種 prompt ---
                 if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
                     # [情境] 有上傳圖片 -> 將圖片 Base64 數據作為單獨的訊息發送
-                    image_message = f"Here is the image data in base64:\n{st.session_state.image_base64}"
+                    image_message = f"Here is the image data:\n![image](data:image/png;base64,{st.session_state.image_base64})"
                     st.session_state.messages.append({"role": "user", "content": image_message})
                     debug_log("Image data appended as a separate user message.")
                 else:
@@ -366,7 +366,7 @@ Available columns: {csv_columns}.
                     # Prepare deep analysis prompt
                     prompt_2 = f"""
 這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
-{chart_base64}
+![image](data:image/png;base64,{chart_base64})
 
 請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
 """
