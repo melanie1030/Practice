@@ -46,17 +46,28 @@ def initialize_client(api_key, model_name):
 def stream_llm_response(client, model_params): 
     """Stream responses from the LLM model."""
     try:
-        for chunk in client.chat.completions.create(
-                model=model_params.get("model", "gpt-4o"),
-                messages=st.session_state.messages,
-                temperature=model_params.get("temperature", 0.3),
-                max_tokens=4096,
-                stream=True):
-            chunk_text = chunk.choices[0].delta.content or ""
-            yield chunk_text
+        response = client.chat.completions.create(
+            model=model_params.get("model", "gpt-4o"),
+            messages=st.session_state.messages,
+            temperature=model_params.get("temperature", 0.3),
+            max_tokens=4096,
+            stream=True
+        )
+        full_response = ""
+        for chunk in response:
+            chunk_text = chunk.choices[0].delta.get('content', '')
+            full_response += chunk_text
+            # 實時顯示片段（不使用 st.experimental_rerun）
+            st.session_state.partial_response += chunk_text
+            st.session_state.messages[-1]['content'] = st.session_state.partial_response
+            # 使用 Streamlit 的內建方法刷新顯示
+            st.experimental_singleton.clear()
+            st.experimental_memo.clear()
+            st.experimental_rerun()  # 這裡保留，但若需要完全移除，可改用其他顯示方式
+        return full_response
     except Exception as e:
         debug_error(f"API request failed: {e}")
-        yield ""
+        return ""
 
 def save_uploaded_file(uploaded_file):
     if not os.path.exists(UPLOAD_DIR):
@@ -123,6 +134,8 @@ def main():
         st.session_state.third_response = ""
     if "deep_analysis_image" not in st.session_state:
         st.session_state.deep_analysis_image = None
+    if "partial_response" not in st.session_state:
+        st.session_state.partial_response = ""
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -153,6 +166,7 @@ def main():
             st.session_state.second_response = ""
             st.session_state.third_response = ""
             st.session_state.deep_analysis_image = None
+            st.session_state.partial_response = ""
             st.success("Memory cleared!")
 
         st.subheader("🧠 Memory State")
@@ -275,22 +289,23 @@ Available columns: {csv_columns}.
                         "temperature": st.session_state.client.temperature
                     }
 
+                    # Initialize partial response
+                    st.session_state.partial_response = ""
+
                     # Stream the response
-                    response_content = ""
-                    response_code = ""
+                    full_response = ""
                     for chunk in stream_llm_response(st.session_state.client, model_params):
-                        response_content += chunk
-                        st.chat_message("assistant").write(chunk)
-                        st.experimental_rerun()  # To display the streaming content
+                        full_response += chunk
+                        # 在這裡已經更新了 partial_response 並重新執行，無需使用 st.experimental_rerun()
 
                     # After streaming is complete, process the full response
-                    json_str = extract_json_block(response_content)
+                    json_str = extract_json_block(full_response)
                     try:
                         response_json = json.loads(json_str)
                     except Exception as e:
                         debug_log(f"json.loads parsing error: {e}")
                         debug_error(f"json.loads parsing error: {e}")
-                        response_json = {"content": response_content, "code": ""}
+                        response_json = {"content": full_response, "code": ""}
 
                     content = response_json.get("content", "這是我的分析：")
                     st.session_state.messages.append({"role": "assistant", "content": content})
@@ -335,22 +350,19 @@ Available columns: {csv_columns}.
                             st.session_state.messages.append({"role": "system", "content": prompt_2})
 
                             # Stream the second response
-                            second_raw_response = ""
-                            for chunk in stream_llm_response(deep_model, {"model": "gpt-4o", "temperature": 0.5}):
-                                second_raw_response += chunk
-                                st.chat_message("assistant").write(chunk)
-                                st.experimental_rerun()
+                            second_raw_response = stream_llm_response(deep_model, {"model": "gpt-4o", "temperature": 0.5})
+                            second_raw_response_full = "".join(second_raw_response)
 
-                            st.session_state.second_response = second_raw_response
+                            st.session_state.second_response = second_raw_response_full
 
                             st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
-                            st.write(second_raw_response)
+                            st.write(second_raw_response_full)
 
                             final_model = initialize_client(st.session_state.client.api_key, "gpt-4o")
                             if final_model:
                                 prompt_3 = f"""
 第一階段回覆內容：{content}
-第二階段圖表解析內容：{second_raw_response}
+第二階段圖表解析內容：{second_raw_response_full}
 
 請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
 """
@@ -358,16 +370,13 @@ Available columns: {csv_columns}.
                                 st.session_state.messages.append({"role": "system", "content": prompt_3})
 
                                 # Stream the third response
-                                third_raw_response = ""
-                                for chunk in stream_llm_response(final_model, {"model": "gpt-4o", "temperature": 0.5}):
-                                    third_raw_response += chunk
-                                    st.chat_message("assistant").write(chunk)
-                                    st.experimental_rerun()
+                                third_raw_response = stream_llm_response(final_model, {"model": "gpt-4o", "temperature": 0.5})
+                                third_raw_response_full = "".join(third_raw_response)
 
-                                st.session_state.third_response = third_raw_response
+                                st.session_state.third_response = third_raw_response_full
 
                                 st.write("#### [深度分析] 結論 (第三次回覆) :")
-                                st.write(third_raw_response)
+                                st.write(third_raw_response_full)
 
                                 st.write("#### [深度分析] 圖表：")
                                 img_data = base64.b64decode(st.session_state.deep_analysis_image)
