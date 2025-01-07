@@ -8,7 +8,7 @@ import os
 import dotenv
 import base64
 import io
-from openai import OpenAI  # 使用自定義的 OpenAI 客戶端
+import requests
 from streamlit_ace import st_ace
 
 # --- Initialize and Settings ---
@@ -26,73 +26,40 @@ OPENAI_MODELS = [
 
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
-        st.write(msg)
+        st.write(f"**DEBUG LOG:** {msg}")
         print(msg)
 
 def debug_error(msg):
     if st.session_state.get("debug_mode", False):
-        st.error(msg)
+        st.error(f"**DEBUG ERROR:** {msg}")
         print(msg)
-
-def initialize_client(api_key, model_name):
-    if not api_key:
-        return None
-    return OpenAI(
-        api_key=api_key,
-        model=model_name,
-        temperature=0.5
-    )
-
-def stream_llm_response(client, model_params): 
-    """Stream responses from the LLM model."""
-    try:
-        response = client.chat.completions.create(
-            model=model_params.get("model", "gpt-4o"),
-            messages=st.session_state.messages,
-            temperature=model_params.get("temperature", 0.3),
-            max_tokens=4096,
-            stream=True
-        )
-        full_response = ""
-        for chunk in response:
-            chunk_text = chunk.choices[0].delta.get('content', '')
-            full_response += chunk_text
-            # 實時顯示片段（不使用 st.experimental_rerun）
-            st.session_state.partial_response += chunk_text
-            st.session_state.messages[-1]['content'] = st.session_state.partial_response
-            # 使用 Streamlit 的內建方法刷新顯示
-            st.experimental_singleton.clear()
-            st.experimental_memo.clear()
-            st.experimental_rerun()  # 這裡保留，但若需要完全移除，可改用其他顯示方式
-        return full_response
-    except Exception as e:
-        debug_error(f"API request failed: {e}")
-        return ""
 
 def save_uploaded_file(uploaded_file):
     if not os.path.exists(UPLOAD_DIR):
         os.makedirs(UPLOAD_DIR)
     file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
 
-    debug_log(f"DEBUG: saving file to {file_path}")
+    debug_log(f"Saving file to {file_path}")
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
-    debug_log(f"DEBUG: files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
+    debug_log(f"Files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
     return file_path
 
 def execute_code(code, global_vars=None):
     try:
         exec_globals = global_vars if global_vars else {}
-        debug_log("DEBUG: Ready to exec the following code:")
+        debug_log("Ready to execute the following code:")
         if st.session_state.get("debug_mode", False):
             st.code(code, language="python")
 
-        debug_log("[DEBUG] Exec code with global_vars: " + str(list(exec_globals.keys())))
+        debug_log(f"Executing code with global_vars: {list(exec_globals.keys())}")
         exec(code, exec_globals)
-        return "Code executed successfully. Output: " + str(exec_globals.get("output", "(No output returned)"))
+        output = exec_globals.get("output", "(No output returned)")
+        debug_log(f"Execution output: {output}")
+        return f"Code executed successfully. Output: {output}"
     except Exception as e:
         error_msg = f"Error executing code:\n{traceback.format_exc()}"
-        debug_log("[DEBUG] Execution error: " + error_msg)
+        debug_log(f"Execution error: {error_msg}")
         if st.session_state.get("debug_mode", False):
             return error_msg
         else:
@@ -103,9 +70,56 @@ def extract_json_block(response: str) -> str:
     match = re.search(pattern, response, re.DOTALL)
     if match:
         json_str = match.group(1).strip()
+        debug_log(f"Extracted JSON block: {json_str}")
         return json_str
     else:
+        debug_log("No JSON block found in response.")
         return response.strip()
+
+def stream_llm_response(api_key, model, messages, temperature=0.3, max_tokens=4096):
+    """Stream responses from the LLM model."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True
+    }
+    debug_log(f"Sending API request to OpenAI with data: {json.dumps(data, ensure_ascii=False)}")
+    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data, stream=True)
+    
+    debug_log(f"Received response with status code: {response.status_code}")
+    if response.status_code != 200:
+        error_content = response.text
+        debug_error(f"OpenAI API returned an error: {response.status_code} - {error_content}")
+        raise Exception(f"OpenAI API returned an error: {response.status_code} - {error_content}")
+    
+    response_content = ""
+    assistant_placeholder = st.empty()  # Create a placeholder for assistant's response
+    for line in response.iter_lines():
+        if line:
+            decoded_line = line.decode('utf-8')
+            debug_log(f"Received line: {decoded_line}")
+            if decoded_line.startswith("data: "):
+                decoded_line = decoded_line.replace("data: ", "")
+                if decoded_line == "[DONE]":
+                    debug_log("Stream finished.")
+                    break
+                try:
+                    chunk = json.loads(decoded_line)
+                    chunk_text = chunk['choices'][0]['delta'].get('content', '')
+                    debug_log(f"Chunk text: {chunk_text}")
+                    response_content += chunk_text
+                    # Update the assistant's response in the placeholder
+                    assistant_placeholder.markdown(response_content)
+                except json.JSONDecodeError as e:
+                    debug_error(f"JSON decode error: {e}")
+                    continue
+    return response_content
 
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
@@ -134,8 +148,6 @@ def main():
         st.session_state.third_response = ""
     if "deep_analysis_image" not in st.session_state:
         st.session_state.deep_analysis_image = None
-    if "partial_response" not in st.session_state:
-        st.session_state.partial_response = ""
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -146,17 +158,22 @@ def main():
         st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
         st.session_state.deep_analysis_mode = st.checkbox("深度分析模式", value=False)
 
-        if "client" not in st.session_state:
+        if "memory" not in st.session_state:
+            st.session_state.memory = []
+
+        if "conversation_initialized" not in st.session_state:
             if api_key:
-                st.session_state.client = initialize_client(api_key, selected_model)
-                debug_log(f"DEBUG: Initialized OpenAI client with model {selected_model}")
+                st.session_state.conversation_initialized = True
+                st.session_state.messages = []  # Initialize with empty message history
+                debug_log("Conversation initialized with empty message history.")
             else:
                 st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
 
-        if st.session_state.debug_mode and "client" in st.session_state:
-            debug_log(f"DEBUG: Currently using model => {selected_model}")
+        if st.session_state.debug_mode:
+            debug_log(f"Currently using model => {selected_model}")
 
         if st.button("🗑️ Clear Memory"):
+            st.session_state.memory = []
             st.session_state.messages = []
             st.session_state.ace_code = ""
             st.session_state.uploaded_file_path = None
@@ -166,13 +183,17 @@ def main():
             st.session_state.second_response = ""
             st.session_state.third_response = ""
             st.session_state.deep_analysis_image = None
-            st.session_state.partial_response = ""
             st.success("Memory cleared!")
+            debug_log("Memory has been cleared.")
 
         st.subheader("🧠 Memory State")
-        if "messages" in st.session_state:
+        if st.session_state.messages:
             memory_content = "\n".join([f"{msg['role']}: {msg['content']}" for msg in st.session_state.messages])
             st.text_area("Current Memory", value=memory_content, height=200)
+            debug_log(f"Current memory content: {memory_content}")
+        else:
+            st.text_area("Current Memory", value="No messages yet.", height=200)
+            debug_log("No messages in memory.")
 
         # --- CSV 上傳 ---
         st.subheader("📂 Upload a CSV File")
@@ -180,33 +201,35 @@ def main():
         csv_data = None
         if uploaded_file:
             st.session_state.uploaded_file_path = save_uploaded_file(uploaded_file)
-            debug_log(f"DEBUG: st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
+            debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
             try:
                 csv_data = pd.read_csv(st.session_state.uploaded_file_path)
                 st.write("### Data Preview")
                 st.dataframe(csv_data)
+                debug_log(f"CSV Data Columns: {list(csv_data.columns)}")
             except Exception as e:
                 if st.session_state.debug_mode:
                     st.error(f"Error reading CSV: {e}")
-                debug_log(f"[DEBUG] Error reading CSV: {e}")
+                debug_log(f"Error reading CSV: {e}")
 
         # --- 圖片上傳 ---
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
-            debug_log(f"DEBUG: st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
+            debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
 
             st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
             try:
                 with open(st.session_state.uploaded_image_path, "rb") as f:
                     img_bytes = f.read()
                 st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                debug_log("DEBUG: Image has been converted to base64.")
+                debug_log("Image has been converted to base64.")
+                debug_log(f"Image base64 (first 100 chars): {st.session_state.image_base64[:100]}...")
             except Exception as e:
                 if st.session_state.debug_mode:
                     st.error(f"Error converting image to base64: {e}")
-                debug_log(f"[DEBUG] Error converting image to base64: {e}")
+                debug_log(f"Error converting image to base64: {e}")
 
         st.subheader("Editor Location")
         location = st.radio(
@@ -215,54 +238,54 @@ def main():
             index=0 if st.session_state.editor_location == "Main" else 1
         )
         st.session_state.editor_location = location
+        debug_log(f"Editor location set to: {st.session_state.editor_location}")
 
     # --- 顯示歷史訊息 ---
-    for message in st.session_state.messages:
-        if message["role"] == "user":
-            with st.chat_message("user"):
+    for idx, message in enumerate(st.session_state.messages):
+        with st.chat_message(message["role"]):
+            if "content" in message:
                 st.write(message["content"])
-        elif message["role"] == "assistant":
-            with st.chat_message("assistant"):
-                if "content" in message:
-                    st.write(message["content"])
-                if "code" in message:
-                    st.code(message["code"], language="python")
+                debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
+            if "code" in message:
+                st.code(message["code"], language="python")
+                debug_log(f"Displaying code from {message['role']}: {message['code']}")
 
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
+            debug_log(f"User input added to messages: {user_input}")
 
-        if "client" not in st.session_state or st.session_state.client is None:
-            st.error("OpenAI client is not initialized. Please enter a valid API Key.")
-        else:
-            with st.spinner("Thinking..."):
-                try:
-                    debug_log(f"DEBUG: Currently st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
-                    debug_log(f"DEBUG: Currently st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
+        with st.spinner("Thinking..."):
+            try:
+                debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
+                debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
 
-                    # --- 決定使用哪種 prompt ---
-                    if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                        # [情境] 有上傳圖片 -> 只給 user_input 與 圖片 Base64
-                        # 避免將 CSV & JSON 格式也混進去
-                        prompt = f"User input: {user_input}\nHere is the image data in base64:\n{st.session_state.image_base64[:300]}..."
+                # --- 決定使用哪種 prompt ---
+                if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
+                    # [情境] 有上傳圖片 -> 將圖片 Base64 數據作為單獨的訊息發送
+                    image_message = f"Here is the image data in base64:\n{st.session_state.image_base64}"
+                    st.session_state.messages.append({"role": "user", "content": image_message})
+                    debug_log("Image data appended as a separate user message.")
+                else:
+                    # [情境] 沒有上傳圖片 -> 維持舊有複雜 JSON 邏輯
+                    if st.session_state.uploaded_file_path is not None:
+                        try:
+                            df_temp = pd.read_csv(st.session_state.uploaded_file_path)
+                            csv_columns = ", ".join(df_temp.columns)
+                            debug_log(f"CSV columns: {csv_columns}")
+                        except Exception as e:
+                            csv_columns = "無法讀取欄位"
+                            if st.session_state.debug_mode:
+                                st.error(f"Error reading columns: {e}")
+                            debug_log(f"Error reading columns: {e}")
                     else:
-                        # [情境] 沒有上傳圖片 -> 維持舊有複雜 JSON 邏輯
-                        if st.session_state.uploaded_file_path is not None:
-                            try:
-                                df_temp = pd.read_csv(st.session_state.uploaded_file_path)
-                                csv_columns = ", ".join(df_temp.columns)
-                            except Exception as e:
-                                csv_columns = "無法讀取欄位"
-                                if st.session_state.debug_mode:
-                                    st.error(f"Error reading columns: {e}")
-                                debug_log(f"[DEBUG] Error reading columns: {e}")
-                        else:
-                            csv_columns = "無上傳檔案"
+                        csv_columns = "無上傳檔案"
+                        debug_log("No CSV file uploaded.")
 
-                        if st.session_state.uploaded_file_path is not None and csv_columns != "無上傳檔案":
-                            prompt = f"""Please respond with a JSON object in the format:
+                    if st.session_state.uploaded_file_path is not None and csv_columns != "無上傳檔案":
+                        prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "這是我的觀察：{{{{分析內容}}}}",
     "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# 讀取 CSV 檔案 (請直接使用 st.session_state.uploaded_file_path 變數)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# 在這裡加入你要的繪圖或分析邏輯\\n\\n# 例如使用 st.pyplot() 來顯示圖表:\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
@@ -275,122 +298,140 @@ Important:
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
-                        else:
-                            prompt = f"請全部以繁體中文回答此問題：{user_input}"
+                        st.session_state.messages.append({"role": "system", "content": prompt})
+                        debug_log("System prompt appended to messages.")
+                    else:
+                        prompt = f"請全部以繁體中文回答此問題：{user_input}"
+                        st.session_state.messages.append({"role": "system", "content": prompt})
+                        debug_log("Plain text system prompt appended to messages.")
 
-                    debug_log(f"DEBUG: Prompt used => {prompt}")
+                # Make the API request and stream the response
+                response_content = stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5)
+                debug_log(f"Full assistant response: {response_content}")
 
-                    # Append the prompt to messages
-                    st.session_state.messages.append({"role": "system", "content": prompt})
+                # After streaming is done, append assistant message
+                st.session_state.messages.append({"role": "assistant", "content": response_content})
+                with st.chat_message("assistant"):
+                    st.write(response_content)
+                    debug_log(f"Assistant response added to messages: {response_content}")
 
-                    # Get the model parameters
-                    model_params = {
-                        "model": st.session_state.client.model,
-                        "temperature": st.session_state.client.temperature
-                    }
+                # Extract JSON and code
+                json_str = extract_json_block(response_content)
+                try:
+                    response_json = json.loads(json_str)
+                    debug_log("JSON parsing successful.")
+                except Exception as e:
+                    debug_log(f"json.loads parsing error: {e}")
+                    debug_error(f"json.loads parsing error: {e}")
+                    response_json = {"content": json_str, "code": ""}
+                    debug_log("Fallback to raw response for content.")
 
-                    # Initialize partial response
-                    st.session_state.partial_response = ""
+                content = response_json.get("content", "這是我的分析：")
+                st.session_state.messages.append({"role": "assistant", "content": content})
+                with st.chat_message("assistant"):
+                    st.write(content)
+                    debug_log(f"Content from JSON appended to messages: {content}")
 
-                    # Stream the response
-                    full_response = ""
-                    for chunk in stream_llm_response(st.session_state.client, model_params):
-                        full_response += chunk
-                        # 在這裡已經更新了 partial_response 並重新執行，無需使用 st.experimental_rerun()
-
-                    # After streaming is complete, process the full response
-                    json_str = extract_json_block(full_response)
-                    try:
-                        response_json = json.loads(json_str)
-                    except Exception as e:
-                        debug_log(f"json.loads parsing error: {e}")
-                        debug_error(f"json.loads parsing error: {e}")
-                        response_json = {"content": full_response, "code": ""}
-
-                    content = response_json.get("content", "這是我的分析：")
-                    st.session_state.messages.append({"role": "assistant", "content": content})
+                code = response_json.get("code", "")
+                if code:
+                    st.session_state.messages.append({"role": "assistant", "code": code})
                     with st.chat_message("assistant"):
-                        st.write(content)
+                        st.code(code, language="python")
+                        debug_log(f"Code from JSON appended to messages: {code}")
+                    st.session_state.ace_code = code
+                    debug_log("ace_code updated with new code.")
 
-                    code = response_json.get("code", "")
-                    if code:
-                        st.session_state.messages.append({"role": "assistant", "code": code})
-                        with st.chat_message("assistant"):
-                            st.code(code, language="python")
-                        st.session_state.ace_code = code
+                # --- 若勾選深度分析模式 & 有程式碼 -> 執行程式、二次解析圖表 ---
+                if st.session_state.deep_analysis_mode and code:
+                    st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
+                    debug_log("Deep analysis mode activated.")
 
-                    # --- 若勾選深度分析模式 & 有程式碼 -> 執行程式、二次解析圖表 ---
-                    if st.session_state.deep_analysis_mode and code:
-                        st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
+                    global_vars = {
+                        "uploaded_file_path": st.session_state.uploaded_file_path,
+                        "uploaded_image_path": st.session_state.uploaded_image_path,
+                    }
+                    exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
+                    st.write("#### Execution Result")
+                    st.text(exec_result)
+                    debug_log(f"Execution result: {exec_result}")
 
-                        global_vars = {
-                            "uploaded_file_path": st.session_state.uploaded_file_path,
-                            "uploaded_image_path": st.session_state.uploaded_image_path,
-                        }
-                        exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
-                        st.write("#### Execution Result")
-                        st.text(exec_result)
+                    fig = plt.gcf()
+                    buf = io.BytesIO()
+                    fig.savefig(buf, format="png")
+                    buf.seek(0)
+                    chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
+                    st.session_state.deep_analysis_image = chart_base64
+                    debug_log("Chart has been converted to base64.")
 
-                        fig = plt.gcf()
-                        buf = io.BytesIO()
-                        fig.savefig(buf, format="png")
-                        buf.seek(0)
-                        chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
-                        st.session_state.deep_analysis_image = chart_base64
-
-                        deep_model = initialize_client(st.session_state.client.api_key, "gpt-4o")
-                        if deep_model:
-                            prompt_2 = f"""
+                    # Prepare deep analysis prompt
+                    prompt_2 = f"""
 這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
-{chart_base64[:300]}...
+{chart_base64}
 
 請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
 """
-                            debug_log(f"DEBUG: Deep Analysis Prompt => {prompt_2}")
-                            st.session_state.messages.append({"role": "system", "content": prompt_2})
+                    debug_log(f"Deep Analysis Prompt: {prompt_2}")
 
-                            # Stream the second response
-                            second_raw_response = stream_llm_response(deep_model, {"model": "gpt-4o", "temperature": 0.5})
-                            second_raw_response_full = "".join(second_raw_response)
+                    # Append prompt_2 to messages
+                    st.session_state.messages.append({"role": "user", "content": prompt_2})
+                    debug_log("Deep analysis prompt appended to messages.")
 
-                            st.session_state.second_response = second_raw_response_full
+                    # Make the API request for deep analysis
+                    second_raw_response = stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5)
+                    debug_log(f"Deep analysis response: {second_raw_response}")
 
-                            st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
-                            st.write(second_raw_response_full)
+                    # Append assistant response
+                    st.session_state.messages.append({"role": "assistant", "content": second_raw_response})
+                    st.session_state.second_response = second_raw_response
+                    with st.chat_message("assistant"):
+                        st.write(second_raw_response)
+                        debug_log(f"Deep analysis response added to messages: {second_raw_response}")
 
-                            final_model = initialize_client(st.session_state.client.api_key, "gpt-4o")
-                            if final_model:
-                                prompt_3 = f"""
+                    # Prepare final summary prompt
+                    prompt_3 = f"""
 第一階段回覆內容：{content}
-第二階段圖表解析內容：{second_raw_response_full}
+第二階段圖表解析內容：{second_raw_response}
 
 請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
 """
-                                debug_log(f"DEBUG: Final Summary Prompt => {prompt_3}")
-                                st.session_state.messages.append({"role": "system", "content": prompt_3})
+                    debug_log(f"Final Summary Prompt: {prompt_3}")
 
-                                # Stream the third response
-                                third_raw_response = stream_llm_response(final_model, {"model": "gpt-4o", "temperature": 0.5})
-                                third_raw_response_full = "".join(third_raw_response)
+                    # Append prompt_3 to messages
+                    st.session_state.messages.append({"role": "user", "content": prompt_3})
+                    debug_log("Final summary prompt appended to messages.")
 
-                                st.session_state.third_response = third_raw_response_full
+                    # Make the API request for final summary
+                    third_raw_response = stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5)
+                    debug_log(f"Final summary response: {third_raw_response}")
 
-                                st.write("#### [深度分析] 結論 (第三次回覆) :")
-                                st.write(third_raw_response_full)
+                    # Append assistant response
+                    st.session_state.messages.append({"role": "assistant", "content": third_raw_response})
+                    st.session_state.third_response = third_raw_response
+                    with st.chat_message("assistant"):
+                        st.write(third_raw_response)
+                        debug_log(f"Final summary response added to messages: {third_raw_response}")
 
-                                st.write("#### [深度分析] 圖表：")
-                                img_data = base64.b64decode(st.session_state.deep_analysis_image)
-                                st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
+                    # Display the chart
+                    st.write("#### [深度分析] 圖表：")
+                    try:
+                        img_data = base64.b64decode(st.session_state.deep_analysis_image)
+                        st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
+                        debug_log("Deep analysis chart displayed.")
+                    except Exception as e:
+                        if st.session_state.debug_mode:
+                            st.error(f"Error displaying chart: {e}")
+                        debug_log(f"Error displaying chart: {e}")
 
-                except Exception as e:
-                    if st.session_state.debug_mode:
-                        st.error(f"An error occurred: {e}")
-                    debug_log(f"[DEBUG] An error occurred: {e}")
+            except Exception as e:
+                if st.session_state.debug_mode:
+                    st.error(f"An error occurred: {e}")
+                debug_log(f"An error occurred: {e}")
 
-    debug_log(f"DEBUG: editor_location = {st.session_state.editor_location}")
-    debug_log(f"DEBUG: final st.session_state.uploaded_file_path = {st.session_state.uploaded_file_path}")
-    debug_log(f"DEBUG: final st.session_state.uploaded_image_path = {st.session_state.uploaded_image_path}")
+    debug_log(f"Editor location: {st.session_state.editor_location}")
+    debug_log(f"Final uploaded file path: {st.session_state.uploaded_file_path}")
+    debug_log(f"Final uploaded image path: {st.session_state.uploaded_image_path}")
 
+    # --- Persistent Code Editor ---
     if st.session_state.editor_location == "Main":
         with st.expander("🖋️ Persistent Code Editor (Main)", expanded=False):
             edited_code = st_ace(
@@ -402,18 +443,20 @@ Available columns: {csv_columns}.
             )
             if edited_code != st.session_state.ace_code:
                 st.session_state.ace_code = edited_code
+                debug_log("ace_code updated from main editor.")
 
             if st.button("▶️ Execute Code", key="execute_code_main"):
                 global_vars = {
                     "uploaded_file_path": st.session_state.uploaded_file_path,
                     "uploaded_image_path": st.session_state.uploaded_image_path,
                 }
-                debug_log(f"DEBUG: executing code with uploaded_file_path = {st.session_state.uploaded_file_path}")
-                debug_log(f"DEBUG: executing code with uploaded_image_path = {st.session_state.uploaded_image_path}")
+                debug_log(f"Executing code with uploaded_file_path = {st.session_state.uploaded_file_path}")
+                debug_log(f"Executing code with uploaded_image_path = {st.session_state.uploaded_image_path}")
 
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
+                debug_log(f"Code execution result: {result}")
 
     else:
         with st.sidebar.expander("🖋️ Persistent Code Editor (Sidebar)", expanded=False):
@@ -426,18 +469,20 @@ Available columns: {csv_columns}.
             )
             if edited_code != st.session_state.ace_code:
                 st.session_state.ace_code = edited_code
+                debug_log("ace_code updated from sidebar editor.")
 
             if st.button("▶️ Execute Code", key="execute_code_sidebar"):
                 global_vars = {
                     "uploaded_file_path": st.session_state.uploaded_file_path,
                     "uploaded_image_path": st.session_state.uploaded_image_path,
                 }
-                debug_log(f"DEBUG: executing code with uploaded_file_path = {st.session_state.uploaded_file_path}")
-                debug_log(f"DEBUG: executing code with uploaded_image_path = {st.session_state.uploaded_image_path}")
+                debug_log(f"Executing code with uploaded_file_path = {st.session_state.uploaded_file_path}")
+                debug_log(f"Executing code with uploaded_image_path = {st.session_state.uploaded_image_path}")
 
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
+                debug_log(f"Code execution result: {result}")
 
 if __name__ == "__main__":
     main()
