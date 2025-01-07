@@ -8,10 +8,7 @@ import os
 import dotenv
 import base64
 import io
-
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
-from langchain.chat_models import ChatOpenAI
+import requests
 from streamlit_ace import st_ace
 
 # --- Initialize and Settings ---
@@ -36,13 +33,6 @@ def debug_error(msg):
     if st.session_state.get("debug_mode", False):
         st.error(msg)
         print(msg)
-
-def initialize_client(api_key, model_name):
-    return ChatOpenAI(
-        model=model_name,
-        temperature=0.5,
-        openai_api_key=api_key
-    ) if api_key else None
 
 def save_uploaded_file(uploaded_file):
     if not os.path.exists(UPLOAD_DIR):
@@ -82,10 +72,42 @@ def extract_json_block(response: str) -> str:
     else:
         return response.strip()
 
+def stream_llm_response(api_key, model, messages, temperature=0.3, max_tokens=4096):
+    """Stream responses from the LLM model."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True
+    }
+    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data, stream=True)
+    if response.status_code != 200:
+        raise Exception(f"OpenAI API returned an error: {response.status_code} - {response.text}")
+    
+    for line in response.iter_lines():
+        if line:
+            decoded_line = line.decode('utf-8')
+            if decoded_line.startswith("data: "):
+                decoded_line = decoded_line.replace("data: ", "")
+                if decoded_line == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(decoded_line)
+                    chunk_text = chunk['choices'][0]['delta'].get('content', '')
+                    yield chunk_text
+                except json.JSONDecodeError:
+                    continue
+
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas (With Debug & Deep Analysis)")
 
+    # Initialize session state variables
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "ace_code" not in st.session_state:
@@ -118,23 +140,21 @@ def main():
         st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
         st.session_state.deep_analysis_mode = st.checkbox("深度分析模式", value=False)
 
-        if "conversation" not in st.session_state:
+        if "memory" not in st.session_state:
+            st.session_state.memory = []
+
+        if "conversation_initialized" not in st.session_state:
             if api_key:
-                st.session_state.chat_model = initialize_client(api_key, selected_model)
-                st.session_state.memory = ConversationBufferMemory()
-                st.session_state.conversation = ConversationChain(
-                    llm=st.session_state.chat_model,
-                    memory=st.session_state.memory
-                )
+                st.session_state.conversation_initialized = True
+                st.session_state.messages = []  # Initialize with empty message history
             else:
                 st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
-                return
 
         if st.session_state.debug_mode:
             debug_log(f"DEBUG: Currently using model => {selected_model}")
 
         if st.button("🗑️ Clear Memory"):
-            st.session_state.memory.clear()
+            st.session_state.memory = []
             st.session_state.messages = []
             st.session_state.ace_code = ""
             st.session_state.uploaded_file_path = None
@@ -147,9 +167,11 @@ def main():
             st.success("Memory cleared!")
 
         st.subheader("🧠 Memory State")
-        if "memory" in st.session_state:
-            memory_content = st.session_state.memory.load_memory_variables({})
-            st.text_area("Current Memory", value=str(memory_content), height=200)
+        if st.session_state.messages:
+            memory_content = "\n".join([f"{msg['role']}: {msg['content']}" for msg in st.session_state.messages])
+            st.text_area("Current Memory", value=memory_content, height=200)
+        else:
+            st.text_area("Current Memory", value="No messages yet.", height=200)
 
         # --- CSV 上傳 ---
         st.subheader("📂 Upload a CSV File")
@@ -231,7 +253,8 @@ def main():
                     else:
                         csv_columns = "無上傳檔案"
 
-                    prompt = f"""Please respond with a JSON object in the format:
+                    if st.session_state.uploaded_file_path is not None and csv_columns != "無上傳檔案":
+                        prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "這是我的觀察：{{{{分析內容}}}}",
     "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# 讀取 CSV 檔案 (請直接使用 st.session_state.uploaded_file_path 變數)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# 在這裡加入你要的繪圖或分析邏輯\\n\\n# 例如使用 st.pyplot() 來顯示圖表:\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
@@ -244,18 +267,28 @@ Important:
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
-
-                    if csv_columns == "無上傳檔案":
+                    else:
                         prompt = f"請全部以繁體中文回答此問題：{user_input}"
 
                 debug_log(f"DEBUG: Prompt used => {prompt}")
 
-                raw_response = st.session_state.conversation.run(prompt)
-                if st.session_state.debug_mode:
-                    st.write("Model raw response:", raw_response)
-                debug_log(f"[DEBUG] Model raw response => {raw_response}")
+                # Append the prompt to messages
+                st.session_state.messages.append({"role": "system", "content": prompt})
 
-                json_str = extract_json_block(raw_response)
+                # Make the API request and stream the response
+                response_content = ""
+                response_code = ""
+                for chunk in stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5):
+                    response_content += chunk
+                    st.experimental_rerun()  # To update the UI with streamed content
+
+                # After streaming is done, append assistant message
+                st.session_state.messages.append({"role": "assistant", "content": response_content})
+                with st.chat_message("assistant"):
+                    st.write(response_content)
+
+                # Extract JSON and code
+                json_str = extract_json_block(response_content)
                 try:
                     response_json = json.loads(json_str)
                 except Exception as e:
@@ -294,47 +327,57 @@ Available columns: {csv_columns}.
                     chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
                     st.session_state.deep_analysis_image = chart_base64
 
-                    deep_model = ChatOpenAI(
-                        model="gpt-4o",
-                        temperature=0.5,
-                        openai_api_key=api_key
-                    ) if api_key else None
-                    if deep_model:
-                        prompt_2 = f"""
+                    # Prepare deep analysis prompt
+                    prompt_2 = f"""
 這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
 {chart_base64[:300]}...
 
 請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
 """
-                        debug_log(f"DEBUG: Deep Analysis Prompt => {prompt_2}")
-                        second_raw_response = deep_model.call_as_llm(prompt_2)
-                        st.session_state.second_response = second_raw_response
+                    debug_log(f"DEBUG: Deep Analysis Prompt => {prompt_2}")
 
-                        st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
-                        st.write(second_raw_response)
+                    # Append prompt_2 to messages
+                    st.session_state.messages.append({"role": "user", "content": prompt_2})
 
-                        final_model = ChatOpenAI(
-                            model="gpt-4o",
-                            temperature=0.5,
-                            openai_api_key=api_key
-                        ) if api_key else None
-                        if final_model:
-                            prompt_3 = f"""
+                    # Make the API request for deep analysis
+                    second_raw_response = ""
+                    for chunk in stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5):
+                        second_raw_response += chunk
+                        st.experimental_rerun()  # To update the UI with streamed content
+
+                    st.session_state.messages.append({"role": "assistant", "content": second_raw_response})
+                    st.session_state.second_response = second_raw_response
+
+                    st.write("#### [深度分析] 圖表解析結果 (第二次回覆) :")
+                    st.write(second_raw_response)
+
+                    # Prepare final summary prompt
+                    prompt_3 = f"""
 第一階段回覆內容：{content}
 第二階段圖表解析內容：{second_raw_response}
 
 請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
 """
-                            debug_log(f"DEBUG: Final Summary Prompt => {prompt_3}")
-                            third_raw_response = final_model.call_as_llm(prompt_3)
-                            st.session_state.third_response = third_raw_response
+                    debug_log(f"DEBUG: Final Summary Prompt => {prompt_3}")
 
-                            st.write("#### [深度分析] 結論 (第三次回覆) :")
-                            st.write(third_raw_response)
+                    # Append prompt_3 to messages
+                    st.session_state.messages.append({"role": "user", "content": prompt_3})
 
-                            st.write("#### [深度分析] 圖表：")
-                            img_data = base64.b64decode(st.session_state.deep_analysis_image)
-                            st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
+                    # Make the API request for final summary
+                    third_raw_response = ""
+                    for chunk in stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5):
+                        third_raw_response += chunk
+                        st.experimental_rerun()  # To update the UI with streamed content
+
+                    st.session_state.messages.append({"role": "assistant", "content": third_raw_response})
+                    st.session_state.third_response = third_raw_response
+
+                    st.write("#### [深度分析] 結論 (第三次回覆) :")
+                    st.write(third_raw_response)
+
+                    st.write("#### [深度分析] 圖表：")
+                    img_data = base64.b64decode(st.session_state.deep_analysis_image)
+                    st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
 
             except Exception as e:
                 if st.session_state.debug_mode:
