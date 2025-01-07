@@ -4,9 +4,9 @@ import dotenv
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
-from io import BytesIO
-import base64
 import traceback
+import base64
+from io import BytesIO
 from PIL import Image
 
 # --- 初始化與設置 ---
@@ -62,6 +62,12 @@ def reset_session_state():
         "ace_code"
     ]:
         st.session_state.pop(key, None)
+
+def debug_log(message):
+    """Log debug messages when debug mode is enabled."""
+    if st.session_state.get("debug_mode", False):
+        st.write(message)
+        print(message)
 
 # --- 主功能 ---
 def main():
