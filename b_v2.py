@@ -99,6 +99,7 @@ def stream_llm_response(api_key, model, messages, temperature=0.3, max_tokens=40
         raise Exception(f"OpenAI API returned an error: {response.status_code} - {error_content}")
     
     response_content = ""
+    assistant_placeholder = st.empty()  # Create a placeholder for assistant's response
     for line in response.iter_lines():
         if line:
             decoded_line = line.decode('utf-8')
@@ -113,9 +114,8 @@ def stream_llm_response(api_key, model, messages, temperature=0.3, max_tokens=40
                     chunk_text = chunk['choices'][0]['delta'].get('content', '')
                     debug_log(f"Chunk text: {chunk_text}")
                     response_content += chunk_text
-                    # 使用 Streamlit 的會話狀態來存儲回應
-                    st.session_state.partial_response += chunk_text
-                    st.experimental_rerun()  # 更新 UI
+                    # Update the assistant's response in the placeholder
+                    assistant_placeholder.markdown(response_content)
                 except json.JSONDecodeError as e:
                     debug_error(f"JSON decode error: {e}")
                     continue
@@ -148,8 +148,6 @@ def main():
         st.session_state.third_response = ""
     if "deep_analysis_image" not in st.session_state:
         st.session_state.deep_analysis_image = None
-    if "partial_response" not in st.session_state:
-        st.session_state.partial_response = ""
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -167,7 +165,6 @@ def main():
             if api_key:
                 st.session_state.conversation_initialized = True
                 st.session_state.messages = []  # Initialize with empty message history
-                st.session_state.partial_response = ""
                 debug_log("Conversation initialized with empty message history.")
             else:
                 st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
@@ -186,7 +183,6 @@ def main():
             st.session_state.second_response = ""
             st.session_state.third_response = ""
             st.session_state.deep_analysis_image = None
-            st.session_state.partial_response = ""
             st.success("Memory cleared!")
             debug_log("Memory has been cleared.")
 
@@ -319,14 +315,8 @@ Available columns: {csv_columns}.
                 st.session_state.messages[-1]["content"] = user_input
 
                 # Make the API request and stream the response
-                response_content = ""
-                st.session_state.partial_response = ""
-                for chunk in stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5):
-                    response_content += chunk
-                    debug_log(f"Streaming chunk: {chunk}")
-                    # 在這裡使用會話狀態來顯示部分回應
-                    st.session_state.partial_response += chunk
-                    st.experimental_rerun()  # 更新 UI
+                response_content = stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5)
+                debug_log(f"Full assistant response: {response_content}")
 
                 # After streaming is done, append assistant message
                 st.session_state.messages.append({"role": "assistant", "content": response_content})
@@ -396,13 +386,8 @@ Available columns: {csv_columns}.
                     debug_log("Deep analysis prompt appended to messages.")
 
                     # Make the API request for deep analysis
-                    second_raw_response = ""
-                    st.session_state.partial_response = ""
-                    for chunk in stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5):
-                        second_raw_response += chunk
-                        debug_log(f"Streaming deep analysis chunk: {chunk}")
-                        st.session_state.partial_response += chunk
-                        st.experimental_rerun()  # 更新 UI
+                    second_raw_response = stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5)
+                    debug_log(f"Deep analysis response: {second_raw_response}")
 
                     # Append assistant response
                     st.session_state.messages.append({"role": "assistant", "content": second_raw_response})
@@ -425,13 +410,8 @@ Available columns: {csv_columns}.
                     debug_log("Final summary prompt appended to messages.")
 
                     # Make the API request for final summary
-                    third_raw_response = ""
-                    st.session_state.partial_response = ""
-                    for chunk in stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5):
-                        third_raw_response += chunk
-                        debug_log(f"Streaming final summary chunk: {chunk}")
-                        st.session_state.partial_response += chunk
-                        st.experimental_rerun()  # 更新 UI
+                    third_raw_response = stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5)
+                    debug_log(f"Final summary response: {third_raw_response}")
 
                     # Append assistant response
                     st.session_state.messages.append({"role": "assistant", "content": third_raw_response})
