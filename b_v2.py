@@ -8,7 +8,7 @@ import os
 import dotenv
 import base64
 import io
-from openai import OpenAI
+import openai
 from PIL import Image
 from streamlit_ace import st_ace
 
@@ -256,12 +256,12 @@ def main():
     # --- 顯示歷史訊息 ---
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            if "content" in message:
+            if isinstance(message["content"], dict) and "code" in message["content"]:
+                st.code(message["content"]["code"], language="python")
+                debug_log(f"Displaying code from {message['role']}: {message['content']['code']}")
+            else:
                 st.write(message["content"])
                 debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
-            if "code" in message:
-                st.code(message["code"], language="python")
-                debug_log(f"Displaying code from {message['role']}: {message['code']}")
 
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
@@ -310,18 +310,18 @@ def main():
 
                     if st.session_state.uploaded_file_path is not None and csv_columns != "無上傳檔案":
                         prompt = f"""Please respond with a JSON object in the format:
-    {{
-        "content": "這是我的觀察：{{{{分析內容}}}}",
-        "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# 讀取 CSV 檔案 (請直接使用 st.session_state.uploaded_file_path 變數)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# 在這裡加入你要的繪圖或分析邏輯\\n\\n# 例如使用 st.pyplot() 來顯示圖表:\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
-    }}
-    Important:
-    1) Must use st.session_state.uploaded_file_path as the CSV path (instead of a hardcoded path)
-    2) Must use st.pyplot() to display any matplotlib figure
-    3) Return only valid JSON (escape any special characters if needed)
-    
-    Based on the request: {user_input}.
-    Available columns: {csv_columns}.
-    """
+{{
+    "content": "這是我的觀察：{{{{分析內容}}}}",
+    "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# 讀取 CSV 檔案 (請直接使用 st.session_state.uploaded_file_path 變數)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# 在這裡加入你要的繪圖或分析邏輯\\n\\n# 例如使用 st.pyplot() 來顯示圖表:\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
+}}
+Important:
+1) Must use st.session_state.uploaded_file_path as the CSV path (instead of a hardcoded path)
+2) Must use st.pyplot() to display any matplotlib figure
+3) Return only valid JSON (escape any special characters if needed)
+
+Based on the request: {user_input}.
+Available columns: {csv_columns}.
+"""
                         debug_log("Prompt constructed for CSV input with JSON response.")
                         append_message("system", prompt)
                         debug_log("System prompt appended to messages.")
@@ -366,8 +366,8 @@ def main():
 
                     code = response_json.get("code", "")
                     if code:
-                        # Append code as a separate message
-                        append_message("assistant", {"code": code})  # 這裡需要確保 "code" 被正確處理
+                        # 將代碼作為獨立的訊息添加
+                        append_message("assistant", {"code": code})
                         with st.chat_message("assistant"):
                             st.code(code, language="python")
                             debug_log(f"Code from JSON appended to messages: {code}")
@@ -398,11 +398,11 @@ def main():
 
                         # Prepare deep analysis prompt
                         prompt_2 = f"""
-    這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
-    ![image](data:image/png;base64,{chart_base64})
-    
-    請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
-    """
+這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
+![image](data:image/png;base64,{chart_base64})
+
+請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
+"""
                         debug_log(f"Deep Analysis Prompt: {prompt_2}")
 
                         # Append prompt_2 to messages
@@ -423,11 +423,11 @@ def main():
 
                             # Prepare final summary prompt
                             prompt_3 = f"""
-    第一階段回覆內容：{content}
-    第二階段圖表解析內容：{second_raw_response}
-    
-    請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
-    """
+第一階段回覆內容：{content}
+第二階段圖表解析內容：{second_raw_response}
+
+請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
+"""
                             debug_log(f"Final Summary Prompt: {prompt_3}")
 
                             # Append prompt_3 to messages
@@ -518,5 +518,5 @@ def main():
                 st.text(result)
                 debug_log(f"Code execution result: {result}")
 
-    if __name__ == "__main__":
-        main()
+if __name__ == "__main__":
+    main()
