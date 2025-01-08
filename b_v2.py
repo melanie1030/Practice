@@ -56,6 +56,7 @@ def save_uploaded_file(uploaded_file):
 def load_image_base64(image, max_size=(800, 800)):
     """Resize image if necessary and convert to Base64 encoding."""
     try:
+        image.thumbnail(max_size, Image.ANTIALIAS)  # Resize to max_size
         buffer = BytesIO()
         image.save(buffer, format="PNG")  # Use PNG for consistency
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
