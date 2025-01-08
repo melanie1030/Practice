@@ -12,6 +12,7 @@ from openai import OpenAI  # 自定義的 OpenAI 類別
 from PIL import Image
 from streamlit_ace import st_ace
 import openai  # 引入 openai 模組以供內部使用
+from openai.error import RateLimitError, OpenAIError  # 正確導入異常類別
 
 # --- 定義 OpenAI 類別 ---
 class OpenAI:
@@ -32,8 +33,8 @@ class OpenAI:
 
     # 添加 error 屬性以便捕捉異常
     class error:
-        RateLimitError = openai.error.RateLimitError
-        OpenAIError = openai.error.OpenAIError
+        RateLimitError = RateLimitError
+        OpenAIError = OpenAIError
 
 # --- 初始化與設置 ---
 dotenv.load_dotenv()
@@ -76,7 +77,7 @@ def load_image_base64(image, max_size=(800, 800)):
     try:
         # 重新調整圖片大小以減少大小
         image.thumbnail(max_size, Image.LANCZOS)
-        
+
         buffered = io.BytesIO()
         image.save(buffered, format="PNG")
         img_bytes = buffered.getvalue()
@@ -485,6 +486,12 @@ Available columns: {csv_columns}.
                                         st.error(f"Error displaying chart: {e}")
                                     debug_log(f"Error displaying chart: {e}")
 
+            except OpenAI.error.OpenAIError as e:
+                debug_error(f"OpenAI error: {e}")
+                st.error(f"An OpenAI error occurred: {e}")
+            except OpenAI.error.RateLimitError as e:
+                debug_error(f"Rate limit exceeded: {e}")
+                st.error("Rate limit exceeded. Please try again later.")
             except Exception as e:
                 if st.session_state.debug_mode:
                     st.error(f"An error occurred: {e}")
