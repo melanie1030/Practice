@@ -122,47 +122,24 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-def stream_llm_response(client, model_params, max_retries=3):
-    """Stream responses from the LLM model with retry logic."""
-    retries = 0
-    wait_time = 5  # Start with 5 seconds
-
-    while retries < max_retries:
-        try:
-            response = client.chat.completions.create(
-                model=model_params.get("model", "gpt-4-turbo"),
-                messages=st.session_state.messages,
-                temperature=model_params.get("temperature", 0.3),
-                max_tokens=model_params.get("max_tokens", 4096),
-                stream=True
-            )
-            response_content = ""
-            assistant_placeholder = st.empty()  # Create a placeholder for assistant's response
-
-            for chunk in response:
-                # Correctly access 'content' attribute
-                chunk_text = getattr(chunk.choices[0].delta, 'content', '')
-                if chunk_text:
-                    response_content += chunk_text
-                    # Update the assistant's response in the placeholder
-                    assistant_placeholder.markdown(response_content)
-                    debug_log(f"Received chunk: {chunk_text[:100]}...")
-            return response_content
-
-        except Exception as e:
-            if 'rate_limit_exceeded' in str(e).lower() or '429' in str(e):
-                debug_error(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
-                st.warning(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)
-                retries += 1
-                wait_time *= 2  # Exponential backoff
-            else:
-                debug_error(f"Error streaming response: {e}")
-                st.error(f"An error occurred while streaming the response: {e}")
-                return ""
-    
-    st.error("Max retries exceeded. Please try again later.")
-    return ""
+def get_llm_response(client, model_params):
+    """Get response from the LLM model synchronously."""
+    try:
+        response = client.chat.completions.create(
+            model=model_params.get("model", "gpt-4-turbo"),
+            messages=st.session_state.messages,
+            temperature=model_params.get("temperature", 0.3),
+            max_tokens=model_params.get("max_tokens", 4096),
+            stream=False  # Disable streaming
+        )
+        # Extract the full response content
+        response_content = response.choices[0].message['content'].strip()
+        debug_log(f"Full assistant response: {response_content}")
+        return response_content
+    except Exception as e:
+        debug_error(f"Error getting response: {e}")
+        st.error(f"An error occurred while getting the response: {e}")
+        return ""
 
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
@@ -352,17 +329,16 @@ Available columns: {csv_columns}.
                         append_message("system", prompt)
                         debug_log("Plain text system prompt appended to messages.")
 
-                # Make the API request and stream the response
+                # Make the API request and get the response
                 model_params = {
                     "model": selected_model,
                     "temperature": 0.5,
                     "max_tokens": 4096
                 }
-                response_content = stream_llm_response(client, model_params)
-                debug_log(f"Full assistant response: {response_content}")
+                response_content = get_llm_response(client, model_params)
 
                 if response_content:
-                    # After streaming is done, append assistant message
+                    # After getting the response, append assistant message
                     append_message("assistant", response_content)
                     with st.chat_message("assistant"):
                         st.write(response_content)
@@ -430,7 +406,7 @@ Please provide further analysis, explaining the data trends or observations that
                         debug_log("Deep analysis prompt appended to messages.")
 
                         # Make the API request for deep analysis
-                        second_raw_response = stream_llm_response(client, model_params)
+                        second_raw_response = get_llm_response(client, model_params)
                         debug_log(f"Deep analysis response: {second_raw_response}")
 
                         if second_raw_response:
@@ -455,7 +431,7 @@ Please help me summarize the above two responses and provide additional suggesti
                             debug_log("Final summary prompt appended to messages.")
 
                             # Make the API request for final summary
-                            third_raw_response = stream_llm_response(client, model_params)
+                            third_raw_response = get_llm_response(client, model_params)
                             debug_log(f"Final summary response: {third_raw_response}")
 
                             if third_raw_response:
