@@ -72,18 +72,15 @@ def append_message(role, content):
         debug_log("Message history trimmed to maintain token limits.")
 
 def add_user_image(uploaded_file):
-    """Add an image message to the session state using image_url structure and save the file."""
+    """Add an image message to the session state as a Markdown string and save the file."""
     try:
         # Open the image using PIL
         image = Image.open(uploaded_file)
         img_base64 = load_image_base64(image)
         if img_base64:
-            # Create image_url structure
-            image_content = [{
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{img_base64}"}
-            }]
-            append_message("user", image_content)
+            # Create Markdown string for the image
+            image_markdown = f"![Uploaded Image](data:image/png;base64,{img_base64})"
+            append_message("user", image_markdown)
             st.session_state.image_base64 = img_base64  # Update image_base64
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_file)  # Save image file path
             st.success("Image uploaded!")
@@ -191,6 +188,8 @@ def main():
         st.session_state.third_response = ""
     if "deep_analysis_image" not in st.session_state:
         st.session_state.deep_analysis_image = None
+    if "show_messages" not in st.session_state:
+        st.session_state.show_messages = False  # Initialize show_messages state
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -273,7 +272,33 @@ def main():
         st.session_state.editor_location = location
         debug_log(f"Editor location set to: {st.session_state.editor_location}")
 
+        # --- 新增側邊欄按鈕以切換顯示 messages ---
+        st.subheader("🔍 Debug Options")
+        def toggle_show_messages():
+            st.session_state.show_messages = not st.session_state.show_messages
+            debug_log(f"show_messages set to {st.session_state.show_messages}")
+
+        st.button("Toggle Show Messages", on_click=toggle_show_messages)
+
     # --- Display Message History ---
+    if st.session_state.show_messages:
+        with st.expander("🛠️ 調試: 查看 session_state.messages", expanded=True):
+            if "messages" in st.session_state:
+                messages_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=4)
+                st.text_area("messages.json", value=messages_json, height=300)
+
+                # 添加下載按鈕
+                st.download_button(
+                    label="📥 下載 messages.json",
+                    data=messages_json,
+                    file_name="messages.json",
+                    mime="application/json"
+                )
+            else:
+                st.write("沒有找到 messages。")
+                debug_log("No messages found in session_state.")
+
+    # --- Display Chat Messages ---
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             if isinstance(message["content"], str) and "```python" in message["content"]:
@@ -545,7 +570,7 @@ Please help me summarize the above two responses and provide additional suggesti
                 st.text(result)
                 debug_log(f"Code execution result: {result}")
 
-    # --- 添加調試區塊 ---
+    # --- 調試區塊 ---
     with st.expander("🛠️ 調試: 查看 session_state.messages", expanded=False):
         if "messages" in st.session_state:
             messages_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=4)
@@ -560,6 +585,7 @@ Please help me summarize the above two responses and provide additional suggesti
             )
         else:
             st.write("沒有找到 messages。")
+            debug_log("No messages found in session_state.")
 
 if __name__ == "__main__":
     main()
