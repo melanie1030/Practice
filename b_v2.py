@@ -410,7 +410,7 @@ Available columns: {csv_columns}.
                     # After getting the response, append assistant message
                     append_message("assistant", response_content)
                     with st.chat_message("assistant"):
-                        st.write(response_content)
+                        # st.write(response_content) #避免二次顯示
                         debug_log(f"Assistant response added to messages: {response_content}")
 
                     # Extract JSON and code
