@@ -17,13 +17,7 @@ dotenv.load_dotenv()
 
 UPLOAD_DIR = "uploaded_files"
 
-OPENAI_MODELS = [
-    "gpt-4-turbo",  # Use a more stable model
-    "gpt-3.5-turbo-16k",
-    "gpt-4",
-    "gpt-4-32k",
-    "gpt-4o"
-]
+OPENAI_MODELS = ["gpt-4o"]
 
 MAX_MESSAGES = 10  # Limit message history
 
@@ -57,7 +51,6 @@ def load_image_base64(image):
     try:
         buffer = BytesIO()
         image.save(buffer, format=image.format)
-        img_bytes = buffer.getvalue()
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
     except Exception as e:
         debug_error(f"Error converting image to base64: {e}")
