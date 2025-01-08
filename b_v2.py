@@ -75,7 +75,8 @@ def add_user_image(image):
     """Add an image message to the session state."""
     img_base64 = load_image_base64(image)
     if img_base64:
-        append_message("user", {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}})
+        image_markdown = f"![Uploaded Image](data:image/png;base64,{img_base64})"
+        append_message("user", image_markdown)
         st.success("Image uploaded!")
     else:
         debug_error("Failed to convert image to base64.")
@@ -304,10 +305,10 @@ def main():
 
                     if st.session_state.uploaded_file_path is not None and csv_columns != "No file uploaded":
                         prompt = f"""Please respond with a JSON object in the format:
-{{
+{
     "content": "Here are my observations: {{analysis}}",
-    "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# Read CSV file (use st.session_state.uploaded_file_path variable)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# Add your plotting or analysis logic here\\n\\n# For example, to display a plot using st.pyplot():\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
-}}
+    "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# Read CSV file (use st.session_state.uploaded_file_path variable)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# Add your plotting or analysis logic here\\n\\n# For example, to display a plot using st.pyplot():\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)"
+}
 Important:
 1) Must use st.session_state.uploaded_file_path as the CSV path (instead of a hardcoded path)
 2) Must use st.pyplot() to display any matplotlib figure
@@ -360,11 +361,10 @@ Available columns: {csv_columns}.
 
                     code = response_json.get("code", "")
                     if code:
-                        # Add code as a separate message
-                        append_message("assistant", {"code": code})
+                        code_block = f"```python\n{code}\n```"
+                        append_message("assistant", code_block)
                         with st.chat_message("assistant"):
                             st.code(code, language="python")
-                            debug_log(f"Code from JSON appended to messages: {code}")
                         st.session_state.ace_code = code
                         debug_log("ace_code updated with new code.")
 
@@ -383,7 +383,7 @@ Available columns: {csv_columns}.
                         debug_log(f"Execution result: {exec_result}")
 
                         fig = plt.gcf()
-                        buf = io.BytesIO()
+                        buf = BytesIO()
                         fig.savefig(buf, format="png")
                         buf.seek(0)
                         chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
