@@ -8,6 +8,7 @@ import os
 import dotenv
 import base64
 import io
+from openai import OpenAI
 import requests
 from PIL import Image
 from streamlit_ace import st_ace
