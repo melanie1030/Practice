@@ -30,6 +30,11 @@ class OpenAI:
                     stream=stream
                 )
 
+    # 添加 error 屬性以便捕捉異常
+    class error:
+        RateLimitError = openai.error.RateLimitError
+        OpenAIError = openai.error.OpenAIError
+
 # --- 初始化與設置 ---
 dotenv.load_dotenv()
 
@@ -154,11 +159,11 @@ def stream_llm_response(client, model_params):
                 assistant_placeholder.markdown(response_content)
                 debug_log(f"Received chunk: {chunk_text[:100]}...")
         return response_content
-    except openai.error.RateLimitError as e:
+    except OpenAI.error.RateLimitError as e:
         debug_error(f"Rate limit exceeded: {e}")
         st.error("Rate limit exceeded. Please try again later.")
         return ""
-    except openai.error.OpenAIError as e:
+    except OpenAI.error.OpenAIError as e:
         debug_error(f"OpenAI error: {e}")
         st.error(f"An OpenAI error occurred: {e}")
         return ""
@@ -278,21 +283,12 @@ def main():
     # --- 顯示歷史訊息 ---
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            if isinstance(message["content"], str):
+            if isinstance(message["content"], dict) and "code" in message["content"]:
+                st.code(message["content"]["code"], language="python")
+                debug_log(f"Displaying code from {message['role']}: {message['content']['code']}")
+            else:
                 st.write(message["content"])
                 debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
-            elif isinstance(message["content"], list):
-                for content in message["content"]:
-                    if isinstance(content, dict):
-                        if content.get("type") == "text":
-                            st.write(content.get("text", ""))
-                            debug_log(f"Displaying text from {message['role']}: {content.get('text', '')}")
-                        elif content.get("type") == "image_url":
-                            st.image(content["image_url"].get("url", ""))
-                            debug_log(f"Displaying image from {message['role']}")
-                    elif isinstance(content, dict) and "code" in content:
-                        st.code(content["code"], language="python")
-                        debug_log(f"Displaying code from {message['role']}: {content['code']}")
 
     # --- 用戶輸入 ---
     user_input = st.chat_input("Hi! Ask me anything...")
