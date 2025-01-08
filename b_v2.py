@@ -14,29 +14,17 @@ from streamlit_ace import st_ace
 import openai  # Import openai module for internal use
 
 # --- Define OpenAI class ---
-class OpenAI:
-    def __init__(self, api_key):
-        openai.api_key = api_key
+def initialize_client(api_key):
+    """Initialize OpenAI client with the provided API key."""
+    return OpenAI(api_key=api_key) if api_key else None
 
-    class chat:
-        class completions:
-            @staticmethod
-            def create(model, messages, temperature, max_tokens, stream):
-                return openai.ChatCompletion.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=stream
-                )
-
-    # Define custom exceptions if openai.error is not available
-    class error:
-        class RateLimitError(Exception):
-            pass
-
-        class OpenAIError(Exception):
-            pass
+def openai_client_init(client, model_params):
+    gpt = client.chat.completions.create(
+        model=model_params.get("model", "gpt-4o"),
+        messages=st.session_state.messages,
+        temperature=model_params.get("temperature", 0.3),
+        max_tokens=4096)
+    return gpt
 
 # --- Initialization and Settings ---
 dotenv.load_dotenv()
