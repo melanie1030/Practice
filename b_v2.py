@@ -103,7 +103,7 @@ def execute_code(code, global_vars=None):
             return "Error executing code (hidden in non-debug mode)."
 
 def extract_json_block(response: str) -> str:
-    pattern = r'```(?:json)?(.*)```'
+    pattern = r'```(?:json)?\s*(.*?)\s*```'
     match = re.search(pattern, response, re.DOTALL)
     if match:
         json_str = match.group(1).strip()
@@ -286,10 +286,16 @@ def main():
                 debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
                 debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
 
+                # --- 確保 system prompt 僅添加一次 ---
+                if not any(msg["role"] == "system" for msg in st.session_state.messages):
+                    system_prompt = "你是一個協助進行數據分析的助手。"
+                    st.session_state.messages.insert(0, {"role": "system", "content": system_prompt})
+                    debug_log("System prompt added to messages.")
+
                 # --- 決定使用哪種 prompt ---
                 if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
                     # 圖片已上傳，圖片數據已作為單獨的訊息添加
-                    prompt = user_input
+                    prompt = user_input  # 直接使用用戶輸入
                     debug_log("User input with image data already appended.")
                 else:
                     # 沒有圖片上傳，使用複雜的 JSON 邏輯
@@ -322,18 +328,13 @@ Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
                         debug_log("Prompt constructed for CSV input with JSON response.")
+                        st.session_state.messages.append({"role": "system", "content": prompt})
+                        debug_log("System prompt appended to messages.")
                     else:
                         prompt = f"請全部以繁體中文回答此問題：{user_input}"
                         debug_log("Prompt constructed for plain text input.")
-
-                    st.session_state.messages.append({"role": "system", "content": prompt})
-                    debug_log("System prompt appended to messages.")
-
-                # 如果這是第一次用戶輸入，添加系統訊息
-                if len(st.session_state.messages) == 1:
-                    system_prompt = "你是一個協助進行數據分析的助手。"
-                    st.session_state.messages.insert(0, {"role": "system", "content": system_prompt})
-                    debug_log("System prompt added to messages.")
+                        st.session_state.messages.append({"role": "system", "content": prompt})
+                        debug_log("Plain text system prompt appended to messages.")
 
                 # Make the API request and stream the response
                 response_content = stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5)
