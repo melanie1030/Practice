@@ -74,23 +74,24 @@ def append_message(role, content):
 def add_user_image(uploaded_file):
     """Add an image message to the session state using image_url structure and save the file."""
     try:
-        # Open the image using PIL
+        # 打開上傳的圖片
         image = Image.open(uploaded_file)
         img_base64 = load_image_base64(image)
         if img_base64:
-            # Create image_url structure
+            # 創建 image_url 結構
             image_content = [{
                 "type": "image_url",
                 "image_url": {"url": f"data:image/png;base64,{img_base64}"}
             }]
-            append_message("user", image_content)
-            st.session_state.image_base64 = img_base64  # Update image_base64
-            st.session_state.uploaded_image_path = save_uploaded_file(uploaded_file)  # Save image file path
-            st.success("Image uploaded!")
+            append_message("user", image_content)  # 將圖片訊息添加到訊息歷史
+            st.session_state.image_base64 = img_base64  # 更新 image_base64
+            st.session_state.uploaded_image_path = save_uploaded_file(uploaded_file)  # 保存圖片檔案路徑
+            st.success("圖片上傳成功！")
+            debug_log("Image uploaded and added to messages.")
         else:
-            debug_error("Failed to convert image to base64.")
+            debug_error("無法將圖片轉換為 base64。")
     except Exception as e:
-        debug_error(f"Error processing uploaded image: {e}")
+        debug_error(f"處理上傳圖片時出錯: {e}")
 
 def reset_session_messages():
     """Clear conversation history from the session."""
@@ -314,17 +315,28 @@ def main():
     # --- Display Message History ---
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            if isinstance(message["content"], str) and "```python" in message["content"]:
-                # Extract code block
+            if isinstance(message["content"], list):
+                # 處理列表形式的訊息內容，例如 image_url
+                for item in message["content"]:
+                    if isinstance(item, dict) and item.get("type") == "image_url":
+                        image_url = item["image_url"]["url"]
+                        st.image(image_url, caption="📷 上傳的圖片", use_column_width=True)
+                        debug_log(f"Displaying image from {message['role']}: {image_url}")
+                    else:
+                        st.write(item)
+                        debug_log(f"Displaying non-image content from {message['role']}: {item}")
+            elif isinstance(message["content"], str) and "```python" in message["content"]:
+                # 處理包含 Python 代碼塊的文字訊息
                 code_match = re.search(r'```python\s*(.*?)\s*```', message["content"], re.DOTALL)
                 if code_match:
                     code = code_match.group(1).strip()
                     st.code(code, language="python")
                     debug_log(f"Displaying code from {message['role']}: {code}")
                 else:
-                    st.write(message["content"])  #顯示上傳對話
+                    st.write(message["content"])  # 顯示上傳對話
                     debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
             else:
+                # 處理普通的文字訊息
                 st.write(message["content"])
                 debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
 
@@ -410,7 +422,7 @@ Available columns: {csv_columns}.
                     # After getting the response, append assistant message
                     append_message("assistant", response_content)
                     with st.chat_message("assistant"):
-                        st.write(response_content) #避免二次顯示
+                        st.write(response_content)  # 避免二次顯示
                         debug_log(f"Assistant response added to messages: {response_content}")
 
                     # Extract JSON and code
@@ -427,7 +439,7 @@ Available columns: {csv_columns}.
                     content = response_json.get("content", "Here is my analysis:")
                     append_message("assistant", content)
                     # with st.chat_message("assistant"):
-                    #     # st.write(content)    #避免二次顯示
+                    #     # st.write(content)    # 避免二次顯示
                     #     debug_log(f"Content from JSON appended to messages: {content}")
 
                     code = response_json.get("code", "")
