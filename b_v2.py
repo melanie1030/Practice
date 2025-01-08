@@ -188,7 +188,7 @@ def main():
         if "conversation_initialized" not in st.session_state:
             if api_key:
                 # Initialize OpenAI client
-                client = OpenAI(api_key)
+                client = initialize_client(api_key)
                 st.session_state.conversation_initialized = True
                 st.session_state.messages = []  # Initialize with empty message history
                 debug_log("Conversation initialized with empty message history.")
