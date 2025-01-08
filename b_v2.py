@@ -8,10 +8,9 @@ import os
 import dotenv
 import base64
 import io
-from openai import OpenAI  # Custom OpenAI class as per your requirement
+from openai import OpenAI
 from PIL import Image
 from streamlit_ace import st_ace
-import openai  # Import openai module for internal use
 
 # --- Define OpenAI class ---
 # def initialize_client(api_key):
