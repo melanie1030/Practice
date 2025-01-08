@@ -1,12 +1,16 @@
 import streamlit as st
-from openai import OpenAI
-import dotenv
+import pandas as pd
+import matplotlib.pyplot as plt
+import json
+import traceback
+import re
 import os
-from PIL import Image
-from audio_recorder_streamlit import audio_recorder
+import dotenv
 import base64
-from io import BytesIO
-import random
+import io
+from openai import OpenAI  # Custom OpenAI class as per your requirement
+from PIL import Image
+from streamlit_ace import st_ace
 
 # --- 初始化與設置 ---
 dotenv.load_dotenv()
@@ -113,7 +117,6 @@ def main():
         })
         with st.chat_message("user"):
             st.markdown(prompt)
-            st.write(st.session_state)
 
         with st.chat_message("assistant"):
             st.write_stream(stream_llm_response(client, model_params))
