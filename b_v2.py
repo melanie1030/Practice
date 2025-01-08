@@ -34,12 +34,12 @@ def initialize_client(api_key):
 
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
-        st.write(f"**DEBUG LOG:** {msg}")
+        st.session_state.debug_logs.append(f"**DEBUG LOG:** {msg}")
         print(msg)
 
 def debug_error(msg):
     if st.session_state.get("debug_mode", False):
-        st.error(f"**DEBUG ERROR:** {msg}")
+        st.session_state.debug_errors.append(f"**DEBUG ERROR:** {msg}")
         print(msg)
 
 def save_uploaded_file(uploaded_file):
@@ -104,7 +104,7 @@ def execute_code(code, global_vars=None):
         exec_globals = global_vars if global_vars else {}
         debug_log("Ready to execute the following code:")
         if st.session_state.get("debug_mode", False):
-            st.code(code, language="python")
+            st.session_state.debug_logs.append(f"```python\n{code}\n```")
 
         debug_log(f"Executing code with global_vars: {list(exec_globals.keys())}")
         exec(code, exec_globals)
@@ -160,7 +160,7 @@ def get_llm_response(client, model_params, max_retries=3):
                 debug_error(f"Error getting response: {e}")
                 st.error(f"An error occurred while getting the response: {e}")
                 return ""
-    
+
     st.error("Max retries exceeded. Please try again later.")
     return ""
 
@@ -191,6 +191,10 @@ def main():
         st.session_state.third_response = ""
     if "deep_analysis_image" not in st.session_state:
         st.session_state.deep_analysis_image = None
+    if "debug_logs" not in st.session_state:
+        st.session_state.debug_logs = []
+    if "debug_errors" not in st.session_state:
+        st.session_state.debug_errors = []
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -229,6 +233,8 @@ def main():
             st.session_state.second_response = ""
             st.session_state.third_response = ""
             st.session_state.deep_analysis_image = None
+            st.session_state.debug_logs = []
+            st.session_state.debug_errors = []
             st.success("Memory cleared!")
             debug_log("Memory has been cleared.")
 
@@ -260,7 +266,7 @@ def main():
 
         # --- Image Upload ---
         st.subheader("🖼️ Upload an Image")
-        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"], key="image_uploader")
         if uploaded_image:
             add_user_image(uploaded_image)
 
@@ -272,6 +278,38 @@ def main():
         )
         st.session_state.editor_location = location
         debug_log(f"Editor location set to: {st.session_state.editor_location}")
+
+        # --- 调试区块移动到侧边栏 ---
+        with st.expander("🛠️ 调试与会话信息", expanded=False):
+            if st.session_state.debug_mode:
+                st.subheader("调试日志")
+                if st.session_state.debug_logs:
+                    debug_logs_combined = "\n".join(st.session_state.debug_logs)
+                    st.text_area("Debug Logs", value=debug_logs_combined, height=200)
+                else:
+                    st.write("没有调试日志。")
+
+                st.subheader("调试错误")
+                if st.session_state.debug_errors:
+                    debug_errors_combined = "\n".join(st.session_state.debug_errors)
+                    st.text_area("Debug Errors", value=debug_errors_combined, height=200)
+                else:
+                    st.write("没有调试错误。")
+
+            st.subheader("会话信息 (messages.json)")
+            if "messages" in st.session_state:
+                messages_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=4)
+                st.text_area("messages.json", value=messages_json, height=300)
+
+                # 添加下载按钮
+                st.download_button(
+                    label="📥 下载 messages.json",
+                    data=messages_json,
+                    file_name="messages.json",
+                    mime="application/json"
+                )
+            else:
+                st.write("没有找到 messages。")
 
     # --- Display Message History ---
     for idx, message in enumerate(st.session_state.messages):
@@ -544,22 +582,6 @@ Please help me summarize the above two responses and provide additional suggesti
                 st.write("### Execution Result")
                 st.text(result)
                 debug_log(f"Code execution result: {result}")
-
-    # --- 添加調試區塊 ---
-    with st.expander("🛠️ 調試: 查看 session_state.messages", expanded=False):
-        if "messages" in st.session_state:
-            messages_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=4)
-            st.text_area("messages.json", value=messages_json, height=300)
-
-            # 添加下載按鈕
-            st.download_button(
-                label="📥 下載 messages.json",
-                data=messages_json,
-                file_name="messages.json",
-                mime="application/json"
-            )
-        else:
-            st.write("沒有找到 messages。")
 
 if __name__ == "__main__":
     main()
