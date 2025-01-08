@@ -75,7 +75,7 @@ def add_user_image(image):
     """Add an image message to the session state as a Markdown string."""
     img_base64 = load_image_base64(image)
     if img_base64:
-        image_markdown = f"![Uploaded Image](data:image/png;base64,{img_base64})"
+        image_markdown = [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}]
         append_message("user", image_markdown)
         st.success("Image uploaded!")
     else:
