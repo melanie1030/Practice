@@ -57,7 +57,7 @@ def load_image_base64(image):
     try:
         buffer = BytesIO()
         image.save(buffer, format=image.format)
-        img_bytes = buffered.getvalue()
+        img_bytes = buffer.getvalue()
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
     except Exception as e:
         debug_error(f"Error converting image to base64: {e}")
