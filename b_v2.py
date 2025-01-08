@@ -79,7 +79,7 @@ def add_user_image(uploaded_file):
         img_base64 = load_image_base64(image)
         if img_base64:
             # Create Markdown string for the image
-            image_markdown = f"![Uploaded Image](data:image/png;base64,{img_base64})"
+            image_markdown = {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
             append_message("user", image_markdown)
             st.session_state.image_base64 = img_base64  # Update image_base64
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_file)  # Save image file path
