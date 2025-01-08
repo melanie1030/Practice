@@ -113,6 +113,7 @@ def main():
         })
         with st.chat_message("user"):
             st.markdown(prompt)
+            st.write(st.session_state)
 
         with st.chat_message("assistant"):
             st.write_stream(stream_llm_response(client, model_params))
