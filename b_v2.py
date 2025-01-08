@@ -27,6 +27,10 @@ OPENAI_MODELS = [
 
 MAX_MESSAGES = 10  # Limit message history
 
+def initialize_client(api_key):
+    """Initialize OpenAI client with the provided API key."""
+    return OpenAI(api_key=api_key) if api_key else None
+    
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
         st.write(f"**DEBUG LOG:** {msg}")
