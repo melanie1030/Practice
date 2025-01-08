@@ -53,8 +53,8 @@ def save_uploaded_file(uploaded_file):
     debug_log(f"Files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
     return file_path
 
-def load_image_base64(image, max_size=(800, 800)):
-    """Resize image if necessary and convert to Base64 encoding."""
+def load_image_base64(image):
+    """Convert image to Base64 encoding."""
     try:
         buffer = BytesIO()
         image.save(buffer, format="PNG")  # Use PNG for consistency
@@ -71,17 +71,23 @@ def append_message(role, content):
         st.session_state.messages = [st.session_state.messages[0]] + st.session_state.messages[-(MAX_MESSAGES - 1):]
         debug_log("Message history trimmed to maintain token limits.")
 
-def add_user_image(image):
-    """Add an image message to the session state as a Markdown string."""
-    img_base64 = load_image_base64(image)
-    if img_base64:
-        image_markdown = f"![Uploaded Image](data:image/png;base64,{img_base64})"
-        append_message("user", image_markdown)
-        st.session_state.image_base64 = img_base64  # Update image_base64
-        st.session_state.uploaded_image_path = save_uploaded_file(image)  # Save image file path if needed
-        st.success("Image uploaded!")
-    else:
-        debug_error("Failed to convert image to base64.")
+def add_user_image(uploaded_file):
+    """Add an image message to the session state as a Markdown string and save the file."""
+    try:
+        # Open the image using PIL
+        image = Image.open(uploaded_file)
+        img_base64 = load_image_base64(image)
+        if img_base64:
+            # Create Markdown string for the image
+            image_markdown = f"![Uploaded Image](data:image/png;base64,{img_base64})"
+            append_message("user", image_markdown)
+            st.session_state.image_base64 = img_base64  # Update image_base64
+            st.session_state.uploaded_image_path = save_uploaded_file(uploaded_file)  # Save image file path
+            st.success("Image uploaded!")
+        else:
+            debug_error("Failed to convert image to base64.")
+    except Exception as e:
+        debug_error(f"Error processing uploaded image: {e}")
 
 def reset_session_messages():
     """Clear conversation history from the session."""
@@ -238,7 +244,7 @@ def main():
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
-            add_user_image(Image.open(uploaded_image))
+            add_user_image(uploaded_image)
 
         st.subheader("Editor Location")
         location = st.radio(
@@ -252,9 +258,16 @@ def main():
     # --- Display Message History ---
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            if isinstance(message["content"], dict) and "code" in message["content"]:
-                st.code(message["content"]["code"], language="python")
-                debug_log(f"Displaying code from {message['role']}: {message['content']['code']}")
+            if isinstance(message["content"], str) and "```python" in message["content"]:
+                # Extract code block
+                code_match = re.search(r'```python\s*(.*?)\s*```', message["content"], re.DOTALL)
+                if code_match:
+                    code = code_match.group(1).strip()
+                    st.code(code, language="python")
+                    debug_log(f"Displaying code from {message['role']}: {code}")
+                else:
+                    st.write(message["content"])
+                    debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
             else:
                 st.write(message["content"])
                 debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
