@@ -269,7 +269,7 @@ def main():
         with st.chat_message(message["role"]):
             if "content" in message:
                 st.write(message["content"])
-                st.write(st.session_satate)
+                st.write(st.session_state) # for dp
                 debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
             if "code" in message:
                 st.code(message["code"], language="python")
