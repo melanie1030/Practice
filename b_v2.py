@@ -322,7 +322,7 @@ def main():
                     st.code(code, language="python")
                     debug_log(f"Displaying code from {message['role']}: {code}")
                 else:
-                    st.write(message["content"])  顯示上傳對話
+                    st.write(message["content"])  #顯示上傳對話
                     debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
             else:
                 st.write(message["content"])
