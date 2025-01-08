@@ -8,7 +8,7 @@ import os
 import dotenv
 import base64
 from io import BytesIO
-from openai import OpenAI
+import openai  # 修正 OpenAI 的導入方式
 from PIL import Image
 from streamlit_ace import st_ace
 import time
@@ -30,7 +30,10 @@ MAX_MESSAGES = 10  # Limit message history
 
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
-    return OpenAI(api_key=api_key) if api_key else None
+    if api_key:
+        openai.api_key = api_key
+        return True
+    return False
 
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
@@ -131,14 +134,14 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-def get_llm_response(client, model_params, max_retries=3):
+def get_llm_response(model_params, max_retries=3):
     """Get response from the LLM model synchronously with retry logic."""
     retries = 0
     wait_time = 5  # Start with 5 seconds
 
     while retries < max_retries:
         try:
-            response = client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model=model_params.get("model", "gpt-4-turbo"),
                 messages=st.session_state.messages,
                 temperature=model_params.get("temperature", 0.3),
@@ -146,7 +149,7 @@ def get_llm_response(client, model_params, max_retries=3):
                 stream=False  # Disable streaming
             )
             # Extract the full response content
-            response_content = response.choices[0].message.content.strip()
+            response_content = response.choices[0].message['content'].strip()
             debug_log(f"Full assistant response: {response_content}")
             return response_content
 
@@ -200,7 +203,7 @@ def main():
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
         default_api_key = os.getenv("OPENAI_API_KEY", "")
-        api_key = st.text_input("OpenAI API密鑰", value=default_api_key, type="password")
+        api_key = st.text_input("OpenAI API密鑰", value=default_api_key, type="password", key="api_key_input")
 
         selected_model = st.selectbox("Select Model:", OPENAI_MODELS, index=0)
 
@@ -213,10 +216,13 @@ def main():
         if "conversation_initialized" not in st.session_state:
             if api_key:
                 # Initialize OpenAI client
-                client = initialize_client(api_key)
-                st.session_state.conversation_initialized = True
-                st.session_state.messages = []  # Initialize with empty message history
-                debug_log("Conversation initialized with empty message history.")
+                client_initialized = initialize_client(api_key)
+                if client_initialized:
+                    st.session_state.conversation_initialized = True
+                    st.session_state.messages = []  # Initialize with empty message history
+                    debug_log("Conversation initialized with empty message history.")
+                else:
+                    st.warning("Failed to initialize OpenAI client.")
             else:
                 st.warning("⬅️ Please enter your API Key to initialize the chatbot.")
 
@@ -280,37 +286,37 @@ def main():
         st.session_state.editor_location = location
         debug_log(f"Editor location set to: {st.session_state.editor_location}")
 
-        # --- 调试区块移动到侧边栏 ---
-        with st.expander("🛠️ 调试与会话信息", expanded=False):
+        # --- 調試區塊移動到側邊欄 ---
+        with st.expander("🛠️ 調試與會話信息", expanded=False):
             if st.session_state.debug_mode:
-                st.subheader("调试日志")
+                st.subheader("調試日志")
                 if st.session_state.debug_logs:
                     debug_logs_combined = "\n".join(st.session_state.debug_logs)
                     st.text_area("Debug Logs", value=debug_logs_combined, height=200)
                 else:
-                    st.write("没有调试日志。")
+                    st.write("沒有調試日志。")
 
-                st.subheader("调试错误")
+                st.subheader("調試錯誤")
                 if st.session_state.debug_errors:
                     debug_errors_combined = "\n".join(st.session_state.debug_errors)
                     st.text_area("Debug Errors", value=debug_errors_combined, height=200)
                 else:
-                    st.write("没有调试错误。")
+                    st.write("沒有調試錯誤。")
 
-            st.subheader("会话信息 (messages.json)")
+            st.subheader("會話信息 (messages.json)")
             if "messages" in st.session_state:
                 messages_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=4)
                 st.text_area("messages.json", value=messages_json, height=300)
 
-                # 添加下载按钮
+                # 添加下載按鈕
                 st.download_button(
-                    label="📥 下载 messages.json",
+                    label="📥 下載 messages.json",
                     data=messages_json,
                     file_name="messages.json",
                     mime="application/json"
                 )
             else:
-                st.write("没有找到 messages。")
+                st.write("沒有找到 messages。")
 
     # --- Display Message History ---
     for idx, message in enumerate(st.session_state.messages):
@@ -351,10 +357,8 @@ def main():
         with st.spinner("Thinking..."):
             try:
                 # Initialize OpenAI client if not already done
-                if api_key:
-                    client = initialize_client(api_key)
-                else:
-                    raise ValueError("OpenAI API Key is not provided.")
+                if not initialize_client(api_key := st.sidebar.text_input("OpenAI API密鑰", type="password", key="api_key_input")):
+                    raise ValueError("OpenAI API Key is not provided or invalid.")
 
                 debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
                 debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
@@ -415,7 +419,7 @@ Available columns: {csv_columns}.
                     "temperature": 0.5,
                     "max_tokens": 4096
                 }
-                response_content = get_llm_response(client, model_params)
+                response_content = get_llm_response(model_params)
                 debug_log(f"Full assistant response: {response_content}")
 
                 if response_content:
@@ -438,9 +442,6 @@ Available columns: {csv_columns}.
 
                     content = response_json.get("content", "Here is my analysis:")
                     append_message("assistant", content)
-                    # with st.chat_message("assistant"):
-                    #     # st.write(content)    # 避免二次顯示
-                    #     debug_log(f"Content from JSON appended to messages: {content}")
 
                     code = response_json.get("code", "")
                     if code:
@@ -465,6 +466,7 @@ Available columns: {csv_columns}.
                         st.text(exec_result)
                         debug_log(f"Execution result: {exec_result}")
 
+                        # 確保生成的圖表已經被創建
                         fig = plt.gcf()
                         buf = BytesIO()
                         fig.savefig(buf, format="png")
@@ -473,21 +475,17 @@ Available columns: {csv_columns}.
                         st.session_state.deep_analysis_image = chart_base64
                         debug_log("Chart has been converted to base64.")
 
-                        # Prepare deep analysis prompt
-                        prompt_2 = f"""
-This is a chart generated from the previous code. Below is the base64 encoding of the chart:
-![image](data:image/png;base64,{chart_base64})
-
-Please provide further analysis, explaining the data trends or observations that this chart might represent.
-"""
-                        debug_log(f"Deep Analysis Prompt: {prompt_2}")
-
-                        # Append prompt_2 to messages
-                        append_message("user", prompt_2)
-                        debug_log("Deep analysis prompt appended to messages.")
+                        # 使用 add_user_image 方法添加圖片到訊息歷史
+                        # 這樣可以確保使用相同的 image_url 結構
+                        image_content = [{
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
+                        }]
+                        append_message("user", image_content)
+                        debug_log("Deep analysis image added to messages.")
 
                         # Make the API request for deep analysis
-                        second_raw_response = get_llm_response(client, model_params)
+                        second_raw_response = get_llm_response(model_params)
                         debug_log(f"Deep analysis response: {second_raw_response}")
 
                         if second_raw_response:
@@ -512,7 +510,7 @@ Please help me summarize the above two responses and provide additional suggesti
                             debug_log("Final summary prompt appended to messages.")
 
                             # Make the API request for final summary
-                            third_raw_response = get_llm_response(client, model_params)
+                            third_raw_response = get_llm_response(model_params)
                             debug_log(f"Final summary response: {third_raw_response}")
 
                             if third_raw_response:
