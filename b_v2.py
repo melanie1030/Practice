@@ -275,7 +275,7 @@ def main():
             try:
                 # Initialize OpenAI client if not already done
                 if api_key:
-                    client = OpenAI(api_key)
+                    client = initialize_client(api_key)
                 else:
                     raise ValueError("OpenAI API Key is not provided.")
 
