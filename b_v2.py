@@ -14,9 +14,9 @@ from streamlit_ace import st_ace
 import openai  # Import openai module for internal use
 
 # --- Define OpenAI class ---
-def initialize_client(api_key):
-    """Initialize OpenAI client with the provided API key."""
-    return OpenAI(api_key=api_key) if api_key else None
+# def initialize_client(api_key):
+#     """Initialize OpenAI client with the provided API key."""
+#     return OpenAI(api_key=api_key) if api_key else None
 
 def openai_client_init(client, model_params):
     gpt = client.chat.completions.create(
