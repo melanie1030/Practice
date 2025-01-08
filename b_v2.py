@@ -322,7 +322,7 @@ def main():
                     st.code(code, language="python")
                     debug_log(f"Displaying code from {message['role']}: {code}")
                 else:
-                    # st.write(message["content"])  顯示上傳對話
+                    st.write(message["content"])  顯示上傳對話
                     debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
             else:
                 st.write(message["content"])
@@ -410,7 +410,7 @@ Available columns: {csv_columns}.
                     # After getting the response, append assistant message
                     append_message("assistant", response_content)
                     with st.chat_message("assistant"):
-                        # st.write(response_content) #避免二次顯示
+                        st.write(response_content) #避免二次顯示
                         debug_log(f"Assistant response added to messages: {response_content}")
 
                     # Extract JSON and code
@@ -427,7 +427,7 @@ Available columns: {csv_columns}.
                     content = response_json.get("content", "Here is my analysis:")
                     append_message("assistant", content)
                     with st.chat_message("assistant"):
-                        st.write(content)
+                        # st.write(content)    #避免二次顯示
                         debug_log(f"Content from JSON appended to messages: {content}")
 
                     code = response_json.get("code", "")
