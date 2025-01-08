@@ -46,6 +46,42 @@ def save_uploaded_file(uploaded_file):
     debug_log(f"Files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
     return file_path
 
+def add_user_image(img):
+    """
+    處理上傳的圖片：
+    1. 保存圖片
+    2. 轉換為 Base64
+    3. 將圖片嵌入到對話記錄中
+    """
+    try:
+        # 保存圖片
+        if not os.path.exists(UPLOAD_DIR):
+            os.makedirs(UPLOAD_DIR)
+        image_filename = f"user_image_{len(os.listdir(UPLOAD_DIR)) + 1}.png"
+        image_path = os.path.join(UPLOAD_DIR, image_filename)
+        img.save(image_path, format="PNG")
+        debug_log(f"Image saved to {image_path}")
+
+        # 轉換為 Base64
+        buffered = io.BytesIO()
+        img.save(buffered, format="PNG")
+        img_bytes = buffered.getvalue()
+        image_base64 = base64.b64encode(img_bytes).decode("utf-8")
+        debug_log("Image has been converted to base64.")
+        debug_log(f"Image base64 (first 100 chars): {image_base64[:100]}...")
+
+        # 將圖片嵌入到對話記錄中
+        image_message = f"Here is the image you uploaded:\n![Uploaded Image](data:image/png;base64,{image_base64})"
+        st.session_state.messages.append({"role": "user", "content": image_message})
+        debug_log("Image data appended as a separate user message.")
+
+        st.success("圖像已上傳!")
+
+    except Exception as e:
+        if st.session_state.debug_mode:
+            st.error(f"Error processing image: {e}")
+        debug_log(f"Error processing image: {e}")
+
 def execute_code(code, global_vars=None):
     try:
         exec_globals = global_vars if global_vars else {}
@@ -215,24 +251,9 @@ def main():
 
         # --- 圖片上傳 ---
         st.subheader("🖼️ Upload an Image")
-        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
+        uploaded_image = st.file_uploader("選擇一張圖片:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
-            st.session_state.uploaded_image_path = save_uploaded_file(uploaded_image)
-            debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
-
-            st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
-            try:
-                img = Image.open(uploaded_image)
-                buffered = io.BytesIO()
-                img.save(buffered, format="PNG")
-                img_bytes = buffered.getvalue()
-                st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                debug_log("Image has been converted to base64.")
-                debug_log(f"Image base64 (first 100 chars): {st.session_state.image_base64[:100]}...")
-            except Exception as e:
-                if st.session_state.debug_mode:
-                    st.error(f"Error converting image to base64: {e}")
-                debug_log(f"Error converting image to base64: {e}")
+            add_user_image(Image.open(uploaded_image))
 
         st.subheader("Editor Location")
         location = st.radio(
@@ -267,12 +288,11 @@ def main():
 
                 # --- 決定使用哪種 prompt ---
                 if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                    # [情境] 有上傳圖片 -> 將圖片 Base64 數據作為單獨的訊息發送
-                    image_message = f"Here is the image data:\n![image](data:image/png;base64,{st.session_state.image_base64})"
-                    st.session_state.messages.append({"role": "user", "content": image_message})
-                    debug_log("Image data appended as a separate user message.")
+                    # 圖片已上傳，圖片數據已作為單獨的訊息添加
+                    prompt = user_input
+                    debug_log("User input with image data already appended.")
                 else:
-                    # [情境] 沒有上傳圖片 -> 維持舊有複雜 JSON 邏輯
+                    # 沒有圖片上傳，使用複雜的 JSON 邏輯
                     if st.session_state.uploaded_file_path is not None:
                         try:
                             df_temp = pd.read_csv(st.session_state.uploaded_file_path)
@@ -301,12 +321,19 @@ Important:
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
-                        st.session_state.messages.append({"role": "system", "content": prompt})
-                        debug_log("System prompt appended to messages.")
+                        debug_log("Prompt constructed for CSV input with JSON response.")
                     else:
                         prompt = f"請全部以繁體中文回答此問題：{user_input}"
-                        st.session_state.messages.append({"role": "system", "content": prompt})
-                        debug_log("Plain text system prompt appended to messages.")
+                        debug_log("Prompt constructed for plain text input.")
+
+                    st.session_state.messages.append({"role": "system", "content": prompt})
+                    debug_log("System prompt appended to messages.")
+
+                # 如果這是第一次用戶輸入，添加系統訊息
+                if len(st.session_state.messages) == 1:
+                    system_prompt = "你是一個協助進行數據分析的助手。"
+                    st.session_state.messages.insert(0, {"role": "system", "content": system_prompt})
+                    debug_log("System prompt added to messages.")
 
                 # Make the API request and stream the response
                 response_content = stream_llm_response(api_key, selected_model, st.session_state.messages, temperature=0.5)
