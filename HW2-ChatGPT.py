@@ -7,7 +7,7 @@ import re
 import os
 import dotenv
 import base64
-import io
+from io import BytesIO
 from openai import OpenAI  # Custom OpenAI class as per your requirement
 from PIL import Image
 from streamlit_ace import st_ace
