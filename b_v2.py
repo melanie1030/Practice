@@ -72,15 +72,18 @@ def append_message(role, content):
         debug_log("Message history trimmed to maintain token limits.")
 
 def add_user_image(uploaded_file):
-    """Add an image message to the session state as a Markdown string and save the file."""
+    """Add an image message to the session state using image_url structure and save the file."""
     try:
         # Open the image using PIL
         image = Image.open(uploaded_file)
         img_base64 = load_image_base64(image)
         if img_base64:
-            # Create Markdown string for the image
-            image_markdown = f"![Uploaded Image](data:image/png;base64,{img_base64})"
-            append_message("user", image_markdown)
+            # Create image_url structure
+            image_content = [{
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{img_base64}"}
+            }]
+            append_message("user", image_content)
             st.session_state.image_base64 = img_base64  # Update image_base64
             st.session_state.uploaded_image_path = save_uploaded_file(uploaded_file)  # Save image file path
             st.success("Image uploaded!")
