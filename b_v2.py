@@ -21,7 +21,8 @@ OPENAI_MODELS = [
     "gpt-4-turbo",  # 使用更穩定的模型
     "gpt-3.5-turbo-16k",
     "gpt-4",
-    "gpt-4-32k"
+    "gpt-4-32k",
+    "gpt-4o"
 ]
 
 MAX_MESSAGES = 10  # 限制訊息歷史
