@@ -75,7 +75,7 @@ def add_user_image(image):
     """Add an image message to the session state."""
     img_base64 = load_image_base64(image)
     if img_base64:
-        append_message("user", {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}})
+        append_message("user", [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}])
         st.success("Image uploaded!")
     else:
         debug_error("Failed to convert image to base64.")
