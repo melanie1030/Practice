@@ -474,18 +474,20 @@ Available columns: {csv_columns}.
                         debug_log("Chart has been converted to base64.")
 
                         # Prepare deep analysis prompt
-                        prompt_2 = f"""
-This is a chart generated from the previous code. Below is the base64 encoding of the chart:
-![image](data:image/png;base64,{chart_base64})
-
-Please provide further analysis, explaining the data trends or observations that this chart might represent.
-"""
+                        prompt_2 = f"""基於圖片給我更多資訊"""
                         debug_log(f"Deep Analysis Prompt: {prompt_2}")
 
                         # Append prompt_2 to messages
                         append_message("user", prompt_2)
                         debug_log("Deep analysis prompt appended to messages.")
 
+                        # 把圖片加到二次分析裡
+                        image_content = [{
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
+                        }]
+                        append_message("user", prompt_2)
+                        
                         # Make the API request for deep analysis
                         second_raw_response = get_llm_response(client, model_params)
                         debug_log(f"Deep analysis response: {second_raw_response}")
