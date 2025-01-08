@@ -31,7 +31,7 @@ MAX_MESSAGES = 10  # Limit message history
 def initialize_client(api_key):
     """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
-    
+        
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
         st.write(f"**DEBUG LOG:** {msg}")
@@ -56,6 +56,7 @@ def save_uploaded_file(uploaded_file):
 def load_image_base64(image, max_size=(800, 800)):
     """Resize image if necessary and convert to Base64 encoding."""
     try:
+        image.thumbnail(max_size, Image.ANTIALIAS)  # Resize to max_size
         buffer = BytesIO()
         image.save(buffer, format="PNG")  # Use PNG for consistency
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
@@ -75,8 +76,10 @@ def add_user_image(image):
     """Add an image message to the session state as a Markdown string."""
     img_base64 = load_image_base64(image)
     if img_base64:
-        image_markdown = [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}]
+        image_markdown = f"![Uploaded Image](data:image/png;base64,{img_base64})"
         append_message("user", image_markdown)
+        st.session_state.image_base64 = img_base64  # Update image_base64
+        st.session_state.uploaded_image_path = save_uploaded_file(image)  # Save image file path if needed
         st.success("Image uploaded!")
     else:
         debug_error("Failed to convert image to base64.")
@@ -137,7 +140,8 @@ def stream_llm_response(client, model_params, max_retries=3):
             assistant_placeholder = st.empty()  # Create a placeholder for assistant's response
 
             for chunk in response:
-                chunk_text = chunk.choices[0].delta.get('content', '')
+                # Correctly access 'content' attribute
+                chunk_text = getattr(chunk.choices[0].delta, 'content', '')
                 if chunk_text:
                     response_content += chunk_text
                     # Update the assistant's response in the placeholder
