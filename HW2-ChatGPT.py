@@ -119,6 +119,7 @@ def main():
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
+            st.write(st.session_state)
             st.write_stream(stream_llm_response(client, model_params))
 
 # 程式入口點
