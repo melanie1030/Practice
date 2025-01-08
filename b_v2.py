@@ -426,9 +426,9 @@ Available columns: {csv_columns}.
 
                     content = response_json.get("content", "Here is my analysis:")
                     append_message("assistant", content)
-                    with st.chat_message("assistant"):
-                        # st.write(content)    #避免二次顯示
-                        debug_log(f"Content from JSON appended to messages: {content}")
+                    # with st.chat_message("assistant"):
+                    #     # st.write(content)    #避免二次顯示
+                    #     debug_log(f"Content from JSON appended to messages: {content}")
 
                     code = response_json.get("code", "")
                     if code:
