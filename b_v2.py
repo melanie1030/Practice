@@ -7,7 +7,7 @@ import re
 import os
 import dotenv
 import base64
-import io
+from io import BytesIO
 from openai import OpenAI
 from PIL import Image
 from streamlit_ace import st_ace
@@ -58,10 +58,10 @@ def load_image_base64(image, max_size=(800, 800)):
         # Resize image to reduce size
         image.thumbnail(max_size, Image.LANCZOS)
 
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
+        buffered = BytesIO()
+        image.save(buffered, format=image.format)
         img_bytes = buffered.getvalue()
-        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+        img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
         debug_log("Image has been resized and converted to base64.")
         debug_log(f"Image base64 (first 100 chars): {img_base64[:100]}...")
         return img_base64
