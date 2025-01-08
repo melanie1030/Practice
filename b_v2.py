@@ -9,6 +9,7 @@ import dotenv
 import base64
 import io
 import requests
+from PIL import Image
 from streamlit_ace import st_ace
 
 # --- Initialize and Settings ---
@@ -221,8 +222,10 @@ def main():
 
             st.image(st.session_state.uploaded_image_path, caption="Uploaded Image Preview", use_column_width=True)
             try:
-                with open(st.session_state.uploaded_image_path, "rb") as f:
-                    img_bytes = f.read()
+                img = Image.open(uploaded_image)
+                buffered = io.BytesIO()
+                img.save(buffered, format="PNG")
+                img_bytes = buffered.getvalue()
                 st.session_state.image_base64 = base64.b64encode(img_bytes).decode("utf-8")
                 debug_log("Image has been converted to base64.")
                 debug_log(f"Image base64 (first 100 chars): {st.session_state.image_base64[:100]}...")
