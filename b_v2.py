@@ -8,13 +8,12 @@ import os
 import dotenv
 import base64
 import io
-from openai import OpenAI  # 自定義的 OpenAI 類別
+from openai import OpenAI  # Custom OpenAI class as per your requirement
 from PIL import Image
 from streamlit_ace import st_ace
-import openai  # 引入 openai 模組以供內部使用
-from openai.error import RateLimitError, OpenAIError  # 正確導入異常類別
+import openai  # Import openai module for internal use
 
-# --- 定義 OpenAI 類別 ---
+# --- Define OpenAI class ---
 class OpenAI:
     def __init__(self, api_key):
         openai.api_key = api_key
@@ -31,25 +30,28 @@ class OpenAI:
                     stream=stream
                 )
 
-    # 添加 error 屬性以便捕捉異常
+    # Define custom exceptions if openai.error is not available
     class error:
-        RateLimitError = RateLimitError
-        OpenAIError = OpenAIError
+        class RateLimitError(Exception):
+            pass
 
-# --- 初始化與設置 ---
+        class OpenAIError(Exception):
+            pass
+
+# --- Initialization and Settings ---
 dotenv.load_dotenv()
 
 UPLOAD_DIR = "uploaded_files"
 
 OPENAI_MODELS = [
-    "gpt-4-turbo",  # 使用更穩定的模型
+    "gpt-4-turbo",  # Use a more stable model
     "gpt-3.5-turbo-16k",
     "gpt-4",
     "gpt-4-32k",
     "gpt-4o"
 ]
 
-MAX_MESSAGES = 10  # 限制訊息歷史
+MAX_MESSAGES = 10  # Limit message history
 
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
@@ -75,7 +77,7 @@ def save_uploaded_file(uploaded_file):
 def load_image_base64(image, max_size=(800, 800)):
     """Load image, resize if necessary, and convert to base64."""
     try:
-        # 重新調整圖片大小以減少大小
+        # Resize image to reduce size
         image.thumbnail(max_size, Image.LANCZOS)
 
         buffered = io.BytesIO()
@@ -93,9 +95,8 @@ def append_message(role, content):
     """Append a message and ensure the total number of messages does not exceed MAX_MESSAGES."""
     st.session_state.messages.append({"role": role, "content": content})
     if len(st.session_state.messages) > MAX_MESSAGES:
-        # 移除最舊的訊息（除了 system prompt）
-        # 假設 system prompt 是第一條訊息
-        st.session_state.messages = [st.session_state.messages[0]] + st.session_state.messages[-(MAX_MESSAGES-1):]
+        # Remove the oldest messages except the system prompt
+        st.session_state.messages = [st.session_state.messages[0]] + st.session_state.messages[-(MAX_MESSAGES - 1):]
         debug_log("Message history trimmed to maintain token limits.")
 
 def add_user_image(image):
@@ -104,7 +105,7 @@ def add_user_image(image):
     if img_base64:
         image_message = f"Here is the image you uploaded:\n![Uploaded Image](data:image/png;base64,{img_base64})"
         append_message("user", image_message)
-        st.success("圖像已上傳!")
+        st.success("Image uploaded!")
     else:
         debug_error("Failed to convert image to base64.")
 
@@ -160,14 +161,6 @@ def stream_llm_response(client, model_params):
                 assistant_placeholder.markdown(response_content)
                 debug_log(f"Received chunk: {chunk_text[:100]}...")
         return response_content
-    except OpenAI.error.RateLimitError as e:
-        debug_error(f"Rate limit exceeded: {e}")
-        st.error("Rate limit exceeded. Please try again later.")
-        return ""
-    except OpenAI.error.OpenAIError as e:
-        debug_error(f"OpenAI error: {e}")
-        st.error(f"An OpenAI error occurred: {e}")
-        return ""
     except Exception as e:
         debug_error(f"Error streaming response: {e}")
         st.error(f"An error occurred while streaming the response: {e}")
@@ -205,10 +198,10 @@ def main():
         st.subheader("🔒 Enter Your API Key")
         api_key = st.text_input("OpenAI API Key", type="password")
 
-        selected_model = st.selectbox("選擇模型:", OPENAI_MODELS, index=0)
+        selected_model = st.selectbox("Select Model:", OPENAI_MODELS, index=0)
 
         st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
-        st.session_state.deep_analysis_mode = st.checkbox("深度分析模式", value=False)
+        st.session_state.deep_analysis_mode = st.checkbox("Deep Analysis Mode", value=False)
 
         if "memory" not in st.session_state:
             st.session_state.memory = []
@@ -221,7 +214,7 @@ def main():
                 st.session_state.messages = []  # Initialize with empty message history
                 debug_log("Conversation initialized with empty message history.")
             else:
-                st.warning("⬅️ 請輸入 API Key 以初始化聊天機器人。")
+                st.warning("⬅️ Please enter your API Key to initialize the chatbot.")
 
         if st.session_state.debug_mode:
             debug_log(f"Currently using model => {selected_model}")
@@ -249,7 +242,7 @@ def main():
             st.text_area("Current Memory", value="No messages yet.", height=200)
             debug_log("No messages in memory.")
 
-        # --- CSV 上傳 ---
+        # --- CSV Upload ---
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
@@ -266,9 +259,9 @@ def main():
                     st.error(f"Error reading CSV: {e}")
                 debug_log(f"Error reading CSV: {e}")
 
-        # --- 圖片上傳 ---
+        # --- Image Upload ---
         st.subheader("🖼️ Upload an Image")
-        uploaded_image = st.file_uploader("選擇一張圖片:", type=["png", "jpg", "jpeg"])
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"])
         if uploaded_image:
             add_user_image(Image.open(uploaded_image))
 
@@ -281,7 +274,7 @@ def main():
         st.session_state.editor_location = location
         debug_log(f"Editor location set to: {st.session_state.editor_location}")
 
-    # --- 顯示歷史訊息 ---
+    # --- Display Message History ---
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             if isinstance(message["content"], dict) and "code" in message["content"]:
@@ -291,7 +284,7 @@ def main():
                 st.write(message["content"])
                 debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
 
-    # --- 用戶輸入 ---
+    # --- User Input ---
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         append_message("user", user_input)
@@ -310,38 +303,38 @@ def main():
                 debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
                 debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
 
-                # --- 確保 system prompt 僅添加一次 ---
+                # --- Ensure system prompt is added only once ---
                 if not any(msg["role"] == "system" for msg in st.session_state.messages):
-                    system_prompt = "你是一個協助進行數據分析的助手。"
+                    system_prompt = "You are an assistant that helps with data analysis."
                     append_message("system", system_prompt)
                     debug_log("System prompt added to messages.")
 
-                # --- 決定使用哪種 prompt ---
+                # --- Decide which prompt to use ---
                 if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                    # 圖片已上傳，圖片數據已作為單獨的訊息添加
-                    prompt = user_input  # 直接使用用戶輸入
+                    # Image uploaded, image data already added as a separate message
+                    prompt = user_input  # Use user input directly
                     debug_log("User input with image data already appended.")
                 else:
-                    # 沒有圖片上傳，使用複雜的 JSON 邏輯
+                    # No image uploaded, use complex JSON logic
                     if st.session_state.uploaded_file_path is not None:
                         try:
                             df_temp = pd.read_csv(st.session_state.uploaded_file_path)
                             csv_columns = ", ".join(df_temp.columns)
                             debug_log(f"CSV columns: {csv_columns}")
                         except Exception as e:
-                            csv_columns = "無法讀取欄位"
+                            csv_columns = "Unable to read columns"
                             if st.session_state.debug_mode:
                                 st.error(f"Error reading columns: {e}")
                             debug_log(f"Error reading columns: {e}")
                     else:
-                        csv_columns = "無上傳檔案"
+                        csv_columns = "No file uploaded"
                         debug_log("No CSV file uploaded.")
 
-                    if st.session_state.uploaded_file_path is not None and csv_columns != "無上傳檔案":
+                    if st.session_state.uploaded_file_path is not None and csv_columns != "No file uploaded":
                         prompt = f"""Please respond with a JSON object in the format:
 {{
-    "content": "這是我的觀察：{{{{分析內容}}}}",
-    "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# 讀取 CSV 檔案 (請直接使用 st.session_state.uploaded_file_path 變數)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# 在這裡加入你要的繪圖或分析邏輯\\n\\n# 例如使用 st.pyplot() 來顯示圖表:\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
+    "content": "Here are my observations: {{analysis}}",
+    "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# Read CSV file (use st.session_state.uploaded_file_path variable)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# Add your plotting or analysis logic here\\n\\n# For example, to display a plot using st.pyplot():\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)\\n"
 }}
 Important:
 1) Must use st.session_state.uploaded_file_path as the CSV path (instead of a hardcoded path)
@@ -355,7 +348,7 @@ Available columns: {csv_columns}.
                         append_message("system", prompt)
                         debug_log("System prompt appended to messages.")
                     else:
-                        prompt = f"請全部以繁體中文回答此問題：{user_input}"
+                        prompt = f"Please answer this question entirely in Traditional Chinese: {user_input}"
                         debug_log("Prompt constructed for plain text input.")
                         append_message("system", prompt)
                         debug_log("Plain text system prompt appended to messages.")
@@ -387,7 +380,7 @@ Available columns: {csv_columns}.
                         response_json = {"content": json_str, "code": ""}
                         debug_log("Fallback to raw response for content.")
 
-                    content = response_json.get("content", "這是我的分析：")
+                    content = response_json.get("content", "Here is my analysis:")
                     append_message("assistant", content)
                     with st.chat_message("assistant"):
                         st.write(content)
@@ -395,7 +388,7 @@ Available columns: {csv_columns}.
 
                     code = response_json.get("code", "")
                     if code:
-                        # 將代碼作為獨立的訊息添加
+                        # Add code as a separate message
                         append_message("assistant", {"code": code})
                         with st.chat_message("assistant"):
                             st.code(code, language="python")
@@ -403,9 +396,9 @@ Available columns: {csv_columns}.
                         st.session_state.ace_code = code
                         debug_log("ace_code updated with new code.")
 
-                    # --- 若勾選深度分析模式 & 有程式碼 -> 執行程式、二次解析圖表 ---
+                    # --- If deep analysis mode is checked & code is present -> execute code and re-analyze chart ---
                     if st.session_state.deep_analysis_mode and code:
-                        st.write("### [深度分析] 自動執行產生的程式碼並將圖表送至 GPT-4o 解析...")
+                        st.write("### [Deep Analysis] Automatically executing the generated code and sending the chart to GPT-4o for analysis...")
                         debug_log("Deep analysis mode activated.")
 
                         global_vars = {
@@ -427,10 +420,10 @@ Available columns: {csv_columns}.
 
                         # Prepare deep analysis prompt
                         prompt_2 = f"""
-這是一張我從剛才的程式碼中產生的圖表，以下是圖表的base64編碼：
+This is a chart generated from the previous code. Below is the base64 encoding of the chart:
 ![image](data:image/png;base64,{chart_base64})
 
-請你為我進行進一步的分析，解釋這張圖表可能代表什麼樣的數據趨勢或觀察。
+Please provide further analysis, explaining the data trends or observations that this chart might represent.
 """
                         debug_log(f"Deep Analysis Prompt: {prompt_2}")
 
@@ -452,10 +445,10 @@ Available columns: {csv_columns}.
 
                             # Prepare final summary prompt
                             prompt_3 = f"""
-第一階段回覆內容：{content}
-第二階段圖表解析內容：{second_raw_response}
+First response content: {content}
+Second response chart analysis content: {second_raw_response}
 
-請你幫我把以上兩階段的內容好好做一個文字總結，並提供額外的建議或見解。
+Please help me summarize the above two responses and provide additional suggestions or insights.
 """
                             debug_log(f"Final Summary Prompt: {prompt_3}")
 
@@ -476,22 +469,16 @@ Available columns: {csv_columns}.
                                     debug_log(f"Final summary response added to messages: {third_raw_response}")
 
                                 # Display the chart
-                                st.write("#### [深度分析] 圖表：")
+                                st.write("#### [Deep Analysis] Chart:")
                                 try:
                                     img_data = base64.b64decode(st.session_state.deep_analysis_image)
-                                    st.image(img_data, caption="深度分析產生的圖表", use_column_width=True)
+                                    st.image(img_data, caption="Chart generated from deep analysis", use_column_width=True)
                                     debug_log("Deep analysis chart displayed.")
                                 except Exception as e:
                                     if st.session_state.debug_mode:
                                         st.error(f"Error displaying chart: {e}")
                                     debug_log(f"Error displaying chart: {e}")
 
-            except OpenAI.error.OpenAIError as e:
-                debug_error(f"OpenAI error: {e}")
-                st.error(f"An OpenAI error occurred: {e}")
-            except OpenAI.error.RateLimitError as e:
-                debug_error(f"Rate limit exceeded: {e}")
-                st.error("Rate limit exceeded. Please try again later.")
             except Exception as e:
                 if st.session_state.debug_mode:
                     st.error(f"An error occurred: {e}")
