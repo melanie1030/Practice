@@ -52,19 +52,13 @@ def save_uploaded_file(uploaded_file):
     debug_log(f"Files in {UPLOAD_DIR}: {os.listdir(UPLOAD_DIR)}")
     return file_path
 
-def load_image_base64(image, max_size=(800, 800)):
+def load_image_base64(image):
     """Load image, resize if necessary, and convert to base64."""
     try:
-        # Resize image to reduce size
-        image.thumbnail(max_size, Image.LANCZOS)
-
-        buffered = BytesIO()
-        image.save(buffered, format=image.format)
+        buffer = BytesIO()
+        image.save(buffer, format=image.format)
         img_bytes = buffered.getvalue()
-        img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        debug_log("Image has been resized and converted to base64.")
-        debug_log(f"Image base64 (first 100 chars): {img_base64[:100]}...")
-        return img_base64
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
     except Exception as e:
         debug_error(f"Error converting image to base64: {e}")
         return ""
@@ -81,8 +75,7 @@ def add_user_image(image):
     """Add an image message to the session state."""
     img_base64 = load_image_base64(image)
     if img_base64:
-        image_message = f"Here is the image you uploaded:\n![Uploaded Image](data:image/png;base64,{img_base64})"
-        append_message("user", image_message)
+        append_message("user", [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}])
         st.success("Image uploaded!")
     else:
         debug_error("Failed to convert image to base64.")
