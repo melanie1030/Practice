@@ -8,11 +8,29 @@ import os
 import dotenv
 import base64
 import io
-from openai import OpenAI
+from openai import OpenAI  # 自定義的 OpenAI 類別
 from PIL import Image
 from streamlit_ace import st_ace
+import openai  # 引入 openai 模組以供內部使用
 
-# --- Initialize and Settings ---
+# --- 定義 OpenAI 類別 ---
+class OpenAI:
+    def __init__(self, api_key):
+        openai.api_key = api_key
+
+    class chat:
+        class completions:
+            @staticmethod
+            def create(model, messages, temperature, max_tokens, stream):
+                return openai.ChatCompletion.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=stream
+                )
+
+# --- 初始化與設置 ---
 dotenv.load_dotenv()
 
 UPLOAD_DIR = "uploaded_files"
@@ -52,7 +70,6 @@ def load_image_base64(image, max_size=(800, 800)):
     """Load image, resize if necessary, and convert to base64."""
     try:
         # 重新調整圖片大小以減少大小
-        # 使用 Image.LANCZOS 代替 Image.ANTIALIAS
         image.thumbnail(max_size, Image.LANCZOS)
         
         buffered = io.BytesIO()
@@ -119,7 +136,7 @@ def extract_json_block(response: str) -> str:
 def stream_llm_response(client, model_params):
     """Stream responses from the LLM model."""
     try:
-        response = client.ChatCompletion.create(
+        response = client.chat.completions.create(
             model=model_params.get("model", "gpt-4-turbo"),
             messages=st.session_state.messages,
             temperature=model_params.get("temperature", 0.3),
@@ -140,6 +157,10 @@ def stream_llm_response(client, model_params):
     except openai.error.RateLimitError as e:
         debug_error(f"Rate limit exceeded: {e}")
         st.error("Rate limit exceeded. Please try again later.")
+        return ""
+    except openai.error.OpenAIError as e:
+        debug_error(f"OpenAI error: {e}")
+        st.error(f"An OpenAI error occurred: {e}")
         return ""
     except Exception as e:
         debug_error(f"Error streaming response: {e}")
@@ -189,8 +210,7 @@ def main():
         if "conversation_initialized" not in st.session_state:
             if api_key:
                 # Initialize OpenAI client
-                openai.api_key = api_key
-                client = openai
+                client = OpenAI(api_key)
                 st.session_state.conversation_initialized = True
                 st.session_state.messages = []  # Initialize with empty message history
                 debug_log("Conversation initialized with empty message history.")
@@ -258,13 +278,23 @@ def main():
     # --- 顯示歷史訊息 ---
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            if isinstance(message["content"], dict) and "code" in message["content"]:
-                st.code(message["content"]["code"], language="python")
-                debug_log(f"Displaying code from {message['role']}: {message['content']['code']}")
-            else:
+            if isinstance(message["content"], str):
                 st.write(message["content"])
                 debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
+            elif isinstance(message["content"], list):
+                for content in message["content"]:
+                    if isinstance(content, dict):
+                        if content.get("type") == "text":
+                            st.write(content.get("text", ""))
+                            debug_log(f"Displaying text from {message['role']}: {content.get('text', '')}")
+                        elif content.get("type") == "image_url":
+                            st.image(content["image_url"].get("url", ""))
+                            debug_log(f"Displaying image from {message['role']}")
+                    elif isinstance(content, dict) and "code" in content:
+                        st.code(content["code"], language="python")
+                        debug_log(f"Displaying code from {message['role']}: {content['code']}")
 
+    # --- 用戶輸入 ---
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         append_message("user", user_input)
@@ -276,7 +306,7 @@ def main():
             try:
                 # Initialize OpenAI client if not already done
                 if api_key:
-                    client = openai
+                    client = OpenAI(api_key)
                 else:
                     raise ValueError("OpenAI API Key is not provided.")
 
