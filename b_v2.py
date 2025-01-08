@@ -51,7 +51,8 @@ def load_image_base64(image, max_size=(800, 800)):
     """Load image, resize if necessary, and convert to base64."""
     try:
         # 重新調整圖片大小以減少大小
-        image.thumbnail(max_size, Image.ANTIALIAS)
+        # 使用 Image.LANCZOS 代替 Image.ANTIALIAS
+        image.thumbnail(max_size, Image.LANCZOS)
         
         buffered = io.BytesIO()
         image.save(buffered, format="PNG")
