@@ -170,7 +170,7 @@ def main():
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
-        api_key = st.text_input("OpenAI API Key", type="password")
+        api_key = st.text_input("OpenAI API密鑰", value=default_api_key, type="password")
 
         selected_model = st.selectbox("Select Model:", OPENAI_MODELS, index=0)
 
