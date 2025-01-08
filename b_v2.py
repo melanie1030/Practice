@@ -12,19 +12,6 @@ from openai import OpenAI
 from PIL import Image
 from streamlit_ace import st_ace
 
-# --- Define OpenAI class ---
-# def initialize_client(api_key):
-#     """Initialize OpenAI client with the provided API key."""
-#     return OpenAI(api_key=api_key) if api_key else None
-
-# def openai_client_init(client, model_params):
-#     gpt = client.chat.completions.create(
-#         model=model_params.get("model", "gpt-4o"),
-#         messages=st.session_state.messages,
-#         temperature=model_params.get("temperature", 0.3),
-#         max_tokens=4096)
-#     return gpt
-
 # --- Initialization and Settings ---
 dotenv.load_dotenv()
 
