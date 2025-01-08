@@ -339,6 +339,7 @@ Available columns: {csv_columns}.
                     # After streaming is done, append assistant message
                     append_message("assistant", response_content)
                     with st.chat_message("assistant"):
+                        st.write(st.session_state.messages)
                         st.write(response_content)
                         debug_log(f"Assistant response added to messages: {response_content}")
 
