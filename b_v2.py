@@ -309,6 +309,13 @@ def main():
                     file_name="messages.json",
                     mime="application/json"
                 )
+
+                st.markdown("---")  # 添加分隔线
+
+                # 新增按钮：显示原始消息
+                if st.button("📄 显示原始消息"):
+                    st.subheader("🔍 原始消息内容")
+                    st.json(st.session_state.messages)  # 使用 st.json 格式化显示
             else:
                 st.write("没有找到 messages。")
 
@@ -486,8 +493,8 @@ Available columns: {csv_columns}.
                         "type": "image_url",
                         "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
                         }]
-                        append_message("user", prompt_2)
-                        
+                        append_message("user", image_content)  # 添加圖片到消息
+
                         # Make the API request for deep analysis
                         second_raw_response = get_llm_response(client, model_params)
                         debug_log(f"Deep analysis response: {second_raw_response}")
