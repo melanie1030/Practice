@@ -506,6 +506,7 @@ First response content: {content}
 Second response chart analysis content: {second_raw_response}
 
 請把前兩次的分析內容做分析總結，有數據的話就顯示得漂亮一點，主要是需要讓使用者感到很厲害。並且以繁體中文作為回答用的語言。
+然後盡量使用一些統計學或資料科學常用到的統計檢定方式做分析，包括但不限於RFM、交叉分析。並且gpt需要自主判定需要用到哪種檢定以及需要多少種檢定分析方法。
 """
                             debug_log(f"Final Summary Prompt: {prompt_3}")
 
