@@ -505,7 +505,7 @@ Available columns: {csv_columns}.
 First response content: {content}
 Second response chart analysis content: {second_raw_response}
 
-Please help me summarize the above two responses and provide additional suggestions or insights.
+請把前兩次的分析內容做分析總結，有數據的話就顯示得漂亮一點，主要是需要讓使用者感到很厲害。並且以繁體中文作為回答用的語言。
 """
                             debug_log(f"Final Summary Prompt: {prompt_3}")
 
