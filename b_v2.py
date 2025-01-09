@@ -306,7 +306,7 @@ def main():
         st.session_state.editor_location = location
         debug_log(f"Editor location set to: {st.session_state.editor_location}")
 
-        # --- 调试区块移动到侧边栏 ---
+        # --- 调试与会话信息 ---
         with st.expander("🛠️ 调试与会话信息", expanded=False):
             if st.session_state.debug_mode:
                 st.subheader("调试日志")
@@ -338,82 +338,246 @@ def main():
             else:
                 st.write("没有找到 messages。")
 
-    # --- Display Message History ---
-    for idx, message in enumerate(st.session_state.messages):
-        with st.chat_message(message["role"]):
-            if isinstance(message["content"], list):
-                # 處理列表形式的訊息內容，例如 image_url
-                for item in message["content"]:
-                    if isinstance(item, dict) and item.get("type") == "image_url":
-                        image_url = item["image_url"]["url"]
-                        st.image(image_url, caption="📷 上傳的圖片", use_column_width=True)
-                        debug_log(f"Displaying image from {message['role']}: {image_url}")
-                    else:
-                        st.write(item)
-                        debug_log(f"Displaying non-image content from {message['role']}: {item}")
-            elif isinstance(message["content"], str) and "```python" in message["content"]:
-                # 處理包含 Python 代碼塊的文字訊息
-                code_match = re.search(r'```python\s*(.*?)\s*```', message["content"], re.DOTALL)
-                if code_match:
-                    code = code_match.group(1).strip()
-                    st.code(code, language="python")
-                    debug_log(f"Displaying code from {message['role']}: {code}")
+            # --- 新增原始消息发送功能 ---
+            st.markdown("---")
+            st.subheader("📨 发送原始消息到 API")
+            raw_message = st.text_input("输入原始消息内容", "")
+            if st.button("📤 发送原始消息"):
+                if raw_message.strip() == "":
+                    st.warning("请输入要发送的消息内容。")
                 else:
-                    st.write(message["content"])  # 顯示上傳對話
-                    debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
-            else:
-                # 處理普通的文字訊息
-                st.write(message["content"])
-                debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
+                    append_message("user", raw_message)
+                    with st.chat_message("user"):
+                        st.write(raw_message)
+                        debug_log(f"User sent raw message: {raw_message}")
 
-    # --- User Input ---
-    user_input = st.chat_input("Hi! Ask me anything...")
-    if user_input:
-        append_message("user", user_input)
-        with st.chat_message("user"):
-            st.write(user_input)
-            debug_log(f"User input added to messages: {user_input}")
-
-        with st.spinner("Thinking..."):
-            try:
-                # Initialize OpenAI client if not already done
-                if api_key:
-                    client = initialize_client(api_key)
-                else:
-                    raise ValueError("OpenAI API Key is not provided.")
-
-                debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
-                debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
-
-                # --- Ensure system prompt is added only once ---
-                if not any(msg["role"] == "system" for msg in st.session_state.messages):
-                    system_prompt = "You are an assistant that helps with data analysis."
-                    append_message("system", system_prompt)
-                    debug_log("System prompt added to messages.")
-
-                # --- Decide which prompt to use ---
-                if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                    # Image uploaded, image data already added as a separate message
-                    prompt = user_input  # Use user input directly
-                    debug_log("User input with image data already appended.")
-                else:
-                    # No image uploaded, use complex JSON logic
-                    if st.session_state.uploaded_file_path is not None:
+                    with st.spinner("正在发送原始消息..."):
                         try:
-                            df_temp = pd.read_csv(st.session_state.uploaded_file_path)
-                            csv_columns = ", ".join(df_temp.columns)
-                            debug_log(f"CSV columns: {csv_columns}")
-                        except Exception as e:
-                            csv_columns = "Unable to read columns"
-                            if st.session_state.debug_mode:
-                                st.error(f"Error reading columns: {e}")
-                            debug_log(f"Error reading columns: {e}")
-                    else:
-                        csv_columns = "No file uploaded"
-                        debug_log("No CSV file uploaded.")
+                            # 初始化 OpenAI client
+                            if api_key:
+                                client = initialize_client(api_key)
+                            else:
+                                raise ValueError("OpenAI API Key is not provided.")
 
-                    if st.session_state.uploaded_file_path is not None and csv_columns != "No file uploaded":
-                        prompt = f"""Please respond with a JSON object in the format:
+                            # --- Ensure system prompt is added only once ---
+                            if not any(msg["role"] == "system" for msg in st.session_state.messages):
+                                system_prompt = "You are an assistant that helps with data analysis."
+                                append_message("system", system_prompt)
+                                debug_log("System prompt added to messages.")
+
+                            # Make the API request and get the response
+                            model_params = {
+                                "model": selected_model,
+                                "temperature": 0.5,
+                                "max_tokens": 4096
+                            }
+
+                            # Get thinking_protocol content if available
+                            thinking_protocol_content = st.session_state.thinking_protocol
+
+                            response_content = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                            debug_log(f"Full assistant response: {response_content}")
+
+                            if response_content:
+                                # After getting the response, append assistant message
+                                append_message("assistant", response_content)
+                                with st.chat_message("assistant"):
+                                    st.write(response_content)  # 避免二次顯示
+                                    debug_log(f"Assistant response added to messages: {response_content}")
+
+                                # Extract JSON and code
+                                json_str = extract_json_block(response_content)
+                                try:
+                                    response_json = json.loads(json_str)
+                                    debug_log("JSON parsing successful.")
+                                except Exception as e:
+                                    debug_log(f"json.loads parsing error: {e}")
+                                    debug_error(f"json.loads parsing error: {e}")
+                                    response_json = {"content": json_str, "code": ""}
+                                    debug_log("Fallback to raw response for content.")
+
+                                content = response_json.get("content", "Here is my analysis:")
+                                append_message("assistant", content)
+                                # with st.chat_message("assistant"):
+                                #     # st.write(content)    # 避免二次顯示
+                                #     debug_log(f"Content from JSON appended to messages: {content}")
+
+                                code = response_json.get("code", "")
+                                if code:
+                                    code_block = f"```python\n{code}\n```"
+                                    append_message("assistant", code_block)
+                                    with st.chat_message("assistant"):
+                                        st.code(code, language="python")
+                                    st.session_state.ace_code = code
+                                    debug_log("ace_code updated with new code.")
+
+                                # --- If deep analysis mode is checked & code is present -> execute code and re-analyze chart ---
+                                if st.session_state.deep_analysis_mode and code:
+                                    st.write("### [Deep Analysis] Automatically executing the generated code and sending the chart to GPT-4o for analysis...")
+                                    debug_log("Deep analysis mode activated.")
+
+                                    global_vars = {
+                                        "uploaded_file_path": st.session_state.uploaded_file_path,
+                                        "uploaded_image_path": st.session_state.uploaded_image_path,
+                                    }
+                                    exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
+                                    st.write("#### Execution Result")
+                                    st.text(exec_result)
+                                    debug_log(f"Execution result: {exec_result}")
+
+                                    fig = plt.gcf()
+                                    buf = BytesIO()
+                                    fig.savefig(buf, format="png")
+                                    buf.seek(0)
+                                    chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
+                                    st.session_state.deep_analysis_image = chart_base64
+                                    debug_log("Chart has been converted to base64.")
+
+                                    # Prepare deep analysis prompt
+                                    prompt_2 = f"""基於圖片給我更多資訊"""
+                                    debug_log(f"Deep Analysis Prompt: {prompt_2}")
+
+                                    # Append prompt_2 to messages
+                                    append_message("user", prompt_2)
+                                    debug_log("Deep analysis prompt appended to messages.")
+
+                                    # 把圖片加到二次分析裡
+                                    image_content = [{
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
+                                    }]
+                                    append_message("user", image_content)
+
+                                    # Make the API request for deep analysis
+                                    second_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                                    debug_log(f"Deep analysis response: {second_raw_response}")
+
+                                    if second_raw_response:
+                                        # Append assistant response
+                                        append_message("assistant", second_raw_response)
+                                        st.session_state.second_response = second_raw_response
+                                        with st.chat_message("assistant"):
+                                            st.write(second_raw_response)
+                                            debug_log(f"Deep analysis response added to messages: {second_raw_response}")
+
+                                        # Prepare final summary prompt
+                                        prompt_3 = f"""
+First response content: {content}
+Second response chart analysis content: {second_raw_response}
+
+請把前兩次的分析內容做分析總結，有數據的話就顯示得漂亮一點，主要是需要讓使用者感到很厲害。並且以繁體中文作為回答用的語言。
+然後盡量使用一些統計學或資料科學常用到的統計檢定方式做分析，包括但不限於RFM、交叉分析。並且gpt需要自主判定需要用到哪種檢定以及需要多少種檢定分析方法。
+"""
+                                        debug_log(f"Final Summary Prompt: {prompt_3}")
+
+                                        # Append prompt_3 to messages
+                                        append_message("user", prompt_3)
+                                        debug_log("Final summary prompt appended to messages.")
+
+                                        # Make the API request for final summary
+                                        third_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                                        debug_log(f"Final summary response: {third_raw_response}")
+
+                                        if third_raw_response:
+                                            # Append assistant response
+                                            append_message("assistant", third_raw_response)
+                                            st.session_state.third_response = third_raw_response
+                                            with st.chat_message("assistant"):
+                                                st.write(third_raw_response)
+                                                debug_log(f"Final summary response added to messages: {third_raw_response}")
+
+                                            # Display the chart
+                                            st.write("#### [Deep Analysis] Chart:")
+                                            try:
+                                                img_data = base64.b64decode(st.session_state.deep_analysis_image)
+                                                st.image(img_data, caption="Chart generated from deep analysis", use_column_width=True)
+                                                debug_log("Deep analysis chart displayed.")
+                                            except Exception as e:
+                                                if st.session_state.debug_mode:
+                                                    st.error(f"Error displaying chart: {e}")
+                                                debug_log(f"Error displaying chart: {e}")
+
+                        except Exception as e:
+                            if st.session_state.debug_mode:
+                                st.error(f"An error occurred: {e}")
+                            debug_log(f"An error occurred: {e}")
+
+        # --- Display Message History ---
+        for idx, message in enumerate(st.session_state.messages):
+            with st.chat_message(message["role"]):
+                if isinstance(message["content"], list):
+                    # 處理列表形式的訊息內容，例如 image_url
+                    for item in message["content"]:
+                        if isinstance(item, dict) and item.get("type") == "image_url":
+                            image_url = item["image_url"]["url"]
+                            st.image(image_url, caption="📷 上傳的圖片", use_column_width=True)
+                            debug_log(f"Displaying image from {message['role']}: {image_url}")
+                        else:
+                            st.write(item)
+                            debug_log(f"Displaying non-image content from {message['role']}: {item}")
+                elif isinstance(message["content"], str) and "```python" in message["content"]:
+                    # 處理包含 Python 代碼塊的文字訊息
+                    code_match = re.search(r'```python\s*(.*?)\s*```', message["content"], re.DOTALL)
+                    if code_match:
+                        code = code_match.group(1).strip()
+                        st.code(code, language="python")
+                        debug_log(f"Displaying code from {message['role']}: {code}")
+                    else:
+                        st.write(message["content"])  # 顯示上傳對話
+                        debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
+                else:
+                    # 處理普通的文字訊息
+                    st.write(message["content"])
+                    debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
+
+        # --- User Input ---
+        user_input = st.chat_input("Hi! Ask me anything...")
+        if user_input:
+            append_message("user", user_input)
+            with st.chat_message("user"):
+                st.write(user_input)
+                debug_log(f"User input added to messages: {user_input}")
+
+            with st.spinner("Thinking..."):
+                try:
+                    # Initialize OpenAI client if not already done
+                    if api_key:
+                        client = initialize_client(api_key)
+                    else:
+                        raise ValueError("OpenAI API Key is not provided.")
+
+                    debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
+                    debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
+
+                    # --- Ensure system prompt is added only once ---
+                    if not any(msg["role"] == "system" for msg in st.session_state.messages):
+                        system_prompt = "You are an assistant that helps with data analysis."
+                        append_message("system", system_prompt)
+                        debug_log("System prompt added to messages.")
+
+                    # --- Decide which prompt to use ---
+                    if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
+                        # Image uploaded, image data already added as a separate message
+                        prompt = user_input  # Use user input directly
+                        debug_log("User input with image data already appended.")
+                    else:
+                        # No image uploaded, use complex JSON logic
+                        if st.session_state.uploaded_file_path is not None:
+                            try:
+                                df_temp = pd.read_csv(st.session_state.uploaded_file_path)
+                                csv_columns = ", ".join(df_temp.columns)
+                                debug_log(f"CSV columns: {csv_columns}")
+                            except Exception as e:
+                                csv_columns = "Unable to read columns"
+                                if st.session_state.debug_mode:
+                                    st.error(f"Error reading columns: {e}")
+                                debug_log(f"Error reading columns: {e}")
+                        else:
+                            csv_columns = "No file uploaded"
+                            debug_log("No CSV file uploaded.")
+
+                        if st.session_state.uploaded_file_path is not None and csv_columns != "No file uploaded":
+                            prompt = f"""Please respond with a JSON object in the format:
 {{
     "content": "Here are my observations: {{analysis}}",
     "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# Read CSV file (use st.session_state.uploaded_file_path variable)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# Add your plotting or analysis logic here\\n\\n# For example, to display a plot using st.pyplot():\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)"
@@ -426,151 +590,151 @@ Important:
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
 """
-                        debug_log("Prompt constructed for CSV input with JSON response.")
-                        append_message("system", prompt)
-                        debug_log("System prompt appended to messages.")
-                    else:
-                        prompt = f"Please answer this question entirely in Traditional Chinese: {user_input}"
-                        debug_log("Prompt constructed for plain text input.")
-                        append_message("system", prompt)
-                        debug_log("Plain text system prompt appended to messages.")
+                            debug_log("Prompt constructed for CSV input with JSON response.")
+                            append_message("system", prompt)
+                            debug_log("System prompt appended to messages.")
+                        else:
+                            prompt = f"Please answer this question entirely in Traditional Chinese: {user_input}"
+                            debug_log("Prompt constructed for plain text input.")
+                            append_message("system", prompt)
+                            debug_log("Plain text system prompt appended to messages.")
 
-                # Make the API request and get the response
-                model_params = {
-                    "model": selected_model,
-                    "temperature": 0.5,
-                    "max_tokens": 4096
-                }
+                    # Make the API request and get the response
+                    model_params = {
+                        "model": selected_model,
+                        "temperature": 0.5,
+                        "max_tokens": 4096
+                    }
 
-                # Get thinking_protocol content if available
-                thinking_protocol_content = st.session_state.thinking_protocol
+                    # Get thinking_protocol content if available
+                    thinking_protocol_content = st.session_state.thinking_protocol
 
-                response_content = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
-                debug_log(f"Full assistant response: {response_content}")
+                    response_content = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                    debug_log(f"Full assistant response: {response_content}")
 
-                if response_content:
-                    # After getting the response, append assistant message
-                    append_message("assistant", response_content)
-                    with st.chat_message("assistant"):
-                        st.write(response_content)  # 避免二次顯示
-                        debug_log(f"Assistant response added to messages: {response_content}")
-
-                    # Extract JSON and code
-                    json_str = extract_json_block(response_content)
-                    try:
-                        response_json = json.loads(json_str)
-                        debug_log("JSON parsing successful.")
-                    except Exception as e:
-                        debug_log(f"json.loads parsing error: {e}")
-                        debug_error(f"json.loads parsing error: {e}")
-                        response_json = {"content": json_str, "code": ""}
-                        debug_log("Fallback to raw response for content.")
-
-                    content = response_json.get("content", "Here is my analysis:")
-                    append_message("assistant", content)
-                    # with st.chat_message("assistant"):
-                    #     # st.write(content)    # 避免二次顯示
-                    #     debug_log(f"Content from JSON appended to messages: {content}")
-
-                    code = response_json.get("code", "")
-                    if code:
-                        code_block = f"```python\n{code}\n```"
-                        append_message("assistant", code_block)
+                    if response_content:
+                        # After getting the response, append assistant message
+                        append_message("assistant", response_content)
                         with st.chat_message("assistant"):
-                            st.code(code, language="python")
-                        st.session_state.ace_code = code
-                        debug_log("ace_code updated with new code.")
+                            st.write(response_content)  # 避免二次顯示
+                            debug_log(f"Assistant response added to messages: {response_content}")
 
-                    # --- If deep analysis mode is checked & code is present -> execute code and re-analyze chart ---
-                    if st.session_state.deep_analysis_mode and code:
-                        st.write("### [Deep Analysis] Automatically executing the generated code and sending the chart to GPT-4o for analysis...")
-                        debug_log("Deep analysis mode activated.")
+                        # Extract JSON and code
+                        json_str = extract_json_block(response_content)
+                        try:
+                            response_json = json.loads(json_str)
+                            debug_log("JSON parsing successful.")
+                        except Exception as e:
+                            debug_log(f"json.loads parsing error: {e}")
+                            debug_error(f"json.loads parsing error: {e}")
+                            response_json = {"content": json_str, "code": ""}
+                            debug_log("Fallback to raw response for content.")
 
-                        global_vars = {
-                            "uploaded_file_path": st.session_state.uploaded_file_path,
-                            "uploaded_image_path": st.session_state.uploaded_image_path,
-                        }
-                        exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
-                        st.write("#### Execution Result")
-                        st.text(exec_result)
-                        debug_log(f"Execution result: {exec_result}")
+                        content = response_json.get("content", "Here is my analysis:")
+                        append_message("assistant", content)
+                        # with st.chat_message("assistant"):
+                        #     # st.write(content)    # 避免二次顯示
+                        #     debug_log(f"Content from JSON appended to messages: {content}")
 
-                        fig = plt.gcf()
-                        buf = BytesIO()
-                        fig.savefig(buf, format="png")
-                        buf.seek(0)
-                        chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
-                        st.session_state.deep_analysis_image = chart_base64
-                        debug_log("Chart has been converted to base64.")
-
-                        # Prepare deep analysis prompt
-                        prompt_2 = f"""基於圖片給我更多資訊"""
-                        debug_log(f"Deep Analysis Prompt: {prompt_2}")
-
-                        # Append prompt_2 to messages
-                        append_message("user", prompt_2)
-                        debug_log("Deep analysis prompt appended to messages.")
-
-                        # 把圖片加到二次分析裡
-                        image_content = [{
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
-                        }]
-                        append_message("user", image_content)
-
-                        # Make the API request for deep analysis
-                        second_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
-                        debug_log(f"Deep analysis response: {second_raw_response}")
-
-                        if second_raw_response:
-                            # Append assistant response
-                            append_message("assistant", second_raw_response)
-                            st.session_state.second_response = second_raw_response
+                        code = response_json.get("code", "")
+                        if code:
+                            code_block = f"```python\n{code}\n```"
+                            append_message("assistant", code_block)
                             with st.chat_message("assistant"):
-                                st.write(second_raw_response)
-                                debug_log(f"Deep analysis response added to messages: {second_raw_response}")
+                                st.code(code, language="python")
+                            st.session_state.ace_code = code
+                            debug_log("ace_code updated with new code.")
 
-                            # Prepare final summary prompt
-                            prompt_3 = f"""
+                        # --- If deep analysis mode is checked & code is present -> execute code and re-analyze chart ---
+                        if st.session_state.deep_analysis_mode and code:
+                            st.write("### [Deep Analysis] Automatically executing the generated code and sending the chart to GPT-4o for analysis...")
+                            debug_log("Deep analysis mode activated.")
+
+                            global_vars = {
+                                "uploaded_file_path": st.session_state.uploaded_file_path,
+                                "uploaded_image_path": st.session_state.uploaded_image_path,
+                            }
+                            exec_result = execute_code(st.session_state.ace_code, global_vars=global_vars)
+                            st.write("#### Execution Result")
+                            st.text(exec_result)
+                            debug_log(f"Execution result: {exec_result}")
+
+                            fig = plt.gcf()
+                            buf = BytesIO()
+                            fig.savefig(buf, format="png")
+                            buf.seek(0)
+                            chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
+                            st.session_state.deep_analysis_image = chart_base64
+                            debug_log("Chart has been converted to base64.")
+
+                            # Prepare deep analysis prompt
+                            prompt_2 = f"""基於圖片給我更多資訊"""
+                            debug_log(f"Deep Analysis Prompt: {prompt_2}")
+
+                            # Append prompt_2 to messages
+                            append_message("user", prompt_2)
+                            debug_log("Deep analysis prompt appended to messages.")
+
+                            # 把圖片加到二次分析裡
+                            image_content = [{
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
+                            }]
+                            append_message("user", image_content)
+
+                            # Make the API request for deep analysis
+                            second_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                            debug_log(f"Deep analysis response: {second_raw_response}")
+
+                            if second_raw_response:
+                                # Append assistant response
+                                append_message("assistant", second_raw_response)
+                                st.session_state.second_response = second_raw_response
+                                with st.chat_message("assistant"):
+                                    st.write(second_raw_response)
+                                    debug_log(f"Deep analysis response added to messages: {second_raw_response}")
+
+                                # Prepare final summary prompt
+                                prompt_3 = f"""
 First response content: {content}
 Second response chart analysis content: {second_raw_response}
 
 請把前兩次的分析內容做分析總結，有數據的話就顯示得漂亮一點，主要是需要讓使用者感到很厲害。並且以繁體中文作為回答用的語言。
 然後盡量使用一些統計學或資料科學常用到的統計檢定方式做分析，包括但不限於RFM、交叉分析。並且gpt需要自主判定需要用到哪種檢定以及需要多少種檢定分析方法。
 """
-                            debug_log(f"Final Summary Prompt: {prompt_3}")
+                                debug_log(f"Final Summary Prompt: {prompt_3}")
 
-                            # Append prompt_3 to messages
-                            append_message("user", prompt_3)
-                            debug_log("Final summary prompt appended to messages.")
+                                # Append prompt_3 to messages
+                                append_message("user", prompt_3)
+                                debug_log("Final summary prompt appended to messages.")
 
-                            # Make the API request for final summary
-                            third_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
-                            debug_log(f"Final summary response: {third_raw_response}")
+                                # Make the API request for final summary
+                                third_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                                debug_log(f"Final summary response: {third_raw_response}")
 
-                            if third_raw_response:
-                                # Append assistant response
-                                append_message("assistant", third_raw_response)
-                                st.session_state.third_response = third_raw_response
-                                with st.chat_message("assistant"):
-                                    st.write(third_raw_response)
-                                    debug_log(f"Final summary response added to messages: {third_raw_response}")
+                                if third_raw_response:
+                                    # Append assistant response
+                                    append_message("assistant", third_raw_response)
+                                    st.session_state.third_response = third_raw_response
+                                    with st.chat_message("assistant"):
+                                        st.write(third_raw_response)
+                                        debug_log(f"Final summary response added to messages: {third_raw_response}")
 
-                                # Display the chart
-                                st.write("#### [Deep Analysis] Chart:")
-                                try:
-                                    img_data = base64.b64decode(st.session_state.deep_analysis_image)
-                                    st.image(img_data, caption="Chart generated from deep analysis", use_column_width=True)
-                                    debug_log("Deep analysis chart displayed.")
-                                except Exception as e:
-                                    if st.session_state.debug_mode:
-                                        st.error(f"Error displaying chart: {e}")
-                                    debug_log(f"Error displaying chart: {e}")
+                                    # Display the chart
+                                    st.write("#### [Deep Analysis] Chart:")
+                                    try:
+                                        img_data = base64.b64decode(st.session_state.deep_analysis_image)
+                                        st.image(img_data, caption="Chart generated from deep analysis", use_column_width=True)
+                                        debug_log("Deep analysis chart displayed.")
+                                    except Exception as e:
+                                        if st.session_state.debug_mode:
+                                            st.error(f"Error displaying chart: {e}")
+                                        debug_log(f"Error displaying chart: {e}")
 
-            except Exception as e:
-                if st.session_state.debug_mode:
-                    st.error(f"An error occurred: {e}")
-                debug_log(f"An error occurred: {e}")
+                except Exception as e:
+                    if st.session_state.debug_mode:
+                        st.error(f"An error occurred: {e}")
+                    debug_log(f"An error occurred: {e}")
 
     # --- Persistent Code Editor ---
     if "ace_code" not in st.session_state:
