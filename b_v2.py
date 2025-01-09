@@ -131,16 +131,25 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-def get_llm_response(client, model_params, max_retries=3):
+def get_llm_response(client, model_params, thinking_protocol_content=None, max_retries=3):
     """Get response from the LLM model synchronously with retry logic."""
     retries = 0
     wait_time = 5  # Start with 5 seconds
 
     while retries < max_retries:
         try:
+            # Prepare messages with thinking_protocol if available
+            messages_to_send = []
+            if thinking_protocol_content:
+                messages_to_send.append({
+                    "role": "system",
+                    "content": thinking_protocol_content
+                })
+            messages_to_send.extend(st.session_state.messages)
+
             response = client.chat.completions.create(
                 model=model_params.get("model", "gpt-4-turbo"),
-                messages=st.session_state.messages,
+                messages=messages_to_send,
                 temperature=model_params.get("temperature", 0.3),
                 max_tokens=model_params.get("max_tokens", 4096),
                 stream=False  # Disable streaming
@@ -196,6 +205,8 @@ def main():
         st.session_state.debug_logs = []
     if "debug_errors" not in st.session_state:
         st.session_state.debug_errors = []
+    if "thinking_protocol" not in st.session_state:
+        st.session_state.thinking_protocol = None  # Initialize thinking_protocol
 
     with st.sidebar:
         st.subheader("🔒 Enter Your API Key")
@@ -236,6 +247,7 @@ def main():
             st.session_state.deep_analysis_image = None
             st.session_state.debug_logs = []
             st.session_state.debug_errors = []
+            st.session_state.thinking_protocol = None  # Clear thinking_protocol
             st.success("Memory cleared!")
             debug_log("Memory has been cleared.")
 
@@ -270,6 +282,20 @@ def main():
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"], key="image_uploader")
         if uploaded_image:
             add_user_image(uploaded_image)
+
+        # --- Thinking Protocol Upload ---
+        st.subheader("🧠 Upload Thinking Protocol")
+        uploaded_thinking_protocol = st.file_uploader("Choose a thinking_protocol.md file:", type=["md"], key="thinking_protocol_uploader")
+        if uploaded_thinking_protocol:
+            try:
+                thinking_protocol_content = uploaded_thinking_protocol.read().decode("utf-8")
+                st.session_state.thinking_protocol = thinking_protocol_content
+                st.success("Thinking Protocol uploaded successfully!")
+                debug_log("Thinking Protocol uploaded and stored in session state.")
+            except Exception as e:
+                if st.session_state.debug_mode:
+                    st.error(f"Error reading Thinking Protocol: {e}")
+                debug_log(f"Error reading Thinking Protocol: {e}")
 
         st.subheader("Editor Location")
         location = st.radio(
@@ -422,7 +448,11 @@ Available columns: {csv_columns}.
                     "temperature": 0.5,
                     "max_tokens": 4096
                 }
-                response_content = get_llm_response(client, model_params)
+
+                # Get thinking_protocol content if available
+                thinking_protocol_content = st.session_state.thinking_protocol
+
+                response_content = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
                 debug_log(f"Full assistant response: {response_content}")
 
                 if response_content:
@@ -490,13 +520,13 @@ Available columns: {csv_columns}.
 
                         # 把圖片加到二次分析裡
                         image_content = [{
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
                         }]
                         append_message("user", image_content)  # 添加圖片到消息
 
                         # Make the API request for deep analysis
-                        second_raw_response = get_llm_response(client, model_params)
+                        second_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
                         debug_log(f"Deep analysis response: {second_raw_response}")
 
                         if second_raw_response:
@@ -522,7 +552,7 @@ Second response chart analysis content: {second_raw_response}
                             debug_log("Final summary prompt appended to messages.")
 
                             # Make the API request for final summary
-                            third_raw_response = get_llm_response(client, model_params)
+                            third_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
                             debug_log(f"Final summary response: {third_raw_response}")
 
                             if third_raw_response:
