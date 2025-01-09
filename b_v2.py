@@ -131,25 +131,16 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-def get_llm_response(client, model_params, thinking_protocol_content=None, max_retries=3):
+def get_llm_response(client, model_params, max_retries=3):
     """Get response from the LLM model synchronously with retry logic."""
     retries = 0
     wait_time = 5  # Start with 5 seconds
 
     while retries < max_retries:
         try:
-            # Prepare messages with thinking_protocol if available
-            messages_to_send = []
-            if thinking_protocol_content:
-                messages_to_send.append({
-                    "role": "system",
-                    "content": thinking_protocol_content
-                })
-            messages_to_send.extend(st.session_state.messages)
-
             response = client.chat.completions.create(
                 model=model_params.get("model", "gpt-4-turbo"),
-                messages=messages_to_send,
+                messages=st.session_state.messages,
                 temperature=model_params.get("temperature", 0.3),
                 max_tokens=model_params.get("max_tokens", 4096),
                 stream=False  # Disable streaming
@@ -290,8 +281,9 @@ def main():
             try:
                 thinking_protocol_content = uploaded_thinking_protocol.read().decode("utf-8")
                 st.session_state.thinking_protocol = thinking_protocol_content
+                append_message("user", thinking_protocol_content)  # 添加为用户消息
                 st.success("Thinking Protocol uploaded successfully!")
-                debug_log("Thinking Protocol uploaded and stored in session state.")
+                debug_log("Thinking Protocol uploaded and added to messages.")
             except Exception as e:
                 if st.session_state.debug_mode:
                     st.error(f"Error reading Thinking Protocol: {e}")
@@ -449,10 +441,7 @@ Available columns: {csv_columns}.
                     "max_tokens": 4096
                 }
 
-                # Get thinking_protocol content if available
-                thinking_protocol_content = st.session_state.thinking_protocol
-
-                response_content = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                response_content = get_llm_response(client, model_params)
                 debug_log(f"Full assistant response: {response_content}")
 
                 if response_content:
@@ -526,7 +515,7 @@ Available columns: {csv_columns}.
                         append_message("user", image_content)  # 添加圖片到消息
 
                         # Make the API request for deep analysis
-                        second_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                        second_raw_response = get_llm_response(client, model_params)
                         debug_log(f"Deep analysis response: {second_raw_response}")
 
                         if second_raw_response:
@@ -552,7 +541,7 @@ Second response chart analysis content: {second_raw_response}
                             debug_log("Final summary prompt appended to messages.")
 
                             # Make the API request for final summary
-                            third_raw_response = get_llm_response(client, model_params, thinking_protocol_content=thinking_protocol_content)
+                            third_raw_response = get_llm_response(client, model_params)
                             debug_log(f"Final summary response: {third_raw_response}")
 
                             if third_raw_response:
