@@ -414,16 +414,17 @@ def main():
                     if st.session_state.uploaded_file_path is not None and csv_columns != "No file uploaded":
                         prompt = f"""Please respond with a JSON object in the format:
 {{
-    "content": "Here are my observations: {{analysis}}",
+    "content": "這是我的觀察跟分析: {{analysis}}",
     "code": "import pandas as pd\\nimport streamlit as st\\nimport matplotlib.pyplot as plt\\n# Read CSV file (use st.session_state.uploaded_file_path variable)\\ndata = pd.read_csv(st.session_state.uploaded_file_path)\\n\\n# Add your plotting or analysis logic here\\n\\n# For example, to display a plot using st.pyplot():\\n# fig, ax = plt.subplots()\\n# ax.scatter(data['colA'], data['colB'])\\n# st.pyplot(fig)"
 }}
 Important:
-1) Must use st.session_state.uploaded_file_path as the CSV path (instead of a hardcoded path)
+1) 必須使用 st.session_state.uploaded_file_path 作為 CSV 路徑 (instead of a hardcoded path)
 2) Must use st.pyplot() to display any matplotlib figure
 3) Return only valid JSON (escape any special characters if needed)
 
 Based on the request: {user_input}.
 Available columns: {csv_columns}.
+然後請使用繁體中文回應
 """
                         debug_log("Prompt constructed for CSV input with JSON response.")
                         append_message("system", prompt)
