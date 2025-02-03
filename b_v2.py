@@ -218,8 +218,11 @@ def get_gemini_response(model_params, max_retries=3):
     genai.configure(api_key=api_key)
     model_name = model_params.get("model", "gemini-1.5-flash")
     generation_config = {
-        "temperature": model_params.get("temperature", 0.3),
-        "max_output_tokens": model_params.get("max_tokens", 4096)
+    "temperature": 1,
+    "top_p": 0.95,
+    "top_k": 40,
+    "max_output_tokens": 8192,
+    "response_mime_type": "text/plain",
     }
     
     try:
