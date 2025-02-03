@@ -29,12 +29,6 @@ MAX_MESSAGES = 10  # Limit message history
 def initialize_client(api_key):
     return OpenAI(api_key=api_key) if api_key else None
 
-def initialize_gemini(api_key):  # 新增Gemini初始化
-    if api_key:
-        genai.configure(api_key=api_key)
-        return genai
-    return None
-
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
         st.session_state.debug_logs.append(f"**DEBUG LOG:** {msg}")
@@ -221,15 +215,19 @@ def to_markdown(text: str) -> str:
 def get_gemini_response(model_params, max_retries=3):
     """处理Gemini模型请求（遵循官方文档规范）"""
     # 初始化模型参数
+    genai.configure(api_key=api_key)
     model_name = model_params.get("model", "gemini-1.5-flash")
     generation_config = {
         "temperature": model_params.get("temperature", 0.3),
-        "max_output_tokens": model_params.get("max_tokens", 4096),
+        "max_output_tokens": model_params.get("max_tokens", 4096)
     }
     
     try:
         # 初始化模型（带安全设置）
-        model = genai.GenerativeModel(model_name=model_name)
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            generation_config=generation_config,
+            )
         
         # 构建对话历史
         chat = model.start_chat(history=[])
@@ -256,7 +254,7 @@ def get_gemini_response(model_params, max_retries=3):
         response.resolve()  # 确保响应完成
         
         # 转换Markdown格式
-        return response.text
+        return to_markdown(response.text)
         
     except genai.GenerationError as e:
         debug_error(f"生成错误: {str(e)}")
