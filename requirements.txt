@@ -17,3 +17,4 @@ fpdf2
 streamlit_ace
 seaborn
 google-generativeai
+textwrap
