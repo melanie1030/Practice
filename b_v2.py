@@ -218,7 +218,7 @@ def to_markdown(text: str) -> str:
 
 # 以下為新版本的 get_llm_response 函數
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-def get_gemini_response(client, model_params, max_retries=3):
+def get_gemini_response(model_params, max_retries=3):
     """处理Gemini模型请求（遵循官方文档规范）"""
     # 初始化模型参数
     model_name = model_params.get("model", "gemini-1.5-flash")
