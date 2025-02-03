@@ -176,43 +176,47 @@ def extract_json_block(response: str) -> str:
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def get_gemini_response(client, model_params, max_retries=3):
     """处理Gemini模型请求"""
-    retries = 0
-    wait_time = 5
-    model_name = model_params.get("model", "gemini-1.5-flash")
+    # 重置请求状态
+    st.session_state.request_status.update({
+        "pending": True,
+        "last_request_time": time.time(),
+        "retry_count": 0
+    })
     
-    # 构建多模态输入
-    messages = []
-    for msg in st.session_state.messages:
-        if isinstance(msg["content"], list):  # 处理图片消息
-            for content in msg["content"]:
-                if content["type"] == "image_url":
-                    messages.append({
-                        "role": msg["role"],
-                        "parts": [{"mime_type": "image/png", "data": content["image_url"]["url"].split(",")[1]}]
-                    })
-                else:
-                    messages.append({"role": msg["role"], "parts": [content["text"]]})
-        else:
-            messages.append({"role": msg["role"], "parts": [msg["content"]]})
-
-    while retries < max_retries:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(messages)
-            return response.text
-        except Exception as e:
-            if 'quota' in str(e).lower() or '429' in str(e):
-                debug_error(f"API配额不足，{wait_time}秒后重试...")
-                st.warning(f"API配额不足，{wait_time}秒后重试...")
-                time.sleep(wait_time)
-                retries += 1
-                wait_time *= 2  # 指数退避
-            else:
-                debug_error(f"获取响应时出错: {e}")
-                st.error(f"获取响应时发生错误: {e}")
-                return ""
-    st.error("超过最大重试次数，请稍后再试。")
-    return ""
+    try:
+        # 添加请求超时机制
+        response = model.generate_content(
+            messages,
+            request_options={"timeout": 30}  # 30秒超时
+        )
+        
+        # 检查响应有效性
+        if not response.text:
+            raise ValueError("Empty response from Gemini API")
+            
+        # 记录成功日志
+        debug_log(f"Gemini响应内容：{response.text[:200]}...")  # 截取前200字符
+        return response.text
+        
+    except genai.types.GenerativeAIError as e:
+        # 处理API错误
+        error_msg = f"Gemini API错误：{str(e)}"
+        debug_error(error_msg)
+        st.error(error_msg)
+        return ""
+        
+    except requests.exceptions.Timeout:
+        # 处理超时
+        debug_error("请求超时（30秒）")
+        st.error("请求超时，请检查网络连接")
+        return ""
+        
+    finally:
+        # 更新请求状态
+        st.session_state.request_status.update({
+            "pending": False,
+            "last_request_time": time.time()
+        })
 
 def get_openai_response(client, model_params, max_retries=3):
     """处理OpenAI API请求"""
