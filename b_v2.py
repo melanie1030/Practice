@@ -175,59 +175,62 @@ def extract_json_block(response: str) -> str:
 # 以下為新版本的 get_llm_response 函數
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def get_gemini_response(client, model_params, max_retries=3):
-    st.session_state.request_status.update({
-        "pending": True,
-        "last_request_time": time.time(),
-        "retry_count": 0
-    })
+    """处理Gemini模型请求（遵循官方文档规范）"""
+    # 初始化模型参数
+    model_name = model_params.get("model", "gemini-1.5-flash")
+    generation_config = {
+        "temperature": model_params.get("temperature", 0.3),
+        "max_output_tokens": model_params.get("max_tokens", 4096),
+    }
+    
     try:
-        # 1) 指定模型名稱
-        gemini_model_name = model_params.get("model", "models/chat-bison-001")
-        
-        # 2) 將 st.session_state.messages 組成 prompt (Gemini 需要一個 str, 或是對應 Chat 形式).
-        #    假設要把整個對話合成一段文字 prompt:
-        user_prompts = []
-        for msg in st.session_state.messages:
-            if msg["role"] == "user":
-                user_prompts.append(msg["content"])
-        
-        prompt_text = "\n".join(user_prompts)
-        
-        # 3) 呼叫 google.generativeai 提供的 generate_text 或 generate_message
-        response = client.generate_text(
-            model=gemini_model_name,
-            prompt=prompt_text,
-            temperature=model_params.get("temperature", 0.3),
-            max_output_tokens=model_params.get("max_tokens", 512),  # 不能太大
-            top_k=40,
-            top_p=0.95,
-            # ... 其他參數
+        # 初始化模型（带安全设置）
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            generation_config=generation_config,
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlock.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlock.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlock.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlock.BLOCK_ONLY_HIGH,
+            }
         )
         
-        # 4) 檢查回傳
-        if not response.generated_text:
-            raise ValueError("Empty response from Gemini API")
+        # 构建对话历史
+        chat = model.start_chat(history=[])
+        for msg in st.session_state.messages:
+            if msg["role"] == "user":
+                parts = []
+                for content in msg["content"]:
+                    if isinstance(content, dict) and content["type"] == "image_url":
+                        parts.append({
+                            "mime_type": "image/png",
+                            "data": content["image_url"]["url"].split(",")[1]
+                        })
+                    else:
+                        parts.append(content)
+                chat.send_message(parts)
+            elif msg["role"] == "assistant":
+                chat.history.append(  # 添加助手回复到历史
+                    Parts(content=msg["content"]),
+                    role="model"
+                )
         
-        debug_log(f"Gemini响应内容：{response.generated_text[:200]}...")
-        return response.generated_text
-
-    except genai.types.GenerativeAIError as e:
-        error_msg = f"Gemini API错误：{str(e)}"
-        debug_error(error_msg)
-        st.error(error_msg)
+        # 发送请求并获取响应
+        response = chat.send_message("")  # 空消息触发最新回复
+        response.resolve()  # 确保响应完成
+        
+        # 转换Markdown格式
+        return to_markdown(response.text)
+        
+    except genai.GenerationError as e:
+        debug_error(f"生成错误: {str(e)}")
+        st.error("内容生成被安全过滤器拦截，请调整输入内容")
         return ""
-    
-    except requests.exceptions.Timeout:
-        debug_error("请求超时（30秒）")
-        st.error("请求超时，请检查网络连接")
+    except Exception as e:
+        debug_error(f"请求失败: {str(e)}")
+        st.error(f"API请求失败: {str(e)}")
         return ""
-    
-    finally:
-        st.session_state.request_status.update({
-            "pending": False,
-            "last_request_time": time.time()
-        })
-
 
 def get_openai_response(client, model_params, max_retries=3):
     """处理OpenAI API请求"""
@@ -292,7 +295,7 @@ def get_llm_response(client, model_params, max_retries=3):
     if "gpt" in model_name:
         return get_openai_response(client, model_params, max_retries)
     elif "gemini" in model_name:
-        return get_gemini_response(client, model_params, max_retries)
+        return get_gemini_response(model_params=model_params, max_retries=max_retries)
     else:
         st.error(f"不支持的模型类型: {model_name}")
         return ""
