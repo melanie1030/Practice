@@ -134,6 +134,50 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
+def to_markdown(text: str) -> str:
+    """
+    将Gemini响应文本转换为兼容Streamlit的Markdown格式
+    功能：
+    1. 自动检测代码块并添加正确语法
+    2. 转换项目符号列表
+    3. 处理引文标注
+    4. 保留原始换行格式
+    """
+    import re
+    
+    # 预处理：保留换行符
+    text = text.replace('\n', '<br>')
+    
+    # 转换代码块
+    text = re.sub(
+        r'``[(\w+)?\s*(.*?)](cci:1://file:///d:/Practice-main/b_v2.py:295:0-754:61)``', 
+        lambda m: f"```{m.group(1) or ''}\n{m.group(2)}\n```", 
+        text, 
+        flags=re.DOTALL
+    )
+    
+    # 转换项目符号列表
+    text = re.sub(r'•', '  *', text)
+    
+    # 转换编号列表
+    text = re.sub(r'(\d+)\.', r'\1\\.', text)
+    
+    # 处理引文标注（如：^[1]）
+    text = re.sub(r'\^\[(\d+)\]', r'<sup>\1</sup>', text)
+    
+    # 恢复换行符
+    text = text.replace('<br>', '\n')
+    
+    # 添加Markdown引用格式
+    lines = []
+    for line in text.split('\n'):
+        if line.strip().startswith('*') or line.strip().startswith('#'):
+            lines.append(line)
+        else:
+            lines.append(f"> {line}")
+    
+    return '\n'.join(lines)
+    
 # =======================================================================================================
 #       以下為舊版本的 get_llm_response 函數
 # def get_llm_response(client, model_params, max_retries=3):
@@ -185,16 +229,7 @@ def get_gemini_response(client, model_params, max_retries=3):
     
     try:
         # 初始化模型（带安全设置）
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            generation_config=generation_config,
-            safety_settings={
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlock.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlock.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlock.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlock.BLOCK_ONLY_HIGH,
-            }
-        )
+        model = genai.GenerativeModel(model_name=model_name)
         
         # 构建对话历史
         chat = model.start_chat(history=[])
