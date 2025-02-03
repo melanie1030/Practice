@@ -10,20 +10,16 @@ import base64
 from io import BytesIO
 from openai import OpenAI
 from PIL import Image
+import google.generativeai as genai  # 新增Gemini依赖
 from streamlit_ace import st_ace
 import time
 
-# --- Initialization and Settings ---
+# --- 初始化设置 ---
 dotenv.load_dotenv()
-
 UPLOAD_DIR = "uploaded_files"
-
-OPENAI_MODELS = [
-    "gpt-4-turbo",  # Use a more stable model
+LLM_MODELS = [  # 修改后的模型列表
+    "gpt-4-turbo",
     "gpt-3.5-turbo-16k",
-    "gpt-4",
-    "gpt-4-32k",
-    "gpt-4o",
     "gemini-1.5-flash",
     "gemini-1.5-pro"
 ]
@@ -31,8 +27,13 @@ OPENAI_MODELS = [
 MAX_MESSAGES = 10  # Limit message history
 
 def initialize_client(api_key):
-    """Initialize OpenAI client with the provided API key."""
     return OpenAI(api_key=api_key) if api_key else None
+
+def initialize_gemini(api_key):  # 新增Gemini初始化
+    if api_key:
+        genai.configure(api_key=api_key)
+        return genai
+    return None
 
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
@@ -133,39 +134,155 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-def get_llm_response(client, model_params, max_retries=3):
-    """Get response from the LLM model synchronously with retry logic."""
+# =======================================================================================================
+#       以下為舊版本的 get_llm_response 函數
+# def get_llm_response(client, model_params, max_retries=3):
+#     """Get response from the LLM model synchronously with retry logic."""
+#     retries = 0
+#     wait_time = 5  # Start with 5 seconds
+
+#     while retries < max_retries:
+#         try:
+#             response = client.chat.completions.create(
+#                 model=model_params.get("model", "gpt-4-turbo"),
+#                 messages=st.session_state.messages,
+#                 temperature=model_params.get("temperature", 0.3),
+#                 max_tokens=model_params.get("max_tokens", 4096),
+#                 stream=False  # Disable streaming
+#             )
+#             # Extract the full response content
+#             response_content = response.choices[0].message.content.strip()
+#             debug_log(f"Full assistant response: {response_content}")
+#             return response_content
+
+#         except Exception as e:
+#             if 'rate_limit_exceeded' in str(e).lower() or '429' in str(e):
+#                 debug_error(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+#                 st.warning(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+#                 time.sleep(wait_time)
+#                 retries += 1
+#                 wait_time *= 2  # Exponential backoff
+#             else:
+#                 debug_error(f"Error getting response: {e}")
+#                 st.error(f"An error occurred while getting the response: {e}")
+#                 return ""
+
+#     st.error("Max retries exceeded. Please try again later.")
+#     return ""
+# =======================================================================================================
+
+
+# 以下為新版本的 get_llm_response 函數
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+def get_gemini_response(client, model_params, max_retries=3):
+    """处理Gemini模型请求"""
     retries = 0
-    wait_time = 5  # Start with 5 seconds
+    wait_time = 5
+    model_name = model_params.get("model", "gemini-1.5-flash")
+    
+    # 构建多模态输入
+    messages = []
+    for msg in st.session_state.messages:
+        if isinstance(msg["content"], list):  # 处理图片消息
+            for content in msg["content"]:
+                if content["type"] == "image_url":
+                    messages.append({
+                        "role": msg["role"],
+                        "parts": [{"mime_type": "image/png", "data": content["image_url"]["url"].split(",")[1]}]
+                    })
+                else:
+                    messages.append({"role": msg["role"], "parts": [content["text"]]})
+        else:
+            messages.append({"role": msg["role"], "parts": [msg["content"]]})
 
     while retries < max_retries:
         try:
-            response = client.chat.completions.create(
-                model=model_params.get("model", "gpt-4-turbo"),
-                messages=st.session_state.messages,
-                temperature=model_params.get("temperature", 0.3),
-                max_tokens=model_params.get("max_tokens", 4096),
-                stream=False  # Disable streaming
-            )
-            # Extract the full response content
-            response_content = response.choices[0].message.content.strip()
-            debug_log(f"Full assistant response: {response_content}")
-            return response_content
-
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(messages)
+            return response.text
         except Exception as e:
-            if 'rate_limit_exceeded' in str(e).lower() or '429' in str(e):
-                debug_error(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
-                st.warning(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+            if 'quota' in str(e).lower() or '429' in str(e):
+                debug_error(f"API配额不足，{wait_time}秒后重试...")
+                st.warning(f"API配额不足，{wait_time}秒后重试...")
                 time.sleep(wait_time)
                 retries += 1
-                wait_time *= 2  # Exponential backoff
+                wait_time *= 2  # 指数退避
             else:
-                debug_error(f"Error getting response: {e}")
-                st.error(f"An error occurred while getting the response: {e}")
+                debug_error(f"获取响应时出错: {e}")
+                st.error(f"获取响应时发生错误: {e}")
                 return ""
-
-    st.error("Max retries exceeded. Please try again later.")
+    st.error("超过最大重试次数，请稍后再试。")
     return ""
+
+def get_openai_response(client, model_params, max_retries=3):
+    """处理OpenAI API请求"""
+    retries = 0
+    wait_time = 5  # 初始等待时间5秒
+    model_name = model_params.get("model", "gpt-4-turbo")
+    
+    while retries < max_retries:
+        try:
+            # 构建请求参数
+            request_params = {
+                "model": model_name,
+                "messages": st.session_state.messages,
+                "temperature": model_params.get("temperature", 0.3),
+                "max_tokens": model_params.get("max_tokens", 4096),
+                "stream": False
+            }
+            
+            # 添加图像处理逻辑（如果存在）
+            if any(msg.get("content") and isinstance(msg["content"], list) for msg in st.session_state.messages):
+                request_params["max_tokens"] = 4096  # 增加token限制
+                debug_log("Detected multimodal input, adjusting max_tokens")
+            
+            # 发送请求
+            response = client.chat.completions.create(**request_params)
+            
+            # 提取并清理响应内容
+            response_content = response.choices[0].message.content.strip()
+            debug_log(f"OpenAI原始响应：\n{response_content}")
+            return response_content
+            
+        except Exception as e:
+            # 处理速率限制错误
+            if 'rate limit' in str(e).lower() or '429' in str(e):
+                debug_error(f"速率限制错误（尝试 {retries+1}/{max_retries}）：{e}")
+                st.warning(f"请求过于频繁，{wait_time}秒后重试...")
+                time.sleep(wait_time)
+                retries += 1
+                wait_time *= 2  # 指数退避
+                
+            # 处理认证错误
+            elif 'invalid api key' in str(e).lower():
+                debug_error(f"API密钥无效：{e}")
+                st.error("OpenAI API密钥无效，请检查后重试")
+                return ""
+                
+            # 其他错误处理
+            else:
+                debug_error(f"OpenAI请求异常：{str(e)}")
+                st.error(f"请求发生错误：{str(e)}")
+                return ""
+    
+    # 超过最大重试次数
+    debug_error(f"超过最大重试次数（{max_retries}次）")
+    st.error("请求失败次数过多，请稍后再试")
+    return ""
+
+def get_llm_response(client, model_params, max_retries=3):
+    """获取LLM模型响应（支持OpenAI和Gemini）"""
+    model_name = model_params.get("model", "gpt-4-turbo")
+    
+    if "gpt" in model_name:
+        return get_openai_response(client, model_params, max_retries)
+    elif "gemini" in model_name:
+        return get_gemini_response(client, model_params, max_retries)
+    else:
+        st.error(f"不支持的模型类型: {model_name}")
+        return ""
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
