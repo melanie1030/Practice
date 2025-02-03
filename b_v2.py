@@ -323,7 +323,7 @@ def main():
         default_api_key = os.getenv("OPENAI_API_KEY", "")
         api_key = st.text_input("OpenAI API密鑰", value=default_api_key, type="password")
 
-        selected_model = st.selectbox("Select Model:", OPENAI_MODELS, index=0)
+        selected_model = st.selectbox("選擇模型", LLM_MODELS, index=0)
 
         st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
         st.session_state.deep_analysis_mode = st.checkbox("Deep Analysis Mode", value=False)
