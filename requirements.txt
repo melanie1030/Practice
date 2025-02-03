@@ -16,3 +16,4 @@ langchain_community
 fpdf2
 streamlit_ace
 seaborn
+google-generativeai
