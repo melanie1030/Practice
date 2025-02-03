@@ -256,7 +256,7 @@ def get_gemini_response(model_params, max_retries=3):
         response.resolve()  # 确保响应完成
         
         # 转换Markdown格式
-        return to_markdown(response.text)
+        return response.text
         
     except genai.GenerationError as e:
         debug_error(f"生成错误: {str(e)}")
