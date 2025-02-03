@@ -175,48 +175,59 @@ def extract_json_block(response: str) -> str:
 # 以下為新版本的 get_llm_response 函數
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def get_gemini_response(client, model_params, max_retries=3):
-    """处理Gemini模型请求"""
-    # 重置请求状态
     st.session_state.request_status.update({
         "pending": True,
         "last_request_time": time.time(),
         "retry_count": 0
     })
-    
     try:
-        # 添加请求超时机制
-        response = model.generate_content(
-            messages,
-            request_options={"timeout": 30}  # 30秒超时
+        # 1) 指定模型名稱
+        gemini_model_name = model_params.get("model", "models/chat-bison-001")
+        
+        # 2) 將 st.session_state.messages 組成 prompt (Gemini 需要一個 str, 或是對應 Chat 形式).
+        #    假設要把整個對話合成一段文字 prompt:
+        user_prompts = []
+        for msg in st.session_state.messages:
+            if msg["role"] == "user":
+                user_prompts.append(msg["content"])
+        
+        prompt_text = "\n".join(user_prompts)
+        
+        # 3) 呼叫 google.generativeai 提供的 generate_text 或 generate_message
+        response = client.generate_text(
+            model=gemini_model_name,
+            prompt=prompt_text,
+            temperature=model_params.get("temperature", 0.3),
+            max_output_tokens=model_params.get("max_tokens", 512),  # 不能太大
+            top_k=40,
+            top_p=0.95,
+            # ... 其他參數
         )
         
-        # 检查响应有效性
-        if not response.text:
+        # 4) 檢查回傳
+        if not response.generated_text:
             raise ValueError("Empty response from Gemini API")
-            
-        # 记录成功日志
-        debug_log(f"Gemini响应内容：{response.text[:200]}...")  # 截取前200字符
-        return response.text
         
+        debug_log(f"Gemini响应内容：{response.generated_text[:200]}...")
+        return response.generated_text
+
     except genai.types.GenerativeAIError as e:
-        # 处理API错误
         error_msg = f"Gemini API错误：{str(e)}"
         debug_error(error_msg)
         st.error(error_msg)
         return ""
-        
+    
     except requests.exceptions.Timeout:
-        # 处理超时
         debug_error("请求超时（30秒）")
         st.error("请求超时，请检查网络连接")
         return ""
-        
+    
     finally:
-        # 更新请求状态
         st.session_state.request_status.update({
             "pending": False,
             "last_request_time": time.time()
         })
+
 
 def get_openai_response(client, model_params, max_retries=3):
     """处理OpenAI API请求"""
