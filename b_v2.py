@@ -213,16 +213,12 @@ def to_markdown(text: str) -> str:
 # 以下為新版本的 get_llm_response 函數
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def get_gemini_response(model_params, max_retries=3):
-    """处理Gemini模型请求（遵循官方文档规范）"""
     # 初始化模型参数
     genai.configure(api_key=api_key)
     model_name = model_params.get("model", "gemini-1.5-flash")
     generation_config = {
-    "temperature": 1,
-    "top_p": 0.95,
-    "top_k": 40,
-    "max_output_tokens": 8192,
-    "response_mime_type": "text/plain",
+        "temperature": model_params.get("temperature", 0.3),
+        "max_output_tokens": model_params.get("max_tokens", 4096)
     }
     
     try:
@@ -245,19 +241,19 @@ def get_gemini_response(model_params, max_retries=3):
                         })
                     else:
                         parts.append(content)
-                chat.send_message(parts)
+                response = chat.send_message(parts)
             elif msg["role"] == "assistant":
                 chat.history.append(  # 添加助手回复到历史
                     Parts(content=msg["content"]),
                     role="model"
                 )
         
-        # 发送请求并获取响应
-        response = chat.send_message("")  # 空消息触发最新回复
-        response.resolve()  # 确保响应完成
+        # # 发送请求并获取响应
+        # response = chat.send_message("")  # 空消息触发最新回复
+        # response.resolve()  # 确保响应完成
         
         # 转换Markdown格式
-        return to_markdown(response.text)
+        return response.text
         
     except genai.GenerationError as e:
         debug_error(f"生成错误: {str(e)}")
