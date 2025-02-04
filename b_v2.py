@@ -215,7 +215,7 @@ def to_markdown(text: str) -> str:
 def get_gemini_response(model_params, max_retries=3):
     """整合新版 Gemini 請求方法"""
     # 從環境變數獲取 API 金鑰 (保持原有設定方式)
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = "AIzaSyDIXptOAskZAhEY6rCEO0soURF0OvGnxfI"
     if not api_key:
         st.error("未設定 Gemini API 金鑰")
         return ""
