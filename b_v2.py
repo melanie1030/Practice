@@ -435,14 +435,14 @@ def main():
             st.session_state.memory = []
 
         if "conversation_initialized" not in st.session_state:
-            if api_key:
-                # Initialize OpenAI client
-                client = initialize_client(api_key)
+            openai_api_key = os.getenv("OPENAI_API_KEY") or st.session_state.get("openai_api_key_input")
+            if openai_api_key:
+                client = initialize_client(openai_api_key)
                 st.session_state.conversation_initialized = True
-                st.session_state.messages = []  # Initialize with empty message history
-                debug_log("Conversation initialized with empty message history.")
+                st.session_state.messages = []
+                debug_log("Conversation initialized with OpenAI client.")
             else:
-                st.warning("⬅️ Please enter your API Key to initialize the chatbot.")
+                st.warning("⬅️ 請在側邊欄輸入OpenAI API金鑰以初始化聊天機器人")
 
         if st.session_state.debug_mode:
             debug_log(f"Currently using model => {selected_model}")
