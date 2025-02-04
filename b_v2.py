@@ -215,7 +215,7 @@ def to_markdown(text: str) -> str:
 def get_gemini_response(model_params, max_retries=3):
     """整合新版 Gemini 請求方法"""
     # 從環境變數獲取 API 金鑰 (保持原有設定方式)
-    api_key = "AIzaSyDIXptOAskZAhEY6rCEO0soURF0OvGnxfI"
+    api_key = st.session_state.get("gemini_api_key_input")
     if not api_key:
         st.error("未設定 Gemini API 金鑰")
         return ""
@@ -350,7 +350,6 @@ def get_llm_response(client, model_params, max_retries=3):
         return ""
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas (With Debug & Deep Analysis)")
@@ -386,11 +385,48 @@ def main():
         st.session_state.thinking_protocol = None  # Initialize thinking_protocol
 
     with st.sidebar:
-        st.subheader("🔒 Enter Your API Key")
-        default_api_key = os.getenv("OPENAI_API_KEY", "")
-        api_key = st.text_input("OpenAI API密鑰", value=default_api_key, type="password")
+        st.subheader("🔑 API Key Settings")
+        # 原有的OpenAI金鑰設定
+        default_openai_key = os.getenv("OPENAI_API_KEY", "")
+        openai_api_key = st.text_input("OpenAI API Key", value=default_openai_key, type="password")
+        
+        # 新增Gemini金鑰輸入
+        default_gemini_key = os.getenv("GEMINI_API_KEY", "")
+        gemini_api_key = st.text_input("Gemini API Key", 
+                                     value=default_gemini_key, 
+                                     type="password",
+                                     key="gemini_api_key")
+        
+        # 更新環境變數
+        if openai_api_key:
+            os.environ["OPENAI_API_KEY"] = openai_api_key
+        if gemini_api_key:
+            os.environ["GEMINI_API_KEY"] = gemini_api_key 
 
-        selected_model = st.selectbox("選擇模型", LLM_MODELS, index=0)
+        selected_model = st.selectbox(
+            "選擇模型", 
+            LLM_MODELS, 
+            index=0, 
+            key="selected_model"  # 新增key用於session state綁定
+        )
+        
+        # 步驟3：API金鑰狀態檢查 (放在模型選擇之後)
+        if "selected_model" in st.session_state:
+            current_model = st.session_state.selected_model.lower()
+            
+            if "gemini" in current_model:
+                # 檢查Gemini金鑰 (環境變數或手動輸入)
+                gemini_key = os.getenv("GEMINI_API_KEY") or st.session_state.get("gemini_api_key")
+                if not gemini_key:
+                    st.error("使用Gemini模型需在下方輸入API金鑰 🔑")
+                    st.stop()  # 阻止後續代碼執行
+                    
+            elif "gpt" in current_model:
+                # 檢查OpenAI金鑰
+                openai_key = os.getenv("OPENAI_API_KEY") or st.session_state.get("openai_api_key")
+                if not openai_key:
+                    st.error("使用OpenAI模型需在下方輸入API金鑰 🔑")
+                    st.stop()
 
         st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
         st.session_state.deep_analysis_mode = st.checkbox("Deep Analysis Mode", value=False)
