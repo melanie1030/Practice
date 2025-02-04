@@ -213,56 +213,73 @@ def to_markdown(text: str) -> str:
 # 以下為新版本的 get_llm_response 函數
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def get_gemini_response(model_params, max_retries=3):
-    # 初始化模型参数
+    """整合新版 Gemini 請求方法"""
+    # 從環境變數獲取 API 金鑰 (保持原有設定方式)
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        st.error("未設定 Gemini API 金鑰")
+        return ""
+    
+    # 初始化 Gemini 模型
     genai.configure(api_key=api_key)
     model_name = model_params.get("model", "gemini-1.5-flash")
-    generation_config = {
-        "temperature": model_params.get("temperature", 0.3),
-        "max_output_tokens": model_params.get("max_tokens", 4096)
-    }
     
-    try:
-        # 初始化模型（带安全设置）
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            generation_config=generation_config,
-            )
+    # 初始化會話 (依用戶提供的程式碼結構)
+    if "gemini_chat" not in st.session_state:
+        st.session_state.gemini_chat = genai.GenerativeModel(model_name)
+        st.session_state.gemini_history = []
+    
+    # 轉換歷史訊息格式
+    converted_history = []
+    for msg in st.session_state.messages:
+        role = map_role(msg["role"])
+        parts = []
         
-        # 构建对话历史
-        chat = model.start_chat(history=[])
-        for msg in st.session_state.messages:
-            if msg["role"] == "user":
-                parts = []
-                for content in msg["content"]:
-                    if isinstance(content, dict) and content["type"] == "image_url":
-                        parts.append({
+        # 處理多模態內容
+        if isinstance(msg["content"], list):
+            for item in msg["content"]:
+                if isinstance(item, dict) and item["type"] == "image_url":
+                    parts.append(Part(
+                        inline_data={
                             "mime_type": "image/png",
-                            "data": content["image_url"]["url"].split(",")[1]
-                        })
-                    else:
-                        parts.append(content)
-                response = chat.send_message(parts)
-            elif msg["role"] == "assistant":
-                chat.history.append(  # 添加助手回复到历史
-                    Parts(content=msg["content"]),
-                    role="model"
-                )
+                            "data": item["image_url"]["url"].split(",")[1]
+                        }
+                    ))
+                else:
+                    parts.append(Part(text=item))
+        else:
+            parts.append(Part(text=msg["content"]))
         
-        # # 发送请求并获取响应
-        # response = chat.send_message("")  # 空消息触发最新回复
-        # response.resolve()  # 确保响应完成
-        
-        # 转换Markdown格式
-        return response.text
-        
-    except genai.GenerationError as e:
-        debug_error(f"生成错误: {str(e)}")
-        st.error("内容生成被安全过滤器拦截，请调整输入内容")
-        return ""
-    except Exception as e:
-        debug_error(f"请求失败: {str(e)}")
-        st.error(f"API请求失败: {str(e)}")
-        return ""
+        converted_history.append({"role": role, "parts": parts})
+    
+    # 請求邏輯 (帶重試機制)
+    retries = 0
+    while retries < max_retries:
+        try:
+            response = st.session_state.gemini_chat.generate_content(
+                contents=converted_history,
+                generation_config={
+                    "temperature": model_params.get("temperature", 0.3),
+                    "max_output_tokens": model_params.get("max_tokens", 4096)
+                }
+            )
+            # 更新歷史記錄 (依用戶程式碼格式)
+            st.session_state.gemini_history.extend([
+                {"role": "user", "parts": converted_history[-1]["parts"]},
+                {"role": "model", "parts": [Part(text=response.text)]}
+            ])
+            return response.text
+            
+        except genai.GenerationError as e:
+            debug_error(f"生成錯誤: {str(e)}")
+            retries += 1
+            time.sleep(5 * retries)
+        except Exception as e:
+            debug_error(f"API請求異常: {str(e)}")
+            return ""
+    
+    return "請求失敗次數過多，請稍後重試"
+
 
 def get_openai_response(client, model_params, max_retries=3):
     """处理OpenAI API请求"""
