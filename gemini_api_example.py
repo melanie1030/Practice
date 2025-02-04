@@ -1,137 +1,50 @@
-import time
 import os
-import joblib
 import streamlit as st
-import google.generativeai as genai
 from dotenv import load_dotenv
+import google.generativeai as gpt
+from functions import*
+
+# Load environment variables
 load_dotenv()
-GOOGLE_API_KEY=os.environ.get('GOOGLE_API_KEY')
-genai.configure(api_key=GOOGLE_API_KEY)
 
-new_chat_id = f'{time.time()}'
-MODEL_ROLE = 'ai'
-AI_AVATAR_ICON = '✨'
-
-# Create a data/ folder if it doesn't already exist
-try:
-    os.mkdir('data/')
-except:
-    # data/ folder already exists
-    pass
-
-# Load past chats (if available)
-try:
-    past_chats: dict = joblib.load('data/past_chats_list')
-except:
-    past_chats = {}
-
-# Sidebar allows a list of past chats
-with st.sidebar:
-    st.write('# Past Chats')
-    if st.session_state.get('chat_id') is None:
-        st.session_state.chat_id = st.selectbox(
-            label='Pick a past chat',
-            options=[new_chat_id] + list(past_chats.keys()),
-            format_func=lambda x: past_chats.get(x, 'New Chat'),
-            placeholder='_',
-        )
-    else:
-        # This will happen the first time AI response comes in
-        st.session_state.chat_id = st.selectbox(
-            label='Pick a past chat',
-            options=[new_chat_id, st.session_state.chat_id] + list(past_chats.keys()),
-            index=1,
-            format_func=lambda x: past_chats.get(x, 'New Chat' if x != st.session_state.chat_id else st.session_state.chat_title),
-            placeholder='_',
-        )
-    # Save new chats after a message has been sent to AI
-    # TODO: Give user a chance to name chat
-    st.session_state.chat_title = f'ChatSession-{st.session_state.chat_id}'
-
-st.write('# Chat with Gemini')
-
-# Chat history (allows to ask multiple questions)
-try:
-    st.session_state.messages = joblib.load(
-        f'data/{st.session_state.chat_id}-st_messages'
-    )
-    st.session_state.gemini_history = joblib.load(
-        f'data/{st.session_state.chat_id}-gemini_messages'
-    )
-    print('old cache')
-except:
-    st.session_state.messages = []
-    st.session_state.gemini_history = []
-    print('new_cache made')
-st.session_state.model = genai.GenerativeModel('gemini-pro')
-st.session_state.chat = st.session_state.model.start_chat(
-    history=st.session_state.gemini_history,
+# Configure Streamlit page settings
+st.set_page_config(
+    page_title="Chat with Gemini-Pro!",
+    page_icon=":robot_face:",  # Favicon emoji
+    layout="wide",  # Page layout option
 )
 
-# Display chat messages from history on app rerun
-for message in st.session_state.messages:
-    with st.chat_message(
-        name=message['role'],
-        avatar=message.get('avatar'),
-    ):
-        st.markdown(message['content'])
+API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# React to user input
-if prompt := st.chat_input('Your message here...'):
-    # Save this as a chat for later
-    if st.session_state.chat_id not in past_chats.keys():
-        past_chats[st.session_state.chat_id] = st.session_state.chat_title
-        joblib.dump(past_chats, 'data/past_chats_list')
-    # Display user message in chat message container
-    with st.chat_message('user'):
-        st.markdown(prompt)
-    # Add user message to chat history
-    st.session_state.messages.append(
-        dict(
-            role='user',
-            content=prompt,
-        )
-    )
-    ## Send message to AI
-    response = st.session_state.chat.send_message(
-        prompt,
-        stream=True,
-    )
-    # Display assistant response in chat message container
-    with st.chat_message(
-        name=MODEL_ROLE,
-        avatar=AI_AVATAR_ICON,
-    ):
-        message_placeholder = st.empty()
-        full_response = ''
-        assistant_response = response
-        # Streams in a chunk at a time
-        for chunk in response:
-            # Simulate stream of chunk
-            # TODO: Chunk missing `text` if API stops mid-stream ("safety"?)
-            for ch in chunk.text.split(' '):
-                full_response += ch + ' '
-                time.sleep(0.05)
-                # Rewrites with a cursor at end
-                message_placeholder.write(full_response + '▌')
-        # Write full message with placeholder
-        message_placeholder.write(full_response)
+# Set up Google Gemini-Pro AI model
+gpt.configure(api_key=API_KEY)
+model = gpt.GenerativeModel('gemini-pro')
 
-    # Add assistant response to chat history
-    st.session_state.messages.append(
-        dict(
-            role=MODEL_ROLE,
-            content=st.session_state.chat.history[-1].parts[0].text,
-            avatar=AI_AVATAR_ICON,
-        )
-    )
-    st.session_state.gemini_history = st.session_state.chat.history
-    # Save to file
-    joblib.dump(
-        st.session_state.messages,
-        f'data/{st.session_state.chat_id}-st_messages',
-    )
-    joblib.dump(
-        st.session_state.gemini_history,
-        f'data/{st.session_state.chat_id}-gemini_messages',
-    )
+# Initialize chat session in Streamlit if not already present
+if "chat_session" not in st.session_state:
+    st.session_state.chat_session = model.start_chat(history=[])
+
+# Display the chatbot's title on the page
+st.title("🤖 Chat with Gemini-Pro")
+
+# Display the chat history
+for msg in st.session_state.chat_session.history:
+    with st.chat_message(map_role(msg["role"])):
+        st.markdown(msg["content"])
+
+# Input field for user's message
+user_input = st.chat_input("Ask Gemini-Pro...")
+if user_input:
+    # Add user's message to chat and display it
+    st.chat_message("user").markdown(user_input)
+
+    # Send user's message to Gemini and get the response
+    gemini_response = fetch_gemini_response(user_input)
+
+    # Display Gemini's response
+    with st.chat_message("assistant"):
+        st.markdown(gemini_response)
+
+    # Add user and assistant messages to the chat history
+    st.session_state.chat_session.history.append({"role": "user", "content": user_input})
+    st.session_state.chat_session.history.append({"role": "model", "content": gemini_response})
