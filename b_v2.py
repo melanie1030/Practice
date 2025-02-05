@@ -220,6 +220,7 @@ def get_gemini_response(model_params, max_retries=3):
         st.error("未設定 Gemini API 金鑰")
         return ""
     
+
     # 初始化 Gemini 模型
     genai.configure(api_key=api_key)
     model_name = model_params.get("model", "gemini-1.5-flash")
@@ -252,6 +253,7 @@ def get_gemini_response(model_params, max_retries=3):
         
         converted_history.append({"role": role, "parts": parts})
     
+    st.write(converted_history)
     # 請求邏輯 (帶重試機制)
     retries = 0
     while retries < max_retries:
