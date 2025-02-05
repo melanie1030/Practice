@@ -342,8 +342,10 @@ def get_llm_response(client, model_params, max_retries=3):
     model_name = model_params.get("model", "gpt-4-turbo")
     
     if "gpt" in model_name:
+        st.write("GPT")
         return get_openai_response(client, model_params, max_retries)
     elif "gemini" in model_name:
+        st.write("Gemini")
         return get_gemini_response(model_params=model_params, max_retries=max_retries)
     else:
         st.error(f"不支持的模型类型: {model_name}")
