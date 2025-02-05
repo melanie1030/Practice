@@ -243,8 +243,10 @@ def get_gemini_response(model_params, max_retries=3):
         
         # 處理多模態內容
         if isinstance(msg["content"], list):
+            st.write("starting to map image...")
             for item in msg["content"]:
                 if isinstance(item, dict) and item["type"] == "image_url":
+                    st.write("mapping image...")
                     parts.append(Part(
                         inline_data={
                             "mime_type": "image/png",
