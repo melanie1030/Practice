@@ -216,11 +216,11 @@ def get_gemini_response(model_params, max_retries=3):
     """整合新版 Gemini 請求方法"""
     # 從環境變數獲取 API 金鑰 (保持原有設定方式)
     api_key = st.session_state.get("gemini_api_key_input")
-    st.write(api_key)
+    debug_log(f"gemini api key: {api_key}")
     if not api_key:
         st.error("未設定 Gemini API 金鑰")
         return ""
-    st.write("api key success")
+    debug_log("api_key_registered")
 
     # 初始化 Gemini 模型
     genai.configure(api_key=api_key)
@@ -228,27 +228,24 @@ def get_gemini_response(model_params, max_retries=3):
     
     # 初始化會話 (依用戶提供的程式碼結構)
     if "gemini_chat" not in st.session_state:
-        st.write("starting to init chat...")
+        debug_log("starting to init chat...")
         model = genai.GenerativeModel(model_name)
         st.session_state.gemini_chat = model.start_chat(history=[])
-    st.write("chat init success")
+    debug_log("chat init done")
 
     # 轉換歷史訊息格式
     converted_history = []
     st.write(st.session_state.messages)
     for msg in st.session_state.messages:
-        st.write("mapping role...")
-        # st.write(msg)
-        st.write(msg.get("role"))
+        debug_log(f"mapping message: {msg}")
         role = msg.get("role")
         parts = []
         
         # 處理多模態內容
         if isinstance(msg["content"], list):
-            st.write("starting to map image...")
+            debug_log(f"starting to map image...")
             for item in msg["content"]:
-                if isinstance(item, dict) and item["type"] == "image_url":
-                    st.write("mapping image...")
+                if isinstance("mapping image...")
                     parts.append(Part(
                         inline_data={
                             "mime_type": "image/png",
@@ -257,29 +254,26 @@ def get_gemini_response(model_params, max_retries=3):
                     ))
                 else:
                     parts.append(Part(text=item))
-                    st.write("appending message...(with image)")
-            st.write("mapping content... done")
+                    debug_log(f"appending message...(with image)")
+            debug_log("mapping content... done")
         else:
-            st.write("appending message...")
-            st.write(msg.get("content"))
-            # parts.append(Part(text=msg.get("content")))
+            debug_log(f"appending message...{msg.get('content')}")
             parts.append(msg.get("content"))
-            st.write("mapping content... done")
+            debug_log("mapping content... done")
         
         converted_history.append({"role": role, "parts": parts})
     
-    st.write("history mapping done")
-    st.write(converted_history)
+    debug_log(f"converted history: {converted_history}")
 
     converted_history_json  = json.dumps(converted_history, ensure_ascii=False)
     # 請求邏輯 (帶重試機制)
     retries = 0
     while retries < max_retries:
         try:
-            st.write("starting to generate response...")
-            con="hi"
+            debug_log("starting to generate response...")
+            # con="hi"
             response = st.session_state.gemini_chat.send_message(converted_history_json)
-            st.write("response generated")
+            debug_log("response generated")
 
             # # 更新歷史記錄 (依用戶程式碼格式)
             # st.write("starting to update history...")
@@ -287,8 +281,7 @@ def get_gemini_response(model_params, max_retries=3):
             #     {"role": "user", "parts": converted_history[-1]["parts"]},
             #     {"role": "model", "parts": [Part(text=response.text)]}
             # ])
-            st.write("debug")
-            st.write(response.text)
+            debug_log(f"starting to update history...{response.text}")
             return response.text
             
         except genai.GenerationError as e:
