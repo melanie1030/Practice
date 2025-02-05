@@ -230,7 +230,8 @@ def get_gemini_response(model_params, max_retries=3):
     if "gemini_chat" not in st.session_state:
         st.session_state.gemini_chat = genai.GenerativeModel(model_name)
         st.session_state.gemini_history = []
-    
+    st.write("chat init success")
+
     # 轉換歷史訊息格式
     converted_history = []
     for msg in st.session_state.messages:
@@ -391,6 +392,11 @@ def main():
         st.session_state.debug_errors = []
     if "thinking_protocol" not in st.session_state:
         st.session_state.thinking_protocol = None  # Initialize thinking_protocol
+    if "gemini_ai_chat" not in st.session_state:
+        st.session_state.gemini_ai_chat = None  # Initialize gemini_ai_chat
+    if "gemini_ai_history" not in st.session_state: 
+        st.session_state.gemini_ai_history = []  # Initialize gemini_ai_history
+        
 
     with st.sidebar:
         st.subheader("🔑 API Key Settings")
