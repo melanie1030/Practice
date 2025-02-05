@@ -288,7 +288,7 @@ def get_gemini_response(model_params, max_retries=3):
             #     {"role": "model", "parts": [Part(text=response.text)]}
             # ])
             st.write("debug")
-            st.write(response)
+            st.write(response.text)
             return response.text
             
         except genai.GenerationError as e:
