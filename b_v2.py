@@ -228,8 +228,8 @@ def get_gemini_response(model_params, max_retries=3):
     
     # 初始化會話 (依用戶提供的程式碼結構)
     if "gemini_chat" not in st.session_state:
-        st.session_state.gemini_chat = genai.GenerativeModel(model_name)
-        st.session_state.gemini_history = []
+        model = genai.GenerativeModel(model_name)
+        st.session_state.gemini_chat = model.start_chat(history=[])
     st.write("chat init success")
 
     # 轉換歷史訊息格式
@@ -275,13 +275,7 @@ def get_gemini_response(model_params, max_retries=3):
     while retries < max_retries:
         try:
             st.write("starting to generate response...")
-            response = st.session_state.gemini_chat.generate_content(
-                contents=converted_history,
-                generation_config={
-                    "temperature": model_params.get("temperature", 0.3),
-                    "max_output_tokens": model_params.get("max_tokens", 4096)
-                }
-            )
+            response = st.session_state.gemini_chat.generate_content(converted_history)
             st.write("response generated")
 
             # 更新歷史記錄 (依用戶程式碼格式)
@@ -414,7 +408,8 @@ def main():
         st.session_state.gemini_ai_chat = None  # Initialize gemini_ai_chat
     if "gemini_ai_history" not in st.session_state: 
         st.session_state.gemini_ai_history = []  # Initialize gemini_ai_history
-
+    if "gemini_chat_session" not in st.session_state:
+        st.session_state.gemini_chat_session = model.start_chat(history=[]) # not sure will keep this or not,kinda unreadable
 
     with st.sidebar:
         st.subheader("🔑 API Key Settings")
