@@ -268,6 +268,7 @@ def get_gemini_response(model_params, max_retries=3):
                 {"role": "user", "parts": converted_history[-1]["parts"]},
                 {"role": "model", "parts": [Part(text=response.text)]}
             ])
+            st.write("debug")
             st.write(response)
             return response.text
             
