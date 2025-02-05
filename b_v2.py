@@ -238,7 +238,7 @@ def get_gemini_response(model_params, max_retries=3):
     for msg in st.session_state.messages:
         st.write("mapping role...")
         st.write(msg)
-        st.write(map_role(msg.get("role")))
+        st.write(msg.get("role"))
         role = map_role(msg.get("role"))
         parts = []
         
