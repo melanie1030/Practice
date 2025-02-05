@@ -267,6 +267,7 @@ def get_gemini_response(model_params, max_retries=3):
         
         converted_history.append({"role": role, "parts": parts})
     
+    st.write("history mapping done")
     st.write(converted_history)
     # 請求邏輯 (帶重試機制)
     retries = 0
