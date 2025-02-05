@@ -238,8 +238,8 @@ def get_gemini_response(model_params, max_retries=3):
     for msg in st.session_state.messages:
         st.write("mapping role...")
         st.write(msg)
-        st.write(map_role(msg["role"]))
-        role = map_role(msg["role"])
+        st.write(map_role(msg.get("role")))
+        role = map_role(msg.get("role"))
         parts = []
         
         # 處理多模態內容
