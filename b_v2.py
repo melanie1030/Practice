@@ -220,7 +220,7 @@ def get_gemini_response(model_params, max_retries=3):
     if not api_key:
         st.error("未設定 Gemini API 金鑰")
         return ""
-    
+    st.write("api key success")
 
     # 初始化 Gemini 模型
     genai.configure(api_key=api_key)
