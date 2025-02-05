@@ -228,6 +228,7 @@ def get_gemini_response(model_params, max_retries=3):
     
     # 初始化會話 (依用戶提供的程式碼結構)
     if "gemini_chat" not in st.session_state:
+        st.write("starting to init chat...")
         model = genai.GenerativeModel(model_name)
         st.session_state.gemini_chat = model.start_chat(history=[])
     st.write("chat init success")
@@ -408,9 +409,7 @@ def main():
         st.session_state.gemini_ai_chat = None  # Initialize gemini_ai_chat
     if "gemini_ai_history" not in st.session_state: 
         st.session_state.gemini_ai_history = []  # Initialize gemini_ai_history
-    if "gemini_chat_session" not in st.session_state:
-        st.session_state.gemini_chat_session = model.start_chat(history=[]) # not sure will keep this or not,kinda unreadable
-
+        
     with st.sidebar:
         st.subheader("🔑 API Key Settings")
         # 原有的OpenAI金鑰設定
