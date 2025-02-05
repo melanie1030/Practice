@@ -255,6 +255,7 @@ def get_gemini_response(model_params, max_retries=3):
                     ))
                 else:
                     parts.append(Part(text=item))
+                    st.write("appending message...")
             st.write("mapping content... done")
         else:
             parts.append(Part(text=msg["content"]))
