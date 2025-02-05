@@ -271,13 +271,14 @@ def get_gemini_response(model_params, max_retries=3):
     st.write("history mapping done")
     st.write(converted_history)
 
+    converted_history_json  = json.dumps(converted_history, ensure_ascii=False)
     # 請求邏輯 (帶重試機制)
     retries = 0
     while retries < max_retries:
         try:
             st.write("starting to generate response...")
             con="hi"
-            response = st.session_state.gemini_chat.send_message(converted_history)
+            response = st.session_state.gemini_chat.send_message(converted_history_json)
             st.write("response generated")
 
             # 更新歷史記錄 (依用戶程式碼格式)
