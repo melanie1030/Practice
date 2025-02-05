@@ -216,6 +216,7 @@ def get_gemini_response(model_params, max_retries=3):
     """整合新版 Gemini 請求方法"""
     # 從環境變數獲取 API 金鑰 (保持原有設定方式)
     api_key = st.session_state.get("gemini_api_key_input")
+    st.write(api_key)
     if not api_key:
         st.error("未設定 Gemini API 金鑰")
         return ""
