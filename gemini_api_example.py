@@ -256,8 +256,9 @@ def get_gemini_response(model_params, max_retries=3):
                     st.write("appending message...")
             st.write("mapping content... done")
         else:
-            parts.append(Part(text=msg["content"]))
             st.write("appending message...")
+            parts.append(Part(text=msg["content"]))
+            st.write("mapping content... done")
         
         converted_history.append({"role": role, "parts": parts})
     
