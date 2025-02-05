@@ -340,6 +340,7 @@ def get_openai_response(client, model_params, max_retries=3):
 def get_llm_response(client, model_params, max_retries=3):
     """获取LLM模型响应（支持OpenAI和Gemini）"""
     model_name = model_params.get("model", "gpt-4-turbo")
+    st.write("loading get_llm_response funcs")
     
     if "gpt" in model_name:
         st.write("GPT")
