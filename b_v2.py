@@ -276,7 +276,7 @@ def get_gemini_response(model_params, max_retries=3):
     while retries < max_retries:
         try:
             st.write("starting to generate response...")
-            response = st.session_state.gemini_chat.generate_content(converted_history)
+            response = st.session_state.gemini_chat.model.generate_content(converted_history)
             st.write("response generated")
 
             # 更新歷史記錄 (依用戶程式碼格式)
@@ -409,7 +409,7 @@ def main():
         st.session_state.gemini_ai_chat = None  # Initialize gemini_ai_chat
     if "gemini_ai_history" not in st.session_state: 
         st.session_state.gemini_ai_history = []  # Initialize gemini_ai_history
-        
+
     with st.sidebar:
         st.subheader("🔑 API Key Settings")
         # 原有的OpenAI金鑰設定
