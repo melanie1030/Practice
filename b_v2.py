@@ -236,11 +236,10 @@ def get_gemini_response(model_params, max_retries=3):
     converted_history = []
     st.write(st.session_state.messages)
     for msg in st.session_state.messages:
-        st.write("mapping role...")
         role = map_role(msg["role"])
-        st.write("mapping content...")
         parts = []
-        
+        st.write("mapping role...")
+        st.write(msg)
         # 處理多模態內容
         if isinstance(msg["content"], list):
             st.write("starting to map image...")
@@ -258,8 +257,9 @@ def get_gemini_response(model_params, max_retries=3):
                     st.write("appending message...")
             st.write("mapping content... done")
         else:
-            parts.append(Part(text=msg["content"]))
             st.write("appending message...")
+            parts.append(Part(text=msg["content"]))
+            st.write("mapping content... done")
         
         converted_history.append({"role": role, "parts": parts})
     
