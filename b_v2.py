@@ -597,11 +597,11 @@ def main():
 
         with st.spinner("Thinking..."):
             try:
-                # Initialize OpenAI client if not already done
-                if api_key:
-                    client = initialize_client(api_key)
-                else:
-                    raise ValueError("OpenAI API Key is not provided.")
+                # # Initialize OpenAI client if not already done
+                # if api_key:
+                #     client = initialize_client(api_key)
+                # else:
+                #     raise ValueError("OpenAI API Key is not provided.")
 
                 debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
                 debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
