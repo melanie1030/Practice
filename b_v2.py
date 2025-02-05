@@ -436,7 +436,7 @@ def main():
 
         if "conversation_initialized" not in st.session_state:
             openai_api_key = os.getenv("OPENAI_API_KEY") or st.session_state.get("openai_api_key_input")
-            if openai_api_key:
+            if openai_api_key or gemini_api_key:
                 client = initialize_client(openai_api_key)
                 st.session_state.conversation_initialized = True
                 st.session_state.messages = []
