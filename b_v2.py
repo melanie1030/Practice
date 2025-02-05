@@ -269,10 +269,12 @@ def get_gemini_response(model_params, max_retries=3):
     
     st.write("history mapping done")
     st.write(converted_history)
+
     # 請求邏輯 (帶重試機制)
     retries = 0
     while retries < max_retries:
         try:
+            st.write("starting to generate response...")
             response = st.session_state.gemini_chat.generate_content(
                 contents=converted_history,
                 generation_config={
@@ -280,7 +282,10 @@ def get_gemini_response(model_params, max_retries=3):
                     "max_output_tokens": model_params.get("max_tokens", 4096)
                 }
             )
+            st.write("response generated")
+
             # 更新歷史記錄 (依用戶程式碼格式)
+            st.write("starting to update history...")
             st.session_state.gemini_history.extend([
                 {"role": "user", "parts": converted_history[-1]["parts"]},
                 {"role": "model", "parts": [Part(text=response.text)]}
