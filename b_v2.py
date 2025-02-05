@@ -281,12 +281,12 @@ def get_gemini_response(model_params, max_retries=3):
             response = st.session_state.gemini_chat.send_message(converted_history_json)
             st.write("response generated")
 
-            # 更新歷史記錄 (依用戶程式碼格式)
-            st.write("starting to update history...")
-            st.session_state.gemini_history.extend([
-                {"role": "user", "parts": converted_history[-1]["parts"]},
-                {"role": "model", "parts": [Part(text=response.text)]}
-            ])
+            # # 更新歷史記錄 (依用戶程式碼格式)
+            # st.write("starting to update history...")
+            # st.session_state.gemini_history.extend([
+            #     {"role": "user", "parts": converted_history[-1]["parts"]},
+            #     {"role": "model", "parts": [Part(text=response.text)]}
+            # ])
             st.write("debug")
             st.write(response)
             return response.text
