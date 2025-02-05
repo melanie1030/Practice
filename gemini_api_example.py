@@ -25,7 +25,7 @@ st.set_page_config(
     layout="wide",  # Page layout option
 )
 
-API_KEY = "AIzaSyDIXptOAskZAhEY6rCEO0soURF0OvGnxfI"
+API_KEY = "AIzaSyDZO-kSB5tAvc44G73qpMEsC7HvoXcZ0Us"
 
 # Set up Google Gemini-Pro AI model
 gpt.configure(api_key=API_KEY)
