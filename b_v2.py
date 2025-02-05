@@ -404,7 +404,7 @@ def main():
         if openai_api_key:
             os.environ["OPENAI_API_KEY"] = openai_api_key
         if gemini_api_key:
-            os.environ["GEMINI_API_KEY"] = gemini_api_key 
+            st.session_state["gemini_api_key_input"] = gemini_api_key 
 
         selected_model = st.selectbox(
             "選擇模型", 
