@@ -230,7 +230,9 @@ def get_gemini_response(model_params, max_retries=3):
     if "gemini_chat" not in st.session_state:
         debug_log("starting to init chat...")
         model = genai.GenerativeModel(model_name)
-        st.session_state.gemini_chat = model.start_chat(history=[])
+        st.session_state.gemini_chat = model
+        # 以下為舊版方法，新版本 FDP !!!!!
+        # st.session_state.gemini_chat = model.start_chat(history=[])
     debug_log("chat init done")
 
     # 轉換歷史訊息格式
@@ -272,7 +274,7 @@ def get_gemini_response(model_params, max_retries=3):
         try:
             debug_log("starting to generate response...")
             # con="hi"
-            response = st.session_state.gemini_chat.send_message(converted_history_json)
+            response = st.session_state.gemini_chat.generate_content(converted_history_json)
             debug_log("response generated")
 
             # # 更新歷史記錄 (依用戶程式碼格式)
