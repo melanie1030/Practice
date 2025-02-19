@@ -214,87 +214,134 @@ def to_markdown(text: str) -> str:
 # 以下為新版本的 get_llm_response 函數
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def get_gemini_response(model_params, max_retries=3):
-    """整合新版 Gemini 請求方法"""
-    # 從環境變數獲取 API 金鑰 (保持原有設定方式)
-    api_key = st.session_state.get("gemini_api_key_input")
+    """
+    整合新版 Gemini 請求方法，支援先讀取圖片 (generate_content) 再進行完整對話 (send_message)。
+    流程：
+      1) 偵測是否有圖片 (最後一則 user 訊息)
+      2) 如果有，先用 generate_content() 取得一段回覆並加到 messages
+      3) 最後用 send_message() 把整個 messages 發送給 Gemini，取得最終回覆
+    """
+
+    # --- 1) 檢查金鑰 ---
+    api_key = st.session_state.get("gemini_api_key_input", "")
     debug_log(f"gemini api key: {api_key}")
     if not api_key:
         st.error("未設定 Gemini API 金鑰")
         return ""
-    debug_log("api_key_registered")
 
-    # 初始化 Gemini 模型
     genai.configure(api_key=api_key)
     model_name = model_params.get("model", "gemini-1.5-flash")
-    
-    # 初始化會話 (依用戶提供的程式碼結構)
-    if "gemini_chat" not in st.session_state:
-        debug_log("starting to init chat...")
-        model = genai.GenerativeModel(model_name)
-        # st.session_state.gemini_chat = model
-        # 以下為舊版方法，新版本 4DP !!!!!
-        st.session_state.gemini_chat = model.start_chat(history=[])
-    debug_log("chat init done")
 
-    # 轉換歷史訊息格式
+    # --- 2) 初始化 Chat 物件 ---
+    if "gemini_chat" not in st.session_state or st.session_state.gemini_chat is None:
+        debug_log("Initialize Gemini chat session...")
+        model = genai.GenerativeModel(model_name)
+        # 建立空對話
+        st.session_state.gemini_chat = model.start_chat(history=[])
+        debug_log("Gemini chat session created.")
+
+    # --- 3) 檢查是否存在「最後一則」包含圖片的 user 訊息 ---
+    last_user_msg_with_image = None
+    for msg in reversed(st.session_state.messages):
+        if msg["role"] == "user" and isinstance(msg["content"], list):
+            # content 以 list 表示多模態，裡面可能含有 type="image_url"
+            for item in msg["content"]:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    last_user_msg_with_image = msg
+                    break
+        if last_user_msg_with_image:
+            break
+
+    # 如果找到「最後一則包含圖片」的訊息，先透過 generate_content() 單獨做一次回覆
+    if last_user_msg_with_image:
+        debug_log("Detected user message with image, using generate_content() first...")
+
+        # 收集文本 & 圖片資訊
+        text_parts = []
+        image_data = None
+        for item in last_user_msg_with_image["content"]:
+            if isinstance(item, dict) and item.get("type") == "image_url":
+                base64_str = item["image_url"]["url"].split(",")[-1]
+                image_data = base64.b64decode(base64_str)  # 轉成二進位
+            else:
+                # 其他字串，或是 prompt 文字
+                text_parts.append(str(item))
+
+        # 結合文字成一段即可（若有多段文字可自行合併）
+        text_for_gemini = "\n".join(text_parts)
+
+        # 執行 generate_content
+        # 注意：generate_content() 預設只能處理單一段落的 role，不支援一次放整個對話。
+        #      這邊只讓它讀取「最後一則 user 的圖片 + 文字」以取得 AI 的初步回覆。
+        try:
+            retries = 0
+            while retries < max_retries:
+                try:
+                    # 調用 generate_content()，帶入文字與圖片
+                    response_gc = st.session_state.gemini_chat.generate_content(
+                        text=text_for_gemini,
+                        image=image_data  # 單張圖
+                    )
+                    # 拿到回覆之後，先將其新增至對話
+                    generate_content_reply = response_gc.text.strip()
+                    append_message("assistant", generate_content_reply)
+                    debug_log(f"Gemini generate_content reply: {generate_content_reply}")
+                    break
+                except genai.GenerationError as e:
+                    debug_error(f"generate_content() 失敗: {e}")
+                    retries += 1
+                    time.sleep(5 * retries)
+                except Exception as e:
+                    debug_error(f"generate_content() 其他錯誤: {e}")
+                    return "generate_content Error"
+
+    # --- 4) 最後：將最終整串對話(含剛剛 generate_content 的回覆) 用 send_message() 拿到最終回答 ---
+
+    # 轉換對話格式
     converted_history = []
-    st.write(st.session_state.messages)
     for msg in st.session_state.messages:
-        debug_log(f"mapping message: {msg}")
         role = msg.get("role")
         parts = []
-        
-        # 處理多模態內容
-        if isinstance(msg["content"], list):
-            debug_log(f"starting to map image...")
-            for item in msg["content"]:
-                if isinstance("mapping image..."):
-                    parts.append(Part(
-                        inline_data={
-                            "mime_type": "image/png",
-                            "data": item["image_url"]["url"].split(",")[1]
-                        }
-                    ))
-                else:
-                    parts.append(Part(text=item))
-                    debug_log(f"appending message...(with image)")
-            debug_log("mapping content... done")
-        else:
-            debug_log(f"appending message...{msg.get('content')}")
-            parts.append(msg.get("content"))
-            debug_log("mapping content... done")
-        
-        converted_history.append({"role": role, "parts": parts})
-    
-    debug_log(f"converted history: {converted_history}")
 
-    converted_history_json  = json.dumps(converted_history, ensure_ascii=False)
-    # 請求邏輯 (帶重試機制)
+        # 若 content 是 list（多模態），逐項判斷是圖片還是純文字
+        if isinstance(msg["content"], list):
+            for item in msg["content"]:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    # send_message() 理論上不支援直接帶圖片，所以我們會把它轉成文字描述/提示
+                    parts.append(f"[Image included, base64 size={len(item['image_url']['url'])} chars]")
+                else:
+                    # 純文字
+                    parts.append(str(item))
+        else:
+            # 直接轉成文字
+            parts.append(str(msg["content"]))
+
+        converted_history.append({"role": role, "parts": parts})
+
+    converted_history_json = json.dumps(converted_history, ensure_ascii=False)
+    debug_log(f"converted history (json) => {converted_history_json}")
+
+    # --- 5) send_message 拿最終回覆 ---
     retries = 0
+    wait_time = 5
     while retries < max_retries:
         try:
-            debug_log("starting to generate response...")
-            # con="hi"
-            response = st.session_state.gemini_chat.send_message(converted_history_json)
-            debug_log("response generated")
-
-            # # 更新歷史記錄 (依用戶程式碼格式)
-            # st.write("starting to update history...")
-            # st.session_state.gemini_history.extend([
-            #     {"role": "user", "parts": converted_history[-1]["parts"]},
-            #     {"role": "model", "parts": [Part(text=response.text)]}
-            # ])
-            debug_log(f"starting to update history...{response.text}")
-            return response.text
-            
+            debug_log("Calling send_message with entire conversation...")
+            response_sm = st.session_state.gemini_chat.send_message(converted_history_json)
+            final_reply = response_sm.text.strip()
+            debug_log(f"Gemini send_message final reply => {final_reply}")
+            return final_reply
         except genai.GenerationError as e:
-            debug_error(f"生成錯誤: {str(e)}")
+            debug_error(f"send_message() 生成錯誤: {e}")
+            st.warning(f"Gemini 生成錯誤，{wait_time}秒後重試...")
+            time.sleep(wait_time)
             retries += 1
-            time.sleep(5 * retries)
+            wait_time *= 2
         except Exception as e:
-            debug_error(f"API請求異常: {str(e)}")
+            debug_error(f"send_message() API請求異常: {e}")
+            st.error(f"Gemini API請求異常: {e}")
             return ""
-    
+
     return "請求失敗次數過多，請稍後重試"
 
 
