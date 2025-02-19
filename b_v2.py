@@ -100,7 +100,6 @@ def add_user_image(uploaded_file):
         else:
             # 為Gemini使用直接文件路徑
             image_url = file_path
-            return image_url
         
         # 6. 構建消息結構
         image_msg = {
@@ -112,7 +111,10 @@ def add_user_image(uploaded_file):
         }
         
         # 7. 添加消息到歷史記錄
-        append_message("user", [image_msg])
+        if use_base64:
+            append_message("user", [image_msg])
+        else:
+            return image_url
         debug_log(f"圖片消息已添加：{image_url[:50]}...")
         
         # 若需要Base64就存到 session_state，否則就存 None
@@ -224,15 +226,9 @@ def get_gemini_response(model_params, max_retries=3):
     debug_log(f"gemini model: {model_name}")
 
     # --- 2) 初始化 Chat 物件 ---
-    if "gemini_chat" not in st.session_state or st.session_state.gemini_chat is None:
-        debug_log("Initialize Gemini chat session...")
-        model = genai.GenerativeModel(model_name)
-        # 建立空對話
-        st.session_state.gemini_chat = model.start_chat(history=[])
-        debug_log("Gemini chat session created.")
-    else:
-        debug_log("Reusing existing Gemini chat session...")
-        debug_log(f"Current session: {st.session_state.gemini_chat}")
+    model = genai.GenerativeModel(model_name)
+    st.session_state.gemini_chat = model.start_chat(history=[])
+    debug_log("Gemini chat session created.")
 
     # --- 3) 檢查是否存在「最後一則」包含圖片的 user 訊息 ---
     if st.session_state.uploaded_image_path:
@@ -570,6 +566,7 @@ def main():
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"], key="image_uploader")
         if uploaded_image:
             st.session_state.uploaded_image= add_user_image(uploaded_image)
+            debug_log(f"Uploaded image path: {st.session_state.uploaded_image}")
 
         # --- Thinking Protocol Upload ---
         st.subheader("🧠 Upload Thinking Protocol")
