@@ -268,7 +268,8 @@ def get_gemini_response(model_params, max_retries=3):
                     debug_log("entering generate_content() try block")
                     # 調用 generate_content()，帶入文字與圖片
                     debug_log(f"entering generate_content() with text: ['請你解讀圖片', {image_data}]")
-                    response_gc = model.generate_content(["請你解讀圖片",image_data])  # 單張圖
+                    imageee = genai.upload_file(path=image_data, display_name="Image")
+                    response_gc = model.generate_content(["請你解讀圖片",imageee])  # 單張圖
                     # 拿到回覆之後，先將其新增至對話
                     generate_content_reply = response_gc.text()
                     debug_log(f"Gemini generate_content reply: {generate_content_reply}")
