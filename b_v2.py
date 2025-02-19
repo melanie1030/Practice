@@ -99,6 +99,7 @@ def add_user_image(uploaded_file):
         else:
             # 為Gemini使用直接文件路徑
             image_url = file_path
+            return image_url
         
         # 6. 構建消息結構
         image_msg = {
@@ -219,6 +220,7 @@ def get_gemini_response(model_params, max_retries=3):
 
     genai.configure(api_key=api_key)
     model_name = model_params.get("model", "gemini-1.5-flash")
+    debug_log(f"gemini model: {model_name}")
 
     # --- 2) 初始化 Chat 物件 ---
     if "gemini_chat" not in st.session_state or st.session_state.gemini_chat is None:
@@ -229,6 +231,12 @@ def get_gemini_response(model_params, max_retries=3):
         debug_log("Gemini chat session created.")
 
     # --- 3) 檢查是否存在「最後一則」包含圖片的 user 訊息 ---
+    if st.session_state.uploaded_image_path:
+        debug_log("Detected user message with image, using generate_content() first...")
+        # 收集文本 & 圖片資訊
+        gen_content = True
+    else:
+        gen_content = False
     last_user_msg_with_image = None
     for msg in reversed(st.session_state.messages):
         if msg["role"] == "user" and isinstance(msg["content"], list):
@@ -241,7 +249,7 @@ def get_gemini_response(model_params, max_retries=3):
             break
 
     # 如果找到「最後一則包含圖片」的訊息，先透過 generate_content() 單獨做一次回覆
-    if last_user_msg_with_image:
+    if gen_content:
         debug_log("Detected user message with image, using generate_content() first...")
 
         # 收集文本 & 圖片資訊
@@ -300,6 +308,7 @@ def get_gemini_response(model_params, max_retries=3):
                 if isinstance(item, dict) and item.get("type") == "image_url":
                     # send_message() 理論上不支援直接帶圖片，所以我們會把它轉成文字描述/提示
                     parts.append(f"[Image included, base64 size={len(item['image_url']['url'])} chars]")
+                    
                 else:
                     # 純文字
                     parts.append(str(item))
@@ -556,7 +565,7 @@ def main():
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"], key="image_uploader")
         if uploaded_image:
-            add_user_image(uploaded_image)
+            st.session_state.uploaded_image= add_user_image(uploaded_image)
 
         # --- Thinking Protocol Upload ---
         st.subheader("🧠 Upload Thinking Protocol")
