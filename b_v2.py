@@ -111,7 +111,7 @@ def add_user_image(uploaded_file):
         st.rerun()
         
     except Exception as e:
-        st.wrtie(f"添加圖片消息失敗：{str(e)}")
+        st.wrtie("添加圖片消息失敗：{str(e)}")
         st.error("圖片處理異常，請檢查日誌")
 
 def reset_session_messages():
