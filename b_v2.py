@@ -271,6 +271,8 @@ def get_gemini_response(model_params, max_retries=3):
                         ["請你解讀圖片",
                         image_data]  # 單張圖
                     )
+                except Exception as e:
+                    debug_error(f"generate_content() 失敗: {e}")
                     debug_log("TESTINGGGGGGGGGGGGGGGGGGGGGGGGGG")
                     # 拿到回覆之後，先將其新增至對話
                     generate_content_reply = response_gc.text()
