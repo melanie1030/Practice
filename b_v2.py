@@ -273,7 +273,7 @@ def get_gemini_response(model_params, max_retries=3):
                     debug_log(f"response_gc: {response_gc.text}")
                     
                     # 拿到回覆之後，先將其新增至對話
-                    generate_content_reply = response_gc.text()
+                    generate_content_reply = response_gc.text
                     debug_log(f"Gemini generate_content reply: {generate_content_reply}")
                     append_message("assistant", generate_content_reply)
                     break
