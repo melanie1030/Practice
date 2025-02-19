@@ -230,7 +230,7 @@ def get_gemini_response(model_params, max_retries=3):
     if "gemini_chat" not in st.session_state:
         debug_log("starting to init chat...")
         model = genai.GenerativeModel(model_name)
-        st.session_state.gemini_chat = genai.GenerativeModel(model_name)
+        st.session_state.gemini_chat = model
         # 以下為舊版方法，新版本 FDP !!!!!
         # st.session_state.gemini_chat = model.start_chat(history=[])
     debug_log("chat init done")
