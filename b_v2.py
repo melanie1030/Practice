@@ -259,6 +259,7 @@ def get_gemini_response(model_params, max_retries=3):
             if isinstance(item, dict) and item.get("type") == "image_url":
                 # base64_str = item["image_url"]["url"].split(",")[-1]  # 拆出 base64 字串
                 # image_data = base64.b64decode(base64_str)  # 轉成二進位  # 同上一同被註解
+                debug_log("registered image path: {st.session_state.uploaded_image_path}")
                 image_data = st.session_state.uploaded_image_path
             else:
                 # 其他字串，或是 prompt 文字
