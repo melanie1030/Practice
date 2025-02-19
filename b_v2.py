@@ -265,6 +265,7 @@ def get_gemini_response(model_params, max_retries=3):
             retries = 0
             while retries < max_retries:
                 try:
+                    debug_log("entering generate_content() try block")
                     # 調用 generate_content()，帶入文字與圖片
                     response_gc = model.generate_content(
                         "請你解讀圖片",
