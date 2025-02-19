@@ -255,8 +255,8 @@ def get_gemini_response(model_params, max_retries=3):
         # 收集文本 & 圖片資訊
         text_parts = []
         image_data = st.session_state.uploaded_image_path
+        debug_log(f"{last_user_msg_with_image}")
         for item in last_user_msg_with_image["content"]:
-            debug_log(f"item: {item}")
             if isinstance(item, dict) and item.get("type") == "image_url":
                 # base64_str = item["image_url"]["url"].split(",")[-1]  # 拆出 base64 字串
                 # image_data = base64.b64decode(base64_str)  # 轉成二進位  # 同上一同被註解
