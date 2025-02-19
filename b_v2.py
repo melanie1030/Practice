@@ -21,7 +21,8 @@ LLM_MODELS = [  # 修改后的模型列表
     "gpt-4-turbo",
     "gpt-3.5-turbo-16k",
     "gemini-1.5-flash",
-    "gemini-1.5-pro"
+    "gemini-1.5-pro",
+    "models/gemini-2.0-flash"
 ]
 
 MAX_MESSAGES = 10  # Limit message history
@@ -230,6 +231,8 @@ def get_gemini_response(model_params, max_retries=3):
     if "gemini_chat" not in st.session_state:
         debug_log("starting to init chat...")
         model = genai.GenerativeModel(model_name)
+        # st.session_state.gemini_chat = model
+        # 以下為舊版方法，新版本 4DP !!!!!
         st.session_state.gemini_chat = model.start_chat(history=[])
     debug_log("chat init done")
 
@@ -272,7 +275,7 @@ def get_gemini_response(model_params, max_retries=3):
         try:
             debug_log("starting to generate response...")
             # con="hi"
-            response = st.session_state.gemini_chat.send_message(converted_history_json)
+            response = st.session_state.gemini_chat.generate_content(converted_history_json)
             debug_log("response generated")
 
             # # 更新歷史記錄 (依用戶程式碼格式)
@@ -354,13 +357,13 @@ def get_openai_response(client, model_params, max_retries=3):
 def get_llm_response(client, model_params, max_retries=3):
     """获取LLM模型响应（支持OpenAI和Gemini）"""
     model_name = model_params.get("model", "gpt-4-turbo")
-    st.write("loading get_llm_response funcs")
+    debug_log(f"starting to get llm response...{model_name}")
     
     if "gpt" in model_name:
-        st.write("GPT")
+        debug_log("GPT")
         return get_openai_response(client, model_params, max_retries)
     elif "gemini" in model_name:
-        st.write("Gemini")
+        debug_log("Gemini")
         return get_gemini_response(model_params=model_params, max_retries=max_retries)
     else:
         st.error(f"不支持的模型类型: {model_name}")
