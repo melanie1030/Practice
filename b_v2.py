@@ -72,17 +72,26 @@ def append_message(role, content):
 def add_user_image(uploaded_file):
     """添加用戶圖片消息到session state"""
     try:
-        # 獲取當前選擇的模型
+        # 1. 檢查是否已經處理過相同名稱的檔案
+        #    如果 "last_uploaded_filename" 已經是這個檔名，就跳過。
+        if st.session_state.get("last_uploaded_filename") == uploaded_file.name:
+            debug_log("已上傳過相同檔案，跳過處理。")
+            return
+        
+        # 若是第一次看到這個檔名，就記錄下來
+        st.session_state["last_uploaded_filename"] = uploaded_file.name
+
+        # 2. 獲取當前選擇的模型
         current_model = st.session_state.get("selected_model", "").lower()
         
-        # 判斷是否需要Base64編碼
-        use_base64 = "gpt" in current_model  # 當模型名稱包含gpt時啟用
+        # 3. 判斷是否需要Base64編碼（當模型名稱包含gpt時啟用）
+        use_base64 = "gpt" in current_model  
         
-        # 保存上傳文件並獲取路徑
+        # 4. 保存上傳文件並獲取路徑
         file_path = save_uploaded_file(uploaded_file)
         st.session_state.uploaded_image_path = file_path
         
-        # 根據模型類型構建圖片URL
+        # 5. 根據模型類型構建圖片URL
         if use_base64:
             # 為OpenAI模型生成Base64 URL
             image_base64 = load_image_base64(file_path)
@@ -91,7 +100,7 @@ def add_user_image(uploaded_file):
             # 為Gemini使用直接文件路徑
             image_url = file_path
         
-        # 構建消息結構
+        # 6. 構建消息結構
         image_msg = {
             "type": "image_url",
             "image_url": {
@@ -100,14 +109,14 @@ def add_user_image(uploaded_file):
             }
         }
         
-        # 添加消息到歷史記錄
+        # 7. 添加消息到歷史記錄
         append_message("user", [image_msg])
         debug_log(f"圖片消息已添加：{image_url[:50]}...")
         
-        # 僅在需要時存儲Base64數據
+        # 若需要Base64就存到 session_state，否則就存 None
         st.session_state.image_base64 = image_base64 if use_base64 else None
         
-        # 刷新界面
+        # 8. 刷新界面（optional，看你需求）
         st.rerun()
         
     except Exception as e:
