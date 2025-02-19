@@ -245,7 +245,7 @@ def get_gemini_response(model_params, max_retries=3):
         if isinstance(msg["content"], list):
             debug_log(f"starting to map image...")
             for item in msg["content"]:
-                if isinstance("mapping image..."):
+                if isinstance("mapping image...")
                     parts.append(Part(
                         inline_data={
                             "mime_type": "image/png",
@@ -354,13 +354,13 @@ def get_openai_response(client, model_params, max_retries=3):
 def get_llm_response(client, model_params, max_retries=3):
     """获取LLM模型响应（支持OpenAI和Gemini）"""
     model_name = model_params.get("model", "gpt-4-turbo")
-    debug_log(f"starting to get llm response...{model_name}")
+    st.write("loading get_llm_response funcs")
     
     if "gpt" in model_name:
-        debug_log("GPT")
+        st.write("GPT")
         return get_openai_response(client, model_params, max_retries)
     elif "gemini" in model_name:
-        debug_log("Gemini")
+        st.write("Gemini")
         return get_gemini_response(model_params=model_params, max_retries=max_retries)
     else:
         st.error(f"不支持的模型类型: {model_name}")
