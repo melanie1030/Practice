@@ -270,6 +270,7 @@ def get_gemini_response(model_params, max_retries=3):
         # 執行 generate_content
         # 注意：generate_content() 預設只能處理單一段落的 role，不支援一次放整個對話。
         #      這邊只讓它讀取「最後一則 user 的圖片 + 文字」以取得 AI 的初步回覆。
+        debug_log("Using generate_content() first... by gen_content")
         try:
             retries = 0
             while retries < max_retries:
