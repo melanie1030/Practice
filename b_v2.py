@@ -232,6 +232,7 @@ def get_gemini_response(model_params, max_retries=3):
         debug_log("Gemini chat session created.")
     else:
         debug_log("Reusing existing Gemini chat session...")
+        debug_log(f"Current session: {st.session_state.gemini_chat}")
 
     # --- 3) 檢查是否存在「最後一則」包含圖片的 user 訊息 ---
     if st.session_state.uploaded_image_path:
