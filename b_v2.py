@@ -70,26 +70,49 @@ def append_message(role, content):
         debug_log("Message history trimmed to maintain token limits.")
 
 def add_user_image(uploaded_file):
-    """Add an image message to the session state using image_url structure and save the file."""
+    """添加用戶圖片消息到session state"""
     try:
-        # 打開上傳的圖片
-        image = Image.open(uploaded_file)
-        img_base64 = load_image_base64(image)
-        if img_base64:
-            # 創建 image_url 結構
-            image_content = [{
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{img_base64}"}
-            }]
-            append_message("user", image_content)  # 將圖片訊息添加到訊息歷史
-            st.session_state.image_base64 = img_base64  # 更新 image_base64
-            st.session_state.uploaded_image_path = save_uploaded_file(uploaded_file)  # 保存圖片檔案路徑
-            st.success("圖片上傳成功！")
-            debug_log("Image uploaded and added to messages.")
+        # 獲取當前選擇的模型
+        current_model = st.session_state.get("selected_model", "").lower()
+        
+        # 判斷是否需要Base64編碼
+        use_base64 = "gpt" in current_model  # 當模型名稱包含gpt時啟用
+        
+        # 保存上傳文件並獲取路徑
+        file_path = save_ploaded_file(uploaded_file)
+        st.session_state.uploaded_image_path = file_path
+        
+        # 根據模型類型構建圖片URL
+        if use_base64:
+            # 為OpenAI模型生成Base64 URL
+            image_base64 = load_image_base64(file_path)
+            image_url = f"data:image/{file_path.split('.')[-1]};base64,{image_base64}"
         else:
-            debug_error("無法將圖片轉換為 base64。")
+            # 為Gemini使用直接文件路徑
+            image_url = file_path
+        
+        # 構建消息結構
+        image_msg = {
+            "type": "image_url",
+            "image_url": {
+                "url": image_url,
+                "detail": "auto"
+            }
+        }
+        
+        # 添加消息到歷史記錄
+        append_message("user", [image_msg])
+        debug_log(f"圖片消息已添加：{image_url[:50]}...")
+        
+        # 僅在需要時存儲Base64數據
+        st.session_state.image_base64 = image_base64 if use_base64 else None
+        
+        # 刷新界面
+        st.rerun()
+        
     except Exception as e:
-        debug_error(f"處理上傳圖片時出錯: {e}")
+        debug_error(f"添加圖片消息失敗：{str(e)}")
+        st.error("圖片處理異常，請檢查日誌")
 
 def reset_session_messages():
     """Clear conversation history from the session."""
