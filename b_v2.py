@@ -255,19 +255,6 @@ def get_gemini_response(model_params, max_retries=3):
         # 收集文本 & 圖片資訊
         text_parts = []
         image_data = st.session_state.uploaded_image_path
-        debug_log(f"{last_user_msg_with_image}")
-        for item in last_user_msg_with_image["content"]:
-            if isinstance(item, dict) and item.get("type") == "image_url":
-                # base64_str = item["image_url"]["url"].split(",")[-1]  # 拆出 base64 字串
-                # image_data = base64.b64decode(base64_str)  # 轉成二進位  # 同上一同被註解
-                debug_log("registered image path: {st.session_state.uploaded_image_path}")
-                image_data = st.session_state.uploaded_image_path
-            else:
-                # 其他字串，或是 prompt 文字
-                text_parts.append(str(item))
-
-        # 結合文字成一段即可（若有多段文字可自行合併）
-        text_for_gemini = "\n".join(text_parts)
 
         # 執行 generate_content
         # 注意：generate_content() 預設只能處理單一段落的 role，不支援一次放整個對話。
@@ -278,9 +265,9 @@ def get_gemini_response(model_params, max_retries=3):
             while retries < max_retries:
                 try:
                     # 調用 generate_content()，帶入文字與圖片
-                    response_gc = st.session_state.gemini_chat.generate_content(
-                        text=text_for_gemini,
-                        image=image_data  # 單張圖
+                    response_gc = model.generate_content(
+                        "請你解讀圖片",
+                        image_data  # 單張圖
                     )
                     # 拿到回覆之後，先將其新增至對話
                     generate_content_reply = response_gc.text.strip()
