@@ -275,7 +275,7 @@ def get_gemini_response(model_params, max_retries=3):
         try:
             debug_log("starting to generate response...")
             # con="hi"
-            response = st.session_state.gemini_chat.generate_content(converted_history_json)
+            response = st.session_state.gemini_chat.send_message(converted_history_json)
             debug_log("response generated")
 
             # # 更新歷史記錄 (依用戶程式碼格式)
