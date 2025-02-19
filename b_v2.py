@@ -128,51 +128,7 @@ def extract_json_block(response: str) -> str:
     else:
         debug_log("No JSON block found in response.")
         return response.strip()
-
-def to_markdown(text: str) -> str:
-    """
-    将Gemini响应文本转换为兼容Streamlit的Markdown格式
-    功能：
-    1. 自动检测代码块并添加正确语法
-    2. 转换项目符号列表
-    3. 处理引文标注
-    4. 保留原始换行格式
-    """
-    import re
-    
-    # 预处理：保留换行符
-    text = text.replace('\n', '<br>')
-    
-    # 转换代码块
-    text = re.sub(
-        r'``[(\w+)?\s*(.*?)](cci:1://file:///d:/Practice-main/b_v2.py:295:0-754:61)``', 
-        lambda m: f"```{m.group(1) or ''}\n{m.group(2)}\n```", 
-        text, 
-        flags=re.DOTALL
-    )
-    
-    # 转换项目符号列表
-    text = re.sub(r'•', '  *', text)
-    
-    # 转换编号列表
-    text = re.sub(r'(\d+)\.', r'\1\\.', text)
-    
-    # 处理引文标注（如：^[1]）
-    text = re.sub(r'\^\[(\d+)\]', r'<sup>\1</sup>', text)
-    
-    # 恢复换行符
-    text = text.replace('<br>', '\n')
-    
-    # 添加Markdown引用格式
-    lines = []
-    for line in text.split('\n'):
-        if line.strip().startswith('*') or line.strip().startswith('#'):
-            lines.append(line)
-        else:
-            lines.append(f"> {line}")
-    
-    return '\n'.join(lines)
-    
+        
 # =======================================================================================================
 #       以下為舊版本的 get_llm_response 函數
 # def get_llm_response(client, model_params, max_retries=3):
@@ -261,8 +217,9 @@ def get_gemini_response(model_params, max_retries=3):
         image_data = None
         for item in last_user_msg_with_image["content"]:
             if isinstance(item, dict) and item.get("type") == "image_url":
-                base64_str = item["image_url"]["url"].split(",")[-1]
-                image_data = base64.b64decode(base64_str)  # 轉成二進位
+                # base64_str = item["image_url"]["url"].split(",")[-1]  # 拆出 base64 字串
+                # image_data = base64.b64decode(base64_str)  # 轉成二進位  # 同上一同被註解
+                image_data = st.session_state.uploaded_image_path
             else:
                 # 其他字串，或是 prompt 文字
                 text_parts.append(str(item))
