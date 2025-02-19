@@ -261,6 +261,7 @@ def get_gemini_response(model_params, max_retries=3):
         #      這邊只讓它讀取「最後一則 user 的圖片 + 文字」以取得 AI 的初步回覆。
         debug_log("Using generate_content() first... by gen_content")
         try:
+            debug_log("entering generate_content()")
             retries = 0
             while retries < max_retries:
                 try:
