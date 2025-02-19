@@ -33,6 +33,7 @@ def initialize_client(api_key):
 def debug_log(msg):
     if st.session_state.get("debug_mode", False):
         st.session_state.debug_logs.append(f"**DEBUG LOG:** {msg}")
+        st.write(msg)
         print(msg)
 
 def debug_error(msg):
