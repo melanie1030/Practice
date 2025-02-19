@@ -245,7 +245,7 @@ def get_gemini_response(model_params, max_retries=3):
         if isinstance(msg["content"], list):
             debug_log(f"starting to map image...")
             for item in msg["content"]:
-                if isinstance("mapping image...")
+                if isinstance("mapping image..."):
                     parts.append(Part(
                         inline_data={
                             "mime_type": "image/png",
