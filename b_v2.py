@@ -294,6 +294,8 @@ def get_gemini_response(model_params, max_retries=3):
                 except Exception as e:
                     debug_error(f"generate_content() 其他錯誤: {e}")
                     return "generate_content Error"
+        except Exception as e:
+            debug_error(f"generate_content() 其他錯誤: {e}")
 
     # --- 4) 最後：將最終整串對話(含剛剛 generate_content 的回覆) 用 send_message() 拿到最終回答 ---
 
