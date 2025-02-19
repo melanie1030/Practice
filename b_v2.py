@@ -73,11 +73,11 @@ def append_message(role, content):
 def add_user_image(uploaded_file):
     """添加用戶圖片消息到session state"""
     try:
-        # 1. 檢查是否已經處理過相同名稱的檔案
-        #    如果 "last_uploaded_filename" 已經是這個檔名，就跳過。
-        if st.session_state.get("last_uploaded_filename") == uploaded_file.name:
-            debug_log("已上傳過相同檔案，跳過處理。")
-            return
+        # # 1. 檢查是否已經處理過相同名稱的檔案
+        # #    如果 "last_uploaded_filename" 已經是這個檔名，就跳過。
+        # if st.session_state.get("last_uploaded_filename") == uploaded_file.name:
+        #     debug_log("已上傳過相同檔案，跳過處理。")
+        #     return
         
         # 若是第一次看到這個檔名，就記錄下來
         st.session_state["last_uploaded_filename"] = uploaded_file.name
@@ -250,7 +250,7 @@ def get_gemini_response(model_params, max_retries=3):
 
     # 如果找到「最後一則包含圖片」的訊息，先透過 generate_content() 單獨做一次回覆
     if gen_content:
-        debug_log("Detected user message with image, using generate_content() first...")
+        debug_log("Detected user message with image, using generate_content() first... by gen_content")
 
         # 收集文本 & 圖片資訊
         text_parts = []
