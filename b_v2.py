@@ -271,7 +271,7 @@ def get_gemini_response(model_params, max_retries=3):
                         image_data  # 單張圖
                     )
                     # 拿到回覆之後，先將其新增至對話
-                    generate_content_reply = response_gc.text.strip()
+                    generate_content_reply = response_gc.text()
                     append_message("assistant", generate_content_reply)
                     debug_log(f"Gemini generate_content reply: {generate_content_reply}")
                     break
