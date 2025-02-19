@@ -79,7 +79,7 @@ def add_user_image(uploaded_file):
         use_base64 = "gpt" in current_model  # 當模型名稱包含gpt時啟用
         
         # 保存上傳文件並獲取路徑
-        file_path = save_ploaded_file(uploaded_file)
+        file_path = save_uploaded_file(uploaded_file)
         st.session_state.uploaded_image_path = file_path
         
         # 根據模型類型構建圖片URL
