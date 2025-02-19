@@ -622,7 +622,7 @@ def main():
         with st.spinner("Thinking..."):
             try:
                 # # Initialize OpenAI client if not already done
-                if openai_api_key:
+                if openai_api_key or gemini_api_key:
                     client = initialize_client(openai_api_key)
                 else:
                     raise ValueError("OpenAI API Key is not provided.")
