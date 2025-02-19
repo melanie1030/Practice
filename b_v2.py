@@ -254,63 +254,22 @@ def get_gemini_response(model_params, max_retries=3):
 
     # 如果找到「最後一則包含圖片」的訊息，先透過 generate_content() 單獨做一次回覆
     if last_user_msg_with_image:
-        debug_log("Detected user message with image, using generate_content() with upload_file...")
+        debug_log("Detected user message with image, using generate_content() first...")
 
-        import google.generativeai as genai
-
-        # 收集文本 & 檔案資訊
+        # 收集文本 & 圖片資訊
         text_parts = []
-        gemini_file_resource = None
-
+        image_data = None
         for item in last_user_msg_with_image["content"]:
             if isinstance(item, dict) and item.get("type") == "image_url":
-                # 使用你在 session_state 中記錄的本地路徑（上傳時已經存好的）
-                local_path = st.session_state.uploaded_image_path
-
-                # 直接上傳檔案給 Gemini，拿到 file_resource
-                gemini_file_resource = genai.upload_file(
-                    path=local_path, 
-                    display_name="UserImage"
-                )
+                base64_str = item["image_url"]["url"].split(",")[-1]
+                image_data = base64.b64decode(base64_str)  # 轉成二進位
             else:
                 # 其他字串，或是 prompt 文字
                 text_parts.append(str(item))
 
-        # 結合文本成一個 prompt
+        # 結合文字成一段即可（若有多段文字可自行合併）
         text_for_gemini = "\n".join(text_parts)
 
-        # 接下來就可以把 [文字, 檔案物件] 一起丟給 generate_content()
-        try:
-            retries = 0
-            while retries < max_retries:
-                try:
-                    if gemini_file_resource:
-                        # 同時帶入文本和圖片給 Gemini
-                        response_gc = st.session_state.gemini_chat.generate_content(
-                            [text_for_gemini, gemini_file_resource]
-                        )
-                    else:
-                        # 若沒有圖片，僅帶文本
-                        response_gc = st.session_state.gemini_chat.generate_content(
-                            [text_for_gemini]
-                        )
-                    
-                    # 取得回覆並加入到 messages
-                    generate_content_reply = response_gc.text.strip()
-                    append_message("assistant", generate_content_reply)
-                    debug_log(f"Gemini generate_content reply: {generate_content_reply}")
-                    break
-                except genai.GenerationError as e:
-                    debug_error(f"generate_content() 失敗: {e}")
-                    retries += 1
-                    time.sleep(5 * retries)
-                except Exception as e:
-                    debug_error(f"generate_content() 其他錯誤: {e}")
-                    return "generate_content Error"
-        except Exception as e:
-            debug_error(f"generate_content() 其他錯誤: {e}")
-            return "generate_content Error"
-    
         # 執行 generate_content
         # 注意：generate_content() 預設只能處理單一段落的 role，不支援一次放整個對話。
         #      這邊只讓它讀取「最後一則 user 的圖片 + 文字」以取得 AI 的初步回覆。
