@@ -395,7 +395,7 @@ def get_openai_response(client, model_params, max_retries=3):
     return ""
 
 def get_llm_response(client, model_params, max_retries=3):
-    """获取LLM模型响应（支持OpenAI和Gemini）"""
+    """獲取LLM模型回覆（支持OpenAI和Gemini）"""
     model_name = model_params.get("model", "gpt-4-turbo")
     debug_log(f"starting to get llm response...{model_name}")
     
@@ -406,7 +406,7 @@ def get_llm_response(client, model_params, max_retries=3):
         debug_log("Gemini")
         return get_gemini_response(model_params=model_params, max_retries=max_retries)
     else:
-        st.error(f"不支持的模型类型: {model_name}")
+        st.error(f"不支持的模型類型: {model_name}")
         return ""
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
