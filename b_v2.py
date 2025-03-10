@@ -168,6 +168,14 @@ def get_gemini_response(model_params, max_retries=3):
     st.session_state.gemini_chat = model.start_chat(history=[])
     debug_log("Gemini chat session created.")
 
+    # 新增：加入 Gemini 回覆必須以 #zh-t 的系統提示
+    gemini_system_prompt = {
+        "role": "system",
+        "content": "請以繁體中文回答，並且所有回覆必須以 #zh-t 開頭。"
+    }
+    st.session_state.messages.insert(0, gemini_system_prompt)
+    debug_log("Gemini system prompt for #zh-t added.")
+
     if st.session_state.uploaded_image_path:
         debug_log("Detected user message with image, using generate_content() first...")
         gen_content = True
