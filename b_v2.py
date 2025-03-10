@@ -726,12 +726,12 @@ Second response chart analysis content: {second_raw_response}
     
         # 設定兩個模型的參數（可根據需要調整）
         model_params_openai = {
-            "model": "gpt-4-turbo",
+            "model": "gpt-4o",
             "temperature": 0.5,
             "max_tokens": 4096
         }
         model_params_gemini = {
-            "model": "gemini-1.5-flash",
+            "model": "models/gemini-2.0-flash",
             "temperature": 0.5,
             "max_tokens": 4096
         }
