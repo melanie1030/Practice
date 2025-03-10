@@ -45,7 +45,6 @@ def save_uploaded_file(uploaded_file):
     if not os.path.exists(UPLOAD_DIR):
         os.makedirs(UPLOAD_DIR)
     file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
-
     debug_log(f"Saving file to {file_path}")
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
@@ -73,35 +72,20 @@ def append_message(role, content):
 def add_user_image(uploaded_file):
     """添加用戶圖片消息到session state"""
     try:
-        # # 1. 檢查是否已經處理過相同名稱的檔案
-        # #    如果 "last_uploaded_filename" 已經是這個檔名，就跳過。
-        # if st.session_state.get("last_uploaded_filename") == uploaded_file.name:
-        #     debug_log("已上傳過相同檔案，跳過處理。")
-        #     return
-        
-        # 若是第一次看到這個檔名，就記錄下來
         st.session_state["last_uploaded_filename"] = uploaded_file.name
-
-        # 2. 獲取當前選擇的模型
         current_model = st.session_state.get("selected_model", "").lower()
-        
-        # 3. 判斷是否需要Base64編碼（當模型名稱包含gpt時啟用）
         use_base64 = "gpt" in current_model  
-        
-        # 4. 保存上傳文件並獲取路徑
         file_path = save_uploaded_file(uploaded_file)
         st.session_state.uploaded_image_path = file_path
         
-        # 5. 根據模型類型構建圖片URL
         if use_base64:
             # 為OpenAI模型生成Base64 URL
-            image_base64 = load_image_base64(file_path)
+            image = Image.open(file_path)
+            image_base64 = load_image_base64(image)
             image_url = f"data:image/{file_path.split('.')[-1]};base64,{image_base64}"
         else:
-            # 為Gemini使用直接文件路徑
             image_url = file_path
         
-        # 6. 構建消息結構
         image_msg = {
             "type": "image_url",
             "image_url": {
@@ -110,17 +94,13 @@ def add_user_image(uploaded_file):
             }
         }
         
-        # 7. 添加消息到歷史記錄
         if use_base64:
             append_message("user", [image_msg])
         else:
             return image_url
         debug_log(f"圖片消息已添加：{image_url[:50]}...")
         
-        # 若需要Base64就存到 session_state，否則就存 None
         st.session_state.image_base64 = image_base64 if use_base64 else None
-        
-        # 8. 刷新界面（optional，看你需求）
         st.rerun()
         
     except Exception as e:
@@ -140,7 +120,6 @@ def execute_code(code, global_vars=None):
         debug_log("Ready to execute the following code:")
         if st.session_state.get("debug_mode", False):
             st.session_state.debug_logs.append(f"```python\n{code}\n```")
-
         debug_log(f"Executing code with global_vars: {list(exec_globals.keys())}")
         exec(code, exec_globals)
         output = exec_globals.get("output", "(No output returned)")
@@ -164,47 +143,11 @@ def extract_json_block(response: str) -> str:
     else:
         debug_log("No JSON block found in response.")
         return response.strip()
-        
-# =======================================================================================================
-#       以下為舊版本的 get_llm_response 函數
-# def get_llm_response(client, model_params, max_retries=3):
-#     """Get response from the LLM model synchronously with retry logic."""
-#     retries = 0
-#     wait_time = 5  # Start with 5 seconds
 
-#     while retries < max_retries:
-#         try:
-#             response = client.chat.completions.create(
-#                 model=model_params.get("model", "gpt-4-turbo"),
-#                 messages=st.session_state.messages,
-#                 temperature=model_params.get("temperature", 0.3),
-#                 max_tokens=model_params.get("max_tokens", 4096),
-#                 stream=False  # Disable streaming
-#             )
-#             # Extract the full response content
-#             response_content = response.choices[0].message.content.strip()
-#             debug_log(f"Full assistant response: {response_content}")
-#             return response_content
+# ------------------------------
+# 舊版本的 OpenAI 與 Gemini 回覆方法保留（供參考）
+# ------------------------------
 
-#         except Exception as e:
-#             if 'rate_limit_exceeded' in str(e).lower() or '429' in str(e):
-#                 debug_error(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
-#                 st.warning(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
-#                 time.sleep(wait_time)
-#                 retries += 1
-#                 wait_time *= 2  # Exponential backoff
-#             else:
-#                 debug_error(f"Error getting response: {e}")
-#                 st.error(f"An error occurred while getting the response: {e}")
-#                 return ""
-
-#     st.error("Max retries exceeded. Please try again later.")
-#     return ""
-# =======================================================================================================
-
-
-# 以下為新版本的 get_llm_response 函數
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def get_gemini_response(model_params, max_retries=3):
     """
     整合新版 Gemini 請求方法，支援先讀取圖片 (generate_content) 再進行完整對話 (send_message)。
@@ -213,34 +156,27 @@ def get_gemini_response(model_params, max_retries=3):
       2) 如果有，先用 generate_content() 取得一段回覆並加到 messages
       3) 最後用 send_message() 把整個 messages 發送給 Gemini，取得最終回覆
     """
-
-    # --- 1) 檢查金鑰 ---
     api_key = st.session_state.get("gemini_api_key_input", "")
     debug_log(f"gemini api key: {api_key}")
     if not api_key:
         st.error("未設定 Gemini API 金鑰")
         return ""
-
     genai.configure(api_key=api_key)
     model_name = model_params.get("model", "gemini-1.5-flash")
     debug_log(f"gemini model: {model_name}")
-
-    # --- 2) 初始化 Chat 物件 ---
     model = genai.GenerativeModel(model_name)
     st.session_state.gemini_chat = model.start_chat(history=[])
     debug_log("Gemini chat session created.")
 
-    # --- 3) 檢查是否存在「最後一則」包含圖片的 user 訊息 ---
     if st.session_state.uploaded_image_path:
         debug_log("Detected user message with image, using generate_content() first...")
-        # 收集文本 & 圖片資訊
         gen_content = True
     else:
         gen_content = False
+
     last_user_msg_with_image = None
     for msg in reversed(st.session_state.messages):
         if msg["role"] == "user" and isinstance(msg["content"], list):
-            # content 以 list 表示多模態，裡面可能含有 type="image_url"
             for item in msg["content"]:
                 if isinstance(item, dict) and item.get("type") == "image_url":
                     last_user_msg_with_image = msg
@@ -248,17 +184,10 @@ def get_gemini_response(model_params, max_retries=3):
         if last_user_msg_with_image:
             break
 
-    # 如果找到「最後一則包含圖片」的訊息，先透過 generate_content() 單獨做一次回覆
     if gen_content:
         debug_log("Detected user message with image, using generate_content() first... by gen_content")
-
-        # 收集文本 & 圖片資訊
         text_parts = []
         image_data = st.session_state.uploaded_image_path
-
-        # 執行 generate_content
-        # 注意：generate_content() 預設只能處理單一段落的 role，不支援一次放整個對話。
-        #      這邊只讓它讀取「最後一則 user 的圖片 + 文字」以取得 AI 的初步回覆。
         debug_log("Using generate_content() first... by gen_content")
         try:
             debug_log("entering generate_content()")
@@ -266,13 +195,10 @@ def get_gemini_response(model_params, max_retries=3):
             while retries < max_retries:
                 try:
                     debug_log("entering generate_content() try block")
-                    # 調用 generate_content()，帶入文字與圖片
                     imageee = genai.upload_file(path=image_data, display_name="Image")
                     debug_log(f"imageee: {imageee}")
-                    response_gc = model.generate_content(["請你繁體中文解讀圖片",imageee])  # 單張圖
+                    response_gc = model.generate_content(["請你繁體中文解讀圖片", imageee])
                     debug_log(f"response_gc: {response_gc.text}")
-                    
-                    # 拿到回覆之後，先將其新增至對話
                     generate_content_reply = response_gc.text
                     debug_log(f"Gemini generate_content reply: {generate_content_reply}")
                     append_message("assistant", generate_content_reply)
@@ -287,34 +213,21 @@ def get_gemini_response(model_params, max_retries=3):
         except Exception as e:
             debug_error(f"generate_content() 其他錯誤: {e}")
 
-    # --- 4) 最後：將最終整串對話(含剛剛 generate_content 的回覆) 用 send_message() 拿到最終回答 ---
-
-    # 轉換對話格式
     converted_history = []
     for msg in st.session_state.messages:
         role = msg.get("role")
         parts = []
-
-        # 若 content 是 list（多模態），逐項判斷是圖片還是純文字
         if isinstance(msg["content"], list):
             for item in msg["content"]:
                 if isinstance(item, dict) and item.get("type") == "image_url":
-                    # send_message() 理論上不支援直接帶圖片，所以我們會把它轉成文字描述/提示
                     parts.append(f"[Image included, base64 size={len(item['image_url']['url'])} chars]")
-                    
                 else:
-                    # 純文字
                     parts.append(str(item))
         else:
-            # 直接轉成文字
             parts.append(str(msg["content"]))
-
         converted_history.append({"role": role, "parts": parts})
-
     converted_history_json = json.dumps(converted_history, ensure_ascii=False)
     debug_log(f"converted history (json) => {converted_history_json}")
-
-    # --- 5) send_message 拿最終回覆 ---
     retries = 0
     wait_time = 5
     while retries < max_retries:
@@ -334,19 +247,15 @@ def get_gemini_response(model_params, max_retries=3):
             debug_error(f"send_message() API請求異常: {e}")
             st.error(f"Gemini API請求異常: {e}")
             return ""
-
     return "請求失敗次數過多，請稍後重試"
-
 
 def get_openai_response(client, model_params, max_retries=3):
     """处理OpenAI API请求"""
     retries = 0
-    wait_time = 5  # 初始等待时间5秒
+    wait_time = 5
     model_name = model_params.get("model", "gpt-4-turbo")
-    
     while retries < max_retries:
         try:
-            # 构建请求参数
             request_params = {
                 "model": model_name,
                 "messages": st.session_state.messages,
@@ -354,42 +263,28 @@ def get_openai_response(client, model_params, max_retries=3):
                 "max_tokens": model_params.get("max_tokens", 4096),
                 "stream": False
             }
-            
-            # 添加图像处理逻辑（如果存在）
             if any(msg.get("content") and isinstance(msg["content"], list) for msg in st.session_state.messages):
-                request_params["max_tokens"] = 4096  # 增加token限制
+                request_params["max_tokens"] = 4096
                 debug_log("Detected multimodal input, adjusting max_tokens")
-            
-            # 发送请求
             response = client.chat.completions.create(**request_params)
-            
-            # 提取并清理响应内容
             response_content = response.choices[0].message.content.strip()
             debug_log(f"OpenAI原始响应：\n{response_content}")
             return response_content
-            
         except Exception as e:
-            # 处理速率限制错误
             if 'rate limit' in str(e).lower() or '429' in str(e):
                 debug_error(f"速率限制错误（尝试 {retries+1}/{max_retries}）：{e}")
                 st.warning(f"请求过于频繁，{wait_time}秒后重试...")
                 time.sleep(wait_time)
                 retries += 1
-                wait_time *= 2  # 指数退避
-                
-            # 处理认证错误
+                wait_time *= 2
             elif 'invalid api key' in str(e).lower():
                 debug_error(f"API密钥无效：{e}")
                 st.error("OpenAI API密钥无效，请检查后重试")
                 return ""
-                
-            # 其他错误处理
             else:
                 debug_error(f"OpenAI请求异常：{str(e)}")
                 st.error(f"请求发生错误：{str(e)}")
                 return ""
-    
-    # 超过最大重试次数
     debug_error(f"超过最大重试次数（{max_retries}次）")
     st.error("请求失败次数过多，请稍后再试")
     return ""
@@ -398,7 +293,6 @@ def get_llm_response(client, model_params, max_retries=3):
     """獲取LLM模型回覆（支持OpenAI和Gemini）"""
     model_name = model_params.get("model", "gpt-4-turbo")
     debug_log(f"starting to get llm response...{model_name}")
-    
     if "gpt" in model_name:
         debug_log("GPT")
         return get_openai_response(client, model_params, max_retries)
@@ -408,13 +302,34 @@ def get_llm_response(client, model_params, max_retries=3):
     else:
         st.error(f"不支持的模型類型: {model_name}")
         return ""
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+# ------------------------------
+# 新增二模型交叉驗證函數
+# ------------------------------
+
+def get_cross_validated_response(client, model_params_openai, model_params_gemini, max_retries=3):
+    """
+    簡單的二模型交叉驗證：
+    1. 調用 OpenAI 模型 (例如 GPT-4-turbo) 獲取回答。
+    2. 調用 Gemini 模型 (例如 gemini-1.5-flash) 獲取回答。
+    3. 將兩者結果返回，方便後續做比對或投票決策。
+    """
+    response_openai = get_openai_response(client, model_params_openai, max_retries)
+    response_gemini = get_gemini_response(model_params_gemini, max_retries)
+    final_response = {
+        "openai_response": response_openai,
+        "gemini_response": response_gemini
+    }
+    return final_response
+
+# ------------------------------
+# 主應用入口
+# ------------------------------
 
 def main():
     st.set_page_config(page_title="Chatbot + Data Analysis", page_icon="🤖", layout="wide")
     st.title("🤖 Chatbot + 📊 Data Analysis + 🧠 Memory + 🖋️ Canvas (With Debug & Deep Analysis)")
 
-    # Initialize session state variables
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "ace_code" not in st.session_state:
@@ -442,26 +357,21 @@ def main():
     if "debug_errors" not in st.session_state:
         st.session_state.debug_errors = []
     if "thinking_protocol" not in st.session_state:
-        st.session_state.thinking_protocol = None  # Initialize thinking_protocol
+        st.session_state.thinking_protocol = None
     if "gemini_ai_chat" not in st.session_state:
-        st.session_state.gemini_ai_chat = None  # Initialize gemini_ai_chat
+        st.session_state.gemini_ai_chat = None
     if "gemini_ai_history" not in st.session_state: 
-        st.session_state.gemini_ai_history = []  # Initialize gemini_ai_history
+        st.session_state.gemini_ai_history = []
 
     with st.sidebar:
         st.subheader("🔑 API Key Settings")
-        # 原有的OpenAI金鑰設定
         default_openai_key = os.getenv("OPENAI_API_KEY", "")
         openai_api_key = st.text_input("OpenAI API Key", value=default_openai_key, type="password")
-        
-        # 新增Gemini金鑰輸入
         default_gemini_key = os.getenv("GEMINI_API_KEY", "")
         gemini_api_key = st.text_input("Gemini API Key", 
-                                     value=default_gemini_key, 
-                                     type="password",
-                                     key="gemini_api_key")
-        
-        # 更新環境變數
+                                       value=default_gemini_key, 
+                                       type="password",
+                                       key="gemini_api_key")
         if openai_api_key:
             os.environ["OPENAI_API_KEY"] = openai_api_key
         if gemini_api_key:
@@ -471,22 +381,17 @@ def main():
             "選擇模型", 
             LLM_MODELS, 
             index=0, 
-            key="selected_model"  # 新增key用於session state綁定
+            key="selected_model"
         )
         
-        # 步驟3：API金鑰狀態檢查 (放在模型選擇之後)
         if "selected_model" in st.session_state:
             current_model = st.session_state.selected_model.lower()
-            
             if "gemini" in current_model:
-                # 檢查Gemini金鑰 (環境變數或手動輸入)
                 gemini_key = os.getenv("GEMINI_API_KEY") or st.session_state.get("gemini_api_key")
                 if not gemini_key:
                     st.error("使用Gemini模型需在下方輸入API金鑰 🔑")
-                    st.stop()  # 阻止後續代碼執行
-                    
+                    st.stop()
             elif "gpt" in current_model:
-                # 檢查OpenAI金鑰
                 openai_key = os.getenv("OPENAI_API_KEY") or st.session_state.get("openai_api_key")
                 if not openai_key:
                     st.error("使用OpenAI模型需在下方輸入API金鑰 🔑")
@@ -524,7 +429,7 @@ def main():
             st.session_state.deep_analysis_image = None
             st.session_state.debug_logs = []
             st.session_state.debug_errors = []
-            st.session_state.thinking_protocol = None  # Clear thinking_protocol
+            st.session_state.thinking_protocol = None
             st.success("Memory cleared!")
             debug_log("Memory has been cleared.")
 
@@ -537,7 +442,6 @@ def main():
             st.text_area("Current Memory", value="No messages yet.", height=200)
             debug_log("No messages in memory.")
 
-        # --- CSV Upload ---
         st.subheader("📂 Upload a CSV File")
         uploaded_file = st.file_uploader("Choose a CSV file:", type=["csv"])
         csv_data = None
@@ -554,21 +458,19 @@ def main():
                     st.error(f"Error reading CSV: {e}")
                 debug_log(f"Error reading CSV: {e}")
 
-        # --- Image Upload ---
         st.subheader("🖼️ Upload an Image")
         uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"], key="image_uploader")
         if uploaded_image:
-            st.session_state.uploaded_image= add_user_image(uploaded_image)
+            st.session_state.uploaded_image = add_user_image(uploaded_image)
             debug_log(f"Uploaded image path: {st.session_state.uploaded_image}")
 
-        # --- Thinking Protocol Upload ---
         st.subheader("🧠 Upload Thinking Protocol")
         uploaded_thinking_protocol = st.file_uploader("Choose a thinking_protocol.md file:", type=["md"], key="thinking_protocol_uploader")
         if uploaded_thinking_protocol:
             try:
                 thinking_protocol_content = uploaded_thinking_protocol.read().decode("utf-8")
                 st.session_state.thinking_protocol = thinking_protocol_content
-                append_message("user", thinking_protocol_content)  # 添加为用户消息
+                append_message("user", thinking_protocol_content)
                 st.success("Thinking Protocol uploaded successfully!")
                 debug_log("Thinking Protocol uploaded and added to messages.")
             except Exception as e:
@@ -585,7 +487,6 @@ def main():
         st.session_state.editor_location = location
         debug_log(f"Editor location set to: {st.session_state.editor_location}")
 
-        # --- 调试区块移动到侧边栏 ---
         with st.expander("🛠️ 调试与会话信息", expanded=False):
             if st.session_state.debug_mode:
                 st.subheader("调试日志")
@@ -594,41 +495,32 @@ def main():
                     st.text_area("Debug Logs", value=debug_logs_combined, height=200)
                 else:
                     st.write("没有调试日志。")
-
                 st.subheader("调试错误")
                 if st.session_state.debug_errors:
                     debug_errors_combined = "\n".join(st.session_state.debug_errors)
                     st.text_area("Debug Errors", value=debug_errors_combined, height=200)
                 else:
                     st.write("没有调试错误。")
-
             st.subheader("会话信息 (messages.json)")
             if "messages" in st.session_state:
                 messages_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=4)
                 st.text_area("messages.json", value=messages_json, height=300)
-
-                # 添加下载按钮
                 st.download_button(
                     label="📥 下载 messages.json",
                     data=messages_json,
                     file_name="messages.json",
                     mime="application/json"
                 )
-
-                st.markdown("---")  # 添加分隔线
-
-                # 新增按钮：显示原始消息
+                st.markdown("---")
                 if st.button("📄 显示原始消息"):
                     st.subheader("🔍 原始消息内容")
-                    st.json(st.session_state.messages)  # 使用 st.json 格式化显示
+                    st.json(st.session_state.messages)
             else:
                 st.write("没有找到 messages。")
 
-    # --- Display Message History ---
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             if isinstance(message["content"], list):
-                # 處理列表形式的訊息內容，例如 image_url
                 for item in message["content"]:
                     if isinstance(item, dict) and item.get("type") == "image_url":
                         image_url = item["image_url"]["url"]
@@ -638,21 +530,18 @@ def main():
                         st.write(item)
                         debug_log(f"Displaying non-image content from {message['role']}: {item}")
             elif isinstance(message["content"], str) and "```python" in message["content"]:
-                # 處理包含 Python 代碼塊的文字訊息
                 code_match = re.search(r'```python\s*(.*?)\s*```', message["content"], re.DOTALL)
                 if code_match:
                     code = code_match.group(1).strip()
                     st.code(code, language="python")
                     debug_log(f"Displaying code from {message['role']}: {code}")
                 else:
-                    st.write(message["content"])  # 顯示上傳對話
+                    st.write(message["content"])
                     debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
             else:
-                # 處理普通的文字訊息
                 st.write(message["content"])
                 debug_log(f"Displaying message {idx} from {message['role']}: {message['content']}")
 
-    # --- User Input ---
     user_input = st.chat_input("Hi! Ask me anything...")
     if user_input:
         append_message("user", user_input)
@@ -662,28 +551,22 @@ def main():
 
         with st.spinner("Thinking..."):
             try:
-                # # Initialize OpenAI client if not already done
                 if openai_api_key or gemini_api_key:
                     client = initialize_client(openai_api_key)
                 else:
                     raise ValueError("OpenAI API Key is not provided.")
-
                 debug_log(f"Uploaded file path: {st.session_state.uploaded_file_path}")
                 debug_log(f"Uploaded image path: {st.session_state.uploaded_image_path}")
 
-                # --- Ensure system prompt is added only once ---
                 if not any(msg["role"] == "system" for msg in st.session_state.messages):
                     system_prompt = "You are an assistant that helps with data analysis."
                     append_message("system", system_prompt)
                     debug_log("System prompt added to messages.")
 
-                # --- Decide which prompt to use ---
                 if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
-                    # Image uploaded, image data already added as a separate message
-                    prompt = user_input  # Use user input directly
+                    prompt = user_input
                     debug_log("User input with image data already appended.")
                 else:
-                    # No image uploaded, use complex JSON logic
                     if st.session_state.uploaded_file_path is not None:
                         try:
                             df_temp = pd.read_csv(st.session_state.uploaded_file_path)
@@ -722,24 +605,20 @@ Available columns: {csv_columns}.
                         append_message("system", prompt)
                         debug_log("Plain text system prompt appended to messages.")
 
-                # Make the API request and get the response
                 model_params = {
                     "model": selected_model,
                     "temperature": 0.5,
                     "max_tokens": 4096
                 }
-
                 response_content = get_llm_response(client, model_params)
                 debug_log(f"Full assistant response: {response_content}")
 
                 if response_content:
-                    # After getting the response, append assistant message
                     append_message("assistant", response_content)
                     with st.chat_message("assistant"):
-                        st.write(response_content)  # 避免二次顯示
+                        st.write(response_content)
                         debug_log(f"Assistant response added to messages: {response_content}")
 
-                    # Extract JSON and code
                     json_str = extract_json_block(response_content)
                     try:
                         response_json = json.loads(json_str)
@@ -752,10 +631,6 @@ Available columns: {csv_columns}.
 
                     content = response_json.get("content", "Here is my analysis:")
                     append_message("assistant", content)
-                    # with st.chat_message("assistant"):
-                    #     # st.write(content)    # 避免二次顯示
-                    #     debug_log(f"Content from JSON appended to messages: {content}")
-
                     code = response_json.get("code", "")
                     if code:
                         code_block = f"```python\n{code}\n```"
@@ -765,11 +640,9 @@ Available columns: {csv_columns}.
                         st.session_state.ace_code = code
                         debug_log("ace_code updated with new code.")
 
-                    # --- If deep analysis mode is checked & code is present -> execute code and re-analyze chart ---
                     if st.session_state.deep_analysis_mode and code:
                         st.write("### [Deep Analysis] Automatically executing the generated code and sending the chart to GPT-4o for analysis...")
                         debug_log("Deep analysis mode activated.")
-
                         global_vars = {
                             "uploaded_file_path": st.session_state.uploaded_file_path,
                             "uploaded_image_path": st.session_state.uploaded_image_path,
@@ -778,7 +651,6 @@ Available columns: {csv_columns}.
                         st.write("#### Execution Result")
                         st.text(exec_result)
                         debug_log(f"Execution result: {exec_result}")
-
                         fig = plt.gcf()
                         buf = BytesIO()
                         fig.savefig(buf, format="png")
@@ -786,35 +658,23 @@ Available columns: {csv_columns}.
                         chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
                         st.session_state.deep_analysis_image = chart_base64
                         debug_log("Chart has been converted to base64.")
-
-                        # Prepare deep analysis prompt
                         prompt_2 = f"""基於圖片給我更多資訊"""
                         debug_log(f"Deep Analysis Prompt: {prompt_2}")
-
-                        # Append prompt_2 to messages
                         append_message("user", prompt_2)
                         debug_log("Deep analysis prompt appended to messages.")
-
-                        # 把圖片加到二次分析裡
                         image_content = [{
                             "type": "image_url",
                             "image_url": {"url": f"data:image/png;base64,{chart_base64}"}
                         }]
-                        append_message("user", image_content)  # 添加圖片到消息
-
-                        # Make the API request for deep analysis
+                        append_message("user", image_content)
                         second_raw_response = get_llm_response(client, model_params)
                         debug_log(f"Deep analysis response: {second_raw_response}")
-
                         if second_raw_response:
-                            # Append assistant response
                             append_message("assistant", second_raw_response)
                             st.session_state.second_response = second_raw_response
                             with st.chat_message("assistant"):
                                 st.write(second_raw_response)
                                 debug_log(f"Deep analysis response added to messages: {second_raw_response}")
-
-                            # Prepare final summary prompt
                             prompt_3 = f"""
 First response content: {content}
 Second response chart analysis content: {second_raw_response}
@@ -824,24 +684,16 @@ Second response chart analysis content: {second_raw_response}
 不要跟使用者說甚麼妳可以使用RFM分析，交叉分析之類的方法。我需要妳直接預測之後的走向，比如往上還是往下。
 """
                             debug_log(f"Final Summary Prompt: {prompt_3}")
-
-                            # Append prompt_3 to messages
                             append_message("user", prompt_3)
                             debug_log("Final summary prompt appended to messages.")
-
-                            # Make the API request for final summary
                             third_raw_response = get_llm_response(client, model_params)
                             debug_log(f"Final summary response: {third_raw_response}")
-
                             if third_raw_response:
-                                # Append assistant response
                                 append_message("assistant", third_raw_response)
                                 st.session_state.third_response = third_raw_response
                                 with st.chat_message("assistant"):
                                     st.write(third_raw_response)
                                     debug_log(f"Final summary response added to messages: {third_raw_response}")
-
-                                # Display the chart
                                 st.write("#### [Deep Analysis] Chart:")
                                 try:
                                     img_data = base64.b64decode(st.session_state.deep_analysis_image)
@@ -851,13 +703,30 @@ Second response chart analysis content: {second_raw_response}
                                     if st.session_state.debug_mode:
                                         st.error(f"Error displaying chart: {e}")
                                     debug_log(f"Error displaying chart: {e}")
-
             except Exception as e:
                 if st.session_state.debug_mode:
                     st.error(f"An error occurred: {e}")
                 debug_log(f"An error occurred: {e}")
 
-    # --- Persistent Code Editor ---
+    # 新增：二模型交叉驗證按鈕
+    if st.button("二模型交叉驗證"):
+        # 設定兩個模型的參數（可根據需要調整）
+        model_params_openai = {
+            "model": "gpt-4-turbo",
+            "temperature": 0.5,
+            "max_tokens": 4096
+        }
+        model_params_gemini = {
+            "model": "gemini-1.5-flash",
+            "temperature": 0.5,
+            "max_tokens": 4096
+        }
+        cross_validated_response = get_cross_validated_response(client, model_params_openai, model_params_gemini)
+        st.write("### OpenAI 回答")
+        st.write(cross_validated_response["openai_response"])
+        st.write("### Gemini 回答")
+        st.write(cross_validated_response["gemini_response"])
+
     if "ace_code" not in st.session_state:
         st.session_state.ace_code = ""
 
@@ -873,7 +742,6 @@ Second response chart analysis content: {second_raw_response}
             if edited_code != st.session_state.ace_code:
                 st.session_state.ace_code = edited_code
                 debug_log("ace_code updated from main editor.")
-
             if st.button("▶️ Execute Code", key="execute_code_main"):
                 global_vars = {
                     "uploaded_file_path": st.session_state.uploaded_file_path,
@@ -881,12 +749,10 @@ Second response chart analysis content: {second_raw_response}
                 }
                 debug_log(f"Executing code with uploaded_file_path = {st.session_state.uploaded_file_path}")
                 debug_log(f"Executing code with uploaded_image_path = {st.session_state.uploaded_image_path}")
-
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
                 debug_log(f"Code execution result: {result}")
-
     else:
         with st.sidebar.expander("🖋️ Persistent Code Editor (Sidebar)", expanded=False):
             edited_code = st_ace(
@@ -899,7 +765,6 @@ Second response chart analysis content: {second_raw_response}
             if edited_code != st.session_state.ace_code:
                 st.session_state.ace_code = edited_code
                 debug_log("ace_code updated from sidebar editor.")
-
             if st.button("▶️ Execute Code", key="execute_code_sidebar"):
                 global_vars = {
                     "uploaded_file_path": st.session_state.uploaded_file_path,
@@ -907,7 +772,6 @@ Second response chart analysis content: {second_raw_response}
                 }
                 debug_log(f"Executing code with uploaded_file_path = {st.session_state.uploaded_file_path}")
                 debug_log(f"Executing code with uploaded_image_path = {st.session_state.uploaded_image_path}")
-
                 result = execute_code(st.session_state.ace_code, global_vars=global_vars)
                 st.write("### Execution Result")
                 st.text(result)
