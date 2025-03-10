@@ -18,7 +18,7 @@ import time
 dotenv.load_dotenv()
 UPLOAD_DIR = "uploaded_files"
 LLM_MODELS = [  # 修改后的模型列表
-    "gpt-4-turbo",
+    "gpt-4o",
     "gpt-3.5-turbo-16k",
     "gemini-1.5-flash",
     "gemini-1.5-pro",
