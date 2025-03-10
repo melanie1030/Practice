@@ -307,20 +307,31 @@ def get_llm_response(client, model_params, max_retries=3):
 # 新增二模型交叉驗證函數
 # ------------------------------
 
-def get_cross_validated_response(client, model_params_openai, model_params_gemini, max_retries=3):
-    """
-    簡單的二模型交叉驗證：
-    1. 調用 OpenAI 模型 (例如 GPT-4-turbo) 獲取回答。
-    2. 調用 Gemini 模型 (例如 gemini-1.5-flash) 獲取回答。
-    3. 將兩者結果返回，方便後續做比對或投票決策。
-    """
-    response_openai = get_openai_response(client, model_params_openai, max_retries)
-    response_gemini = get_gemini_response(model_params_gemini, max_retries)
-    final_response = {
-        "openai_response": response_openai,
-        "gemini_response": response_gemini
+# 新增：二模型交叉驗證按鈕
+if st.button("二模型交叉驗證"):
+    if openai_api_key:
+        client = initialize_client(openai_api_key)
+    else:
+        st.error("OpenAI API Key is required for cross validation.")
+        st.stop()
+
+    # 設定兩個模型的參數（可根據需要調整）
+    model_params_openai = {
+        "model": "gpt-4-turbo",
+        "temperature": 0.5,
+        "max_tokens": 4096
     }
-    return final_response
+    model_params_gemini = {
+        "model": "gemini-1.5-flash",
+        "temperature": 0.5,
+        "max_tokens": 4096
+    }
+    cross_validated_response = get_cross_validated_response(client, model_params_openai, model_params_gemini)
+    st.write("### OpenAI 回答")
+    st.write(cross_validated_response["openai_response"])
+    st.write("### Gemini 回答")
+    st.write(cross_validated_response["gemini_response"])
+
 
 # ------------------------------
 # 主應用入口
