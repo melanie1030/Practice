@@ -760,8 +760,6 @@ Second response chart analysis content: {second_raw_response}
         }
         cross_validated_response = cross_validated_response = get_cross_validated_response(model_params_gemini)
         
-        st.write("### OpenAI 回答")
-        st.write(cross_validated_response["openai_response"])
         st.write("### Gemini 回答")
         st.write(cross_validated_response["gemini_response"])
     
