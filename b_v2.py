@@ -758,7 +758,8 @@ Second response chart analysis content: {second_raw_response}
             "temperature": 0.5,
             "max_tokens": 4096
         }
-        cross_validated_response = get_cross_validated_response(client, model_params_openai, model_params_gemini)
+        cross_validated_response = cross_validated_response = get_cross_validated_response(model_params_gemini)
+        
         st.write("### OpenAI 回答")
         st.write(cross_validated_response["openai_response"])
         st.write("### Gemini 回答")
