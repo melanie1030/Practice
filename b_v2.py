@@ -171,7 +171,7 @@ def get_gemini_response(model_params, max_retries=3):
     # 新增：加入 Gemini 回覆必須以 #zh-t 的系統提示
     gemini_system_prompt = {
         "role": "system",
-        "content": "請以繁體中文回答，並且所有回覆必須以 #zh-t 開頭。"
+        "content": "請以繁體中文回答，並且所有回覆必須以 #zh-tw 回覆。"
     }
     st.session_state.messages.insert(0, gemini_system_prompt)
     debug_log("Gemini system prompt for #zh-t added.")
