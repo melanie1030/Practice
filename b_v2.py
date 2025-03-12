@@ -314,43 +314,42 @@ def get_llm_response(client, model_params, max_retries=3):
 # 新增二模型交叉驗證函數
 # ------------------------------
 
-def get_cross_validated_response(client, model_params_openai, model_params_gemini, max_retries=3):
+def get_cross_validated_response(model_params_gemini, max_retries=3):
     """
-    二模型交叉驗證：
-    1. 調用 OpenAI 模型 (例如 GPT-4-turbo) 獲取回答。
-    2. 在記憶流中添加一則系統提示，要求 Gemini 使用全部對話記憶進行交叉驗證，
+    二模型交叉驗證（僅使用 Gemini 模型驗證）：
+    1. 在記憶流中添加一則系統提示，要求 Gemini 使用全部對話記憶進行交叉驗證，
        清楚說明其任務：檢查先前回答的正確性、指出潛在錯誤並提供數據或具體理由支持，
-       並對比兩者優劣。
-    3. 調用 Gemini 模型 (例如 gemini-1.5-flash) 獲取回答。
-    4. 將兩者結果返回，方便後續做比對或投票決策。
-    """
-    # 呼叫 OpenAI 模型獲取回答
-    response_openai = get_openai_response(client, model_params_openai, max_retries)
+       並對比不同模型的優缺點（若適用）。
+    2. 呼叫 Gemini 模型 (例如 gemini-1.5-flash 或 models/gemini-2.0-flash) 獲取回答。
+    3. 移除該系統提示後返回 Gemini 的回應結果。
     
-    # 為 Gemini 模型添加更明確的系統提示，說明任務內容
+    注意：此版本不再向 OpenAI 發送請求。
+    """
+    # 為 Gemini 模型添加更明確的系統提示，說明其任務內容
     cross_validation_prompt = {
         "role": "system",
         "content": (
             "請仔細閱讀以下全部對話記憶，對先前模型的回答進行交叉驗證。"
             "你的任務是檢查回答的正確性，指出其中可能存在的錯誤或不足，"
             "並提供具體的數據、理由或例子來支持你的分析。"
-            "此外，請對比不同模型的優缺點，並說明你認為哪個回答更為可靠。"
             "請務必使用繁體中文回答。"
+            "在回答時請回答的詳細，內容需要你盡可能的多。"
+            "並且越漂亮越好"
         )
     }
     st.session_state.messages.insert(0, cross_validation_prompt)
     
-    # 呼叫 Gemini 模型獲取回答，內部會將完整記憶流作為輸入
+    # 呼叫 Gemini 模型，內部會將完整記憶流作為輸入
     response_gemini = get_gemini_response(model_params_gemini, max_retries)
     
     # 移除剛剛添加的系統提示，以免影響後續對話
     st.session_state.messages.pop(0)
     
     final_response = {
-        "openai_response": response_openai,
         "gemini_response": response_gemini
     }
     return final_response
+
 
 
 
