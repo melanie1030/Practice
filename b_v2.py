@@ -728,7 +728,7 @@ Second response chart analysis content: {second_raw_response}
                                 st.write("#### [Deep Analysis] Chart:")
                                 try:
                                     img_data = base64.b64decode(st.session_state.deep_analysis_image)
-                                    st.image(img_data, caption="Chart generated from deep analysis", use_column_width=True)
+                                    st.image(img_data, caption="Chart generated from deep analysis", use_container_width=True)
                                     debug_log("Deep analysis chart displayed.")
                                 except Exception as e:
                                     if st.session_state.debug_mode:
