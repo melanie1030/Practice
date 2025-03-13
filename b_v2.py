@@ -555,7 +555,7 @@ def main():
                 for item in message["content"]:
                     if isinstance(item, dict) and item.get("type") == "image_url":
                         image_url = item["image_url"]["url"]
-                        st.image(image_url, caption="📷 上傳的圖片", use_column_width=True)
+                        st.image(image_url, caption="📷 上傳的圖片", use_container_width=True)
                         debug_log(f"Displaying image from {message['role']}: {image_url}")
                     else:
                         st.write(item)
