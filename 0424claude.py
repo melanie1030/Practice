@@ -349,11 +349,24 @@ def get_claude_response(model_params, max_retries=3):
             return completion
 
         except Exception as e:
-            debug_error(f"Claude API 請求異常（嘗試 {retries+1}/{max_retries}）：{e}")
-            st.warning(f"Claude 生成錯誤，{wait_time}秒後重試...")
-            time.sleep(wait_time)
-            retries += 1
-            wait_time *= 2
+            # debug_error(f"Claude API 請求異常（嘗試 {retries+1}/{max_retries}）：{e}")
+            # st.warning(f"Claude 生成錯誤，{wait_time}秒後重試...")
+            # time.sleep(wait_time)
+            # retries += 1
+            # wait_time *= 2
+            debug_log(f"Calling Claude with model={model_name}, max_tokens={max_tokens}, temperature={temperature}")
+            # 呼叫 Anthropic messages.create 接口
+            response = client.messages.create(
+                model=model_name,
+                messages=messages,
+                max_tokens_to_sample=max_tokens,
+                temperature=temperature,
+                tools=tools
+            )
+            # 假設回傳物件屬性為 'completion'
+            completion = response.completion.strip()
+            debug_log(f"Claude 回應：{completion}")
+            return completion
 
     st.error("Claude 請求失敗次數過多，請稍後再試")
     return ""
