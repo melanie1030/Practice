@@ -310,6 +310,7 @@ def get_openai_response(client, model_params, max_retries=3):
     return ""
 
 def get_claude_response(model_params, max_retries=3):
+    debug_log("claude loading")
     import anthropic, os
     # 先從 session_state 拿，再 fallback 到環境變數
     api_key = st.session_state.get("claude_api_key_input") or os.getenv("ANTHROPIC_API_KEY", "")
