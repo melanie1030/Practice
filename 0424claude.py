@@ -337,12 +337,13 @@ def get_claude_response(model_params, max_retries=3):
             debug_log(f"Calling Claude with model={model_name}, max_tokens={max_tokens}, temperature={temperature}")
             # 呼叫 Anthropic messages.create 接口
             response = client.messages.create(
-                model=model_name,
-                messages=messages,
-                max_tokens_to_sample=max_tokens,
-                temperature=temperature,
-                tools=tools
+            model=model_name,
+            messages=messages,
+            max_tokens=max_tokens,       # ← 改成這裡
+            temperature=temperature,
+            tools=tools
             )
+
             # 假設回傳物件屬性為 'completion'
             completion = response.completion.strip()
             debug_log(f"Claude 回應：{completion}")
