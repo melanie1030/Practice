@@ -310,18 +310,13 @@ def get_openai_response(client, model_params, max_retries=3):
     return ""
 
 def get_claude_response(model_params, max_retries=3):
-    """處理 Claude API 請求"""
-    import anthropic
-    import os
-
-    # 取得 Anthropic API 金鑰（請先在環境變數 ANTHROPIC_API_KEY 中設定）
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    debug_log(f"anthropic api key: {api_key}")
+    import anthropic, os
+    # 先從 session_state 拿，再 fallback 到環境變數
+    api_key = st.session_state.get("claude_api_key_input") or os.getenv("ANTHROPIC_API_KEY", "")
+    debug_log(f"Claude API key: {api_key}")
     if not api_key:
-        st.error("未設定 Claude (Anthropic) API 金鑰，請設置環境變數 ANTHROPIC_API_KEY")
+        st.error("未設定 Claude API 金鑰，請在側邊欄輸入")
         return ""
-    
-    # 初始化 Anthropic 客戶端
     client = anthropic.Anthropic(api_key=api_key)
     
     # 取出模型名稱與其他參數
@@ -374,10 +369,13 @@ def get_llm_response(client, model_params, max_retries=3):
         debug_log("Gemini")
         return get_gemini_response(model_params=model_params, max_retries=max_retries)
     elif "claude" in model_name.lower():
-        debug_log("Claude")
+        # 確保使用者已輸入 key
+        if not st.session_state.get("claude_api_key_input") and not os.getenv("ANTHROPIC_API_KEY"):
+            st.error("使用 Claude 模型需在側邊欄輸入 API 金鑰 🔑")
+            st.stop()
         return get_claude_response(model_params, max_retries)
     else:
-        st.error(f"不支持的模型類型: {model_name}")
+        st.error(f"不支援的模型類型: {model_name}")
         return ""
 
 # ------------------------------
@@ -470,10 +468,16 @@ def main():
                                        value=default_gemini_key, 
                                        type="password",
                                        key="gemini_api_key")
+        default_claude_key = os.getenv("ANTHROPIC_API_KEY", "")
+        claude_api_key = st.text_input("Claude API Key", value=default_claude_key, type="password")
+        
         if openai_api_key:
             os.environ["OPENAI_API_KEY"] = openai_api_key
         if gemini_api_key:
             st.session_state["gemini_api_key_input"] = gemini_api_key 
+        if claude_api_key:
+            os.environ["ANTHROPIC_API_KEY"] = claude_api_key
+            st.session_state["claude_api_key_input"] = claude_api_key
 
         selected_model = st.selectbox(
             "選擇模型", 
