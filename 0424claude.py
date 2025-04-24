@@ -34,6 +34,8 @@ LLM_MODELS = [  # 修改後的模型列表
     "gemini-1.5-flash",
     "gemini-1.5-pro",
     "models/gemini-2.0-flash"
+    "claude-3-7-sonnet-20250219"
+    "claude-3-5-haiku-20241022"
 ]
 
 MAX_MESSAGES = 10  # Limit message history
@@ -307,6 +309,60 @@ def get_openai_response(client, model_params, max_retries=3):
     st.error("請求失敗次數過多，請稍後再試")
     return ""
 
+def get_claude_response(model_params, max_retries=3):
+    """處理 Claude API 請求"""
+    import anthropic
+    import os
+
+    # 取得 Anthropic API 金鑰（請先在環境變數 ANTHROPIC_API_KEY 中設定）
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    debug_log(f"anthropic api key: {api_key}")
+    if not api_key:
+        st.error("未設定 Claude (Anthropic) API 金鑰，請設置環境變數 ANTHROPIC_API_KEY")
+        return ""
+    
+    # 初始化 Anthropic 客戶端
+    client = anthropic.Anthropic(api_key=api_key)
+    
+    # 取出模型名稱與其他參數
+    model_name = model_params.get("model", "claude-3-7-sonnet-20250219")
+    max_tokens = model_params.get("max_tokens", 1024)
+    temperature = model_params.get("temperature", 0.0)
+    tools = model_params.get("tools", None)  # 可選：function calling / tools
+    
+    # 準備 messages（沿用 st.session_state.messages）
+    # Claude 的 messages schema 與 OpenAI 類似：role 為 "system"/"user"/"assistant"
+    messages = st.session_state.messages
+    
+    retries = 0
+    wait_time = 5
+    while retries < max_retries:
+        try:
+            debug_log(f"Calling Claude with model={model_name}, max_tokens={max_tokens}, temperature={temperature}")
+            # 呼叫 Anthropic messages.create 接口
+            response = client.messages.create(
+                model=model_name,
+                messages=messages,
+                max_tokens_to_sample=max_tokens,
+                temperature=temperature,
+                tools=tools
+            )
+            # 假設回傳物件屬性為 'completion'
+            completion = response.completion.strip()
+            debug_log(f"Claude 回應：{completion}")
+            return completion
+
+        except Exception as e:
+            debug_error(f"Claude API 請求異常（嘗試 {retries+1}/{max_retries}）：{e}")
+            st.warning(f"Claude 生成錯誤，{wait_time}秒後重試...")
+            time.sleep(wait_time)
+            retries += 1
+            wait_time *= 2
+
+    st.error("Claude 請求失敗次數過多，請稍後再試")
+    return ""
+
+
 def get_llm_response(client, model_params, max_retries=3):
     """獲取LLM模型回覆（支持OpenAI和Gemini）"""
     model_name = model_params.get("model", "gpt-4-turbo")
@@ -317,6 +373,9 @@ def get_llm_response(client, model_params, max_retries=3):
     elif "gemini" in model_name:
         debug_log("Gemini")
         return get_gemini_response(model_params=model_params, max_retries=max_retries)
+    elif "claude" in model_name.lower():
+        debug_log("Claude")
+        return get_claude_response(model_params, max_retries)
     else:
         st.error(f"不支持的模型類型: {model_name}")
         return ""
