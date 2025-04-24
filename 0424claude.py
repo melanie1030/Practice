@@ -33,8 +33,8 @@ LLM_MODELS = [  # 修改後的模型列表
     "gpt-3.5-turbo-16k",
     "gemini-1.5-flash",
     "gemini-1.5-pro",
-    "models/gemini-2.0-flash"
-    "claude-3-7-sonnet-20250219"
+    "models/gemini-2.0-flash",
+    "claude-3-7-sonnet-20250219",
     "claude-3-5-haiku-20241022"
 ]
 
