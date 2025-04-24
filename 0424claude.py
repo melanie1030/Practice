@@ -500,7 +500,7 @@ def main():
                     st.error("使用OpenAI模型需在下方輸入API金鑰 🔑")
                     st.stop()
 
-        # st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
+        st.session_state.debug_mode = st.checkbox("Debug Mode", value=False)
         st.session_state.deep_analysis_mode = st.checkbox("Deep Analysis Mode", value=True)
 
         if "memory" not in st.session_state:
