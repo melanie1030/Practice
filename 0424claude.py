@@ -322,7 +322,7 @@ def get_claude_response(model_params, max_retries=3):
     
     # 取出模型名稱與其他參數
     model_name = model_params.get("model", "claude-3-7-sonnet-20250219")
-    max_tokens = model_params.get("max_tokens", 1024)
+    max_tokens = 8000  #寫死
     temperature = model_params.get("temperature", 0.0)
     tools = model_params.get("tools", None)  # 可選：function calling / tools
     
