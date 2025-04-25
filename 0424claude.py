@@ -721,7 +721,7 @@ Available columns: {csv_columns}.
 3.然後請使用繁體中文回應
 4.有任何針對資料集中想要知道的資訊，都可以使用plot來得知"""
                         debug_log("Prompt constructed for CSV input with JSON response.")
-                        append_message("assistant", prompt)
+                        append_message("assistant", prompt.rstrip())
                         debug_log("System prompt appended to messages.")
                     else:
                         prompt = f"Please answer this question entirely in Traditional Chinese: {user_input}"
