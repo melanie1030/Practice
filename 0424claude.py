@@ -680,7 +680,7 @@ def main():
 
                 if not any(msg["role"] == "system" for msg in st.session_state.messages):
                     system_prompt = "You are an assistant that helps with data analysis."   #   可修改，系統提示詞
-                    append_message("system", system_prompt)
+                    append_message("assistant", system_prompt)
                     debug_log("System prompt added to messages.")
 
                 if st.session_state.uploaded_image_path is not None and st.session_state.image_base64:
