@@ -338,9 +338,9 @@ def get_claude_response(model_params, max_retries=3):
             debug_log(f"Calling Claude with model={model_name}, max_tokens={max_tokens}, temperature={temperature},message={messages}")
             # 呼叫 Anthropic messages.create 接口
             response = client.messages.create(
-            model=model_name,
-            messages=messages,
-            max_tokens=max_tokens       # ← 改成這裡
+                model=model_name,
+                messages=messages,
+                max_tokens=max_tokens       # ← 改成這裡
             )
 
             # 假設回傳物件屬性為 'completion'
