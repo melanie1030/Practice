@@ -722,12 +722,12 @@ Available columns: {csv_columns}.
 4.有任何針對資料集中想要知道的資訊，都可以使用plot來得知
 """
                         debug_log("Prompt constructed for CSV input with JSON response.")
-                        append_message("system", prompt)
+                        append_message("assistant", prompt)
                         debug_log("System prompt appended to messages.")
                     else:
                         prompt = f"Please answer this question entirely in Traditional Chinese: {user_input}"
                         debug_log("Prompt constructed for plain text input.")
-                        append_message("system", prompt)
+                        append_message("assistant", prompt)
                         debug_log("Plain text system prompt appended to messages.")
 
                 model_params = {
