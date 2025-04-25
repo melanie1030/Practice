@@ -332,6 +332,7 @@ def get_claude_response(model_params, max_retries=3):
     
     retries = 0
     wait_time = 5
+    debug_log("break point")
     while retries < max_retries:
         try:
             debug_log(f"Calling Claude with model={model_name}, max_tokens={max_tokens}, temperature={temperature}")
