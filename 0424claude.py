@@ -339,9 +339,7 @@ def get_claude_response(model_params, max_retries=3):
             response = client.messages.create(
             model=model_name,
             messages=messages,
-            max_tokens=max_tokens,       # ← 改成這裡
-            temperature=temperature,
-            tools=tools
+            max_tokens=max_tokens       # ← 改成這裡
             )
 
             # 假設回傳物件屬性為 'completion'
