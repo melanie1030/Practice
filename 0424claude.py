@@ -339,8 +339,8 @@ def get_claude_response(model_params, max_retries=3):
             # 呼叫 Anthropic messages.create 接口
             response = client.messages.create(
                 model=model_name,
-                messages=messages,
-                max_tokens=max_tokens       # ← 改成這裡
+                max_tokens=max_tokens,
+                messages=messages    # ← 改成這裡
             )
 
             debug_log("response create successfully")
