@@ -343,6 +343,8 @@ def get_claude_response(model_params, max_retries=3):
                 max_tokens=max_tokens       # ← 改成這裡
             )
 
+            debug_log("response create successfully")
+
             # 假設回傳物件屬性為 'completion'
             completion = response.completion.strip()
             debug_log(f"Claude 回應：{completion}")
