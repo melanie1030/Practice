@@ -368,7 +368,7 @@ def get_claude_response(model_params, max_retries=3):
             # 假設回傳物件屬性為 'completion'
             debug_log("response create successfully")
             
-            completion = response.completion.strip()
+            completion = response.content[0].text
             debug_log(f"Claude 回應：{completion}")
             return completion
 
