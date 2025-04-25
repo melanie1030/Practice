@@ -340,7 +340,8 @@ def get_claude_response(model_params, max_retries=3):
             response = client.messages.create(
                 model=model_name,
                 max_tokens=max_tokens,
-                messages=messages    # ← 改成這裡
+                messages=messages,    # ← 改成這裡
+                stream=False
             )
 
             debug_log("response create successfully")
