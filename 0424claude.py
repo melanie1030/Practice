@@ -719,8 +719,7 @@ Available columns: {csv_columns}.
 1.圖表的顏色考慮使用其他的，不要使用預設
 2.在生成代碼時需要考慮plot的美觀性
 3.然後請使用繁體中文回應
-4.有任何針對資料集中想要知道的資訊，都可以使用plot來得知
-"""
+4.有任何針對資料集中想要知道的資訊，都可以使用plot來得知"""
                         debug_log("Prompt constructed for CSV input with JSON response.")
                         append_message("assistant", prompt)
                         debug_log("System prompt appended to messages.")
