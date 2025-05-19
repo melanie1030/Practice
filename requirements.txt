@@ -18,5 +18,7 @@ streamlit_ace
 seaborn
 google-generativeai
 anthropic
+
 plotly
 reportlab
+langchain-google-genai
