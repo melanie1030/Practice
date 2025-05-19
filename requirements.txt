@@ -19,3 +19,4 @@ seaborn
 google-generativeai
 anthropic
 plotly
+reportlab
