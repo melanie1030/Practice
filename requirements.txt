@@ -18,3 +18,4 @@ streamlit_ace
 seaborn
 google-generativeai
 anthropic
+plotly
