@@ -397,19 +397,16 @@ def get_llm_response(client, model_params, max_retries=3):
         return ""
 
 # ------------------------------
-# 新增多模型交叉驗證函數
+# 更新後的多模型交叉驗證函數
 # ------------------------------
 
-def get_cross_validated_response(model_params_gemini, max_retries=3):
+def get_cross_validated_response(client, model_params_validator, max_retries=3): # 新增 client 參數，修改 model_params 名稱
     """
-    多模型交叉驗證（僅使用 Gemini 模型驗證）：
-    1. 在記憶流中添加一則系統提示，要求 Gemini 使用全部對話記憶進行交叉驗證，
-       清楚說明其任務：檢查先前回答的正確性、指出潛在錯誤並提供數據或具體理由支持，
-       並對比不同模型的優缺點（若適用）。
-    2. 呼叫 Gemini 模型 (例如 gemini-1.5-flash 或 models/gemini-2.0-flash) 獲取回答。
-    3. 移除該系統提示後返回 Gemini 的回應結果。
-    
-    注意：此版本不再向 OpenAI 發送請求。
+    多模型交叉驗證：
+    1. 在記憶流中添加一則系統提示，要求所選驗證模型使用全部對話記憶進行交叉驗證，
+       清楚說明其任務：檢查先前回答的正確性、指出潛在錯誤並提供數據或具體理由支持。
+    2. 呼叫所選的驗證模型 (可以是 GPT, Gemini, Claude) 獲取回答。
+    3. 移除該系統提示後返回驗證模型的回應結果。
     """
     cross_validation_prompt = {
         "role": "system",
@@ -419,19 +416,22 @@ def get_cross_validated_response(model_params_gemini, max_retries=3):
             "並提供具體的數據、理由或例子來支持你的分析。"
             "請務必使用繁體中文回答。"
             "在回答時請回答的詳細，內容需要你盡可能的多。"
-            "並且越漂亮越好"
+            "並且越漂亮越好。"
         )
     }
     st.session_state.messages.insert(0, cross_validation_prompt)
-    
-    # 呼叫 Gemini 模型，內部會將完整記憶流作為輸入
-    response_gemini = get_gemini_response(model_params_gemini, max_retries)
-    
+    debug_log(f"Cross-validation prompt added. Validating with model: {model_params_validator.get('model')}")
+
+    # 調用通用的 LLM 回覆函數
+    validator_response_text = get_llm_response(client, model_params_validator, max_retries) # 改為調用 get_llm_response
+
     # 移除剛剛添加的系統提示，以免影響後續對話
-    st.session_state.messages.pop(0)
-    
+    if st.session_state.messages and st.session_state.messages[0]["role"] == "system" and "交叉驗證" in st.session_state.messages[0]["content"]:
+        st.session_state.messages.pop(0)
+        debug_log("Cross-validation prompt removed.")
+
     final_response = {
-        "gemini_response": response_gemini
+        "validator_response": validator_response_text # 修改鍵名
     }
     return final_response
 
@@ -832,29 +832,69 @@ Second response chart analysis content: {second_raw_response}
                     st.error(f"An error occurred: {e}")
                 debug_log(f"An error occurred: {e}")
 
-    # 新增：多模型交叉驗證按鈕
-    if st.button("多模型交叉驗證"):
-        if openai_api_key:
-            client = initialize_client(openai_api_key)
-        else:
-            st.error("OpenAI API Key is required for cross validation.")
+   # 新增：多模型交叉驗證區塊
+    st.markdown("---") # 分隔線
+    st.subheader("🔬 多模型交叉驗證")
+    
+    # 允許使用者選擇用於交叉驗證的模型
+    # 查找 "gemini-1.5-flash" 在 LLM_MODELS 中的索引，如果找不到則默認為0
+    default_validator_index = 0
+    try:
+        default_validator_index = LLM_MODELS.index("gemini-1.5-flash") # 推薦一個較快回應的模型作為預設
+    except ValueError:
+        pass # 如果找不到，就使用索引0
+    
+    validator_model_name = st.selectbox(
+        "選擇用於交叉驗證的模型：",
+        LLM_MODELS,
+        index=default_validator_index,
+        key="validator_model_selector"
+    )
+    
+    if st.button("🚀 執行交叉驗證"):
+        # 從 session_state 或環境變數中獲取最新的 API Key 狀態
+        openai_api_key_current = st.session_state.get("openai_api_key_input") or os.getenv("OPENAI_API_KEY", "")
+        gemini_api_key_current = st.session_state.get("gemini_api_key_input") or os.getenv("GEMINI_API_KEY", "")
+        claude_api_key_current = st.session_state.get("claude_api_key_input") or os.getenv("ANTHROPIC_API_KEY", "")
+    
+        key_missing = False
+        if "gpt" in validator_model_name.lower() and not openai_api_key_current:
+            st.error("使用 GPT 模型進行交叉驗證需要 OpenAI API Key。")
+            key_missing = True
+        elif "gemini" in validator_model_name.lower() and not gemini_api_key_current:
+            st.error("使用 Gemini 模型進行交叉驗證需要 Gemini API Key。")
+            key_missing = True
+        elif "claude" in validator_model_name.lower() and not claude_api_key_current:
+            st.error("使用 Claude 模型進行交叉驗證需要 Claude API Key。")
+            key_missing = True
+    
+        if key_missing:
             st.stop()
     
-        # 設定兩個模型的參數（可根據需要調整）
-        model_params_openai = {
-            "model": "gpt-4o",
-            "temperature": 0.5,
-            "max_tokens": 16384
+        if not st.session_state.messages or len(st.session_state.messages) < 2: # 至少需要一輪問答才有東西驗證
+            st.warning("對話內容過少，無法進行有意義的交叉驗證。請先進行一些對話。")
+            st.stop()
+    
+        client = initialize_client(openai_api_key_current) # 初始化 OpenAI client (如果選擇GPT模型會用到)
+    
+        model_params_validator = {
+            "model": validator_model_name,
+            "temperature": 0.3,  # 交叉驗證時，溫度可以稍低以求更精確
+            "max_tokens": 16384   # 確保有足夠的 token 產生詳細的驗證回覆
         }
-        model_params_gemini = {
-            "model": "models/gemini-2.0-flash",
-            "temperature": 0.5,
-            "max_tokens": 16384
-        }
-        cross_validated_response = cross_validated_response = get_cross_validated_response(model_params_gemini)
-        
-        st.write("### Gemini 回答")
-        st.write(cross_validated_response["gemini_response"])
+    
+        debug_log(f"Initiating cross-validation with model: {validator_model_name}")
+        with st.spinner(f"⏳ 使用 {validator_model_name} 進行交叉驗證中..."):
+            try:
+                cross_validated_data = get_cross_validated_response(client, model_params_validator)
+    
+                st.write(f"#### ✅ {validator_model_name} 交叉驗證結果：")
+                st.markdown(cross_validated_data.get("validator_response", "未能獲取驗證回覆。"))
+                # 決定是否將交叉驗證結果也加入主要對話歷史
+                # append_message("assistant", f"【交叉驗證結果 by {validator_model_name}】\n{cross_validated_data.get('validator_response', '')}") 
+            except Exception as e:
+                st.error(f"交叉驗證過程中發生錯誤：{str(e)}")
+                debug_error(f"Cross-validation error: {traceback.format_exc()}") # 確保 traceback 已 import
     
     if "ace_code" not in st.session_state:
         st.session_state.ace_code = ""
