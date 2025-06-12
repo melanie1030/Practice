@@ -19,6 +19,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 # --- 指定中文字型 ---
 try:
+    # 注意：在 Streamlit Cloud 上，您需要將字型檔案與 app.py 一起上傳到 GitHub 倉庫中
+    # 並確保路徑正確，例如在根目錄下建立一個 'fonts' 資料夾。
     font_path = "./fonts/msjh.ttc"
     fm.fontManager.addfont(font_path)
     matplotlib.rcParams['font.family'] = fm.FontProperties(fname=font_path).get_name()
@@ -32,7 +34,7 @@ UPLOAD_DIR = "uploaded_files"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-MAX_MESSAGES_PER_STREAM = 20 # 可以適當增加對話歷史長度
+MAX_MESSAGES_PER_STREAM = 20
 
 # --- 基礎輔助函數 ---
 def debug_log(msg):
@@ -147,7 +149,7 @@ def query_pandas_agent(agent, query: str):
         return error_message
 
 # ------------------------------
-# 主應用入口 (最終完整版)
+# 主應用入口
 # ------------------------------
 def main():
     st.set_page_config(
@@ -176,15 +178,13 @@ def main():
         st.header("⚙️ 設定")
         st.caption("請先提供您的 API Key 並上傳 CSV 檔案。")
 
-        # --- MODIFIED SECTION: Removed the problematic if block ---
-        # The st.text_input widget with a key will automatically manage the session state.
+        # 保留側邊欄輸入 Key 的功能
         st.text_input(
             "請輸入您的 Google Gemini API Key",
             value=st.session_state.get("gemini_api_key_input", ""),
             type="password",
             key="gemini_api_key_input"
         )
-        # No need for: if gemini_api_key_input: st.session_state.gemini_api_key_input = ...
 
         # CSV 檔案上傳器
         uploaded_file = st.file_uploader(
@@ -195,20 +195,35 @@ def main():
         
         # 檔案上傳後的處理邏輯
         if uploaded_file:
-            file_path = save_uploaded_file(uploaded_file)
-            if file_path != st.session_state.get("uploaded_file_path") or not st.session_state.get("pandas_agent"):
+            # 檢查檔案是否已上傳且未改變，避免重複建立 agent
+            if uploaded_file.name != st.session_state.get("last_uploaded_filename"):
+                st.session_state.last_uploaded_filename = uploaded_file.name
+                file_path = save_uploaded_file(uploaded_file)
                 st.session_state.uploaded_file_path = file_path
                 with st.spinner("正在初始化資料分析代理..."):
                     st.session_state.pandas_agent = create_pandas_agent(file_path)
+            
+            # 顯示預覽（如果檔案路徑存在）
+            if st.session_state.uploaded_file_path:
+                try:
+                    df_preview = pd.read_csv(st.session_state.uploaded_file_path)
+                    st.write("### CSV 資料預覽")
+                    st.dataframe(df_preview.head())
+                except Exception as e:
+                    st.error(f"讀取 CSV 預覽時出錯: {e}")
         
+        # 如果代理已成功建立，顯示成功訊息
+        if st.session_state.get("pandas_agent"):
+            st.success("✅ 資料分析代理已啟用！")
+
         st.divider()
 
         # 清除按鈕與偵錯工具
         if st.button("🗑️ 清除對話與資料"):
-            # A list of keys to clear from session state
             keys_to_clear = [
                 "messages", "pandas_agent", "uploaded_file_path", 
-                "debug_logs", "debug_errors", "gemini_api_key_input" # Also clear the key
+                "debug_logs", "debug_errors", "gemini_api_key_input",
+                "last_uploaded_filename"
             ]
             for key in keys_to_clear:
                 if key in st.session_state:
@@ -224,6 +239,38 @@ def main():
                 st.write("錯誤日誌:")
                 st.json(st.session_state.get("debug_errors", []))
 
+    # --- 主聊天介面 ---
+    # 顯示對話歷史
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 接收使用者輸入
+    if user_input := st.chat_input("請對您上傳的 CSV 檔案提問..."):
+        append_message_to_stream("user", user_input)
+        st.rerun()
+
+    # 處理並生成回應
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+        last_user_prompt = st.session_state.messages[-1]["content"]
+        
+        # 只有在代理存在時才呼叫
+        if st.session_state.get("pandas_agent"):
+            with st.chat_message("assistant"):
+                with st.spinner("資料分析代理正在思考中..."):
+                    response = query_pandas_agent(st.session_state.pandas_agent, last_user_prompt)
+                    st.markdown(response)
+                    # 將 assistant 的回應也加入歷史紀錄
+                    append_message_to_stream("assistant", response)
+        else:
+            # 如果代理不存在，在主畫面提示使用者上傳檔案
+            st.info("👈 請先在左側側邊欄上傳一個 CSV 檔案以開始分析。")
+            # 為了避免這個訊息被當作 assistant 的回覆存起來，我們在這裡直接結束
+            # 或者可以將它加入 messages，但需要特殊的角色
+            # 這裡選擇不加入，讓介面更乾淨
+            # We can clear the last user message to prevent re-triggering this block
+            # st.session_state.messages.pop() # Optional: remove user prompt if no agent
+            
 
 if __name__ == "__main__":
     main()
