@@ -1,24 +1,24 @@
-streamlit
-google-cloud-storage
-openai
-python-dotenv
-Pillow
-audio-recorder-streamlit
-pandas
-openpyxl
-requests
-langdetect
-matplotlib
-langchain
-python-dotenv
-faiss-cpu
-langchain_community
-fpdf2
-streamlit_ace
-seaborn
-google-generativeai
-anthropic
+# --- Core Streamlit App ---
+streamlit~=1.35.0
+pandas~=2.2.0
+matplotlib~=3.8.0
+streamlit-ace~=0.1.1
+Pillow~=10.3.0
 
-plotly
-reportlab
-langchain-google-genai
+# --- Environment & API Keys ---
+python-dotenv~=1.0.1
+
+# --- LLM Provider SDKs ---
+openai~=1.30.0
+google-generativeai~=0.7.0
+anthropic~=0.28.0
+
+# --- LangChain for Data Agent ---
+# Core LangChain library
+langchain~=0.2.1
+# OpenAI integrations for LangChain (LLMs, Embeddings)
+langchain-openai~=0.1.7
+# Required for the Pandas DataFrame Agent
+langchain-experimental~=0.0.60
+# A dependency for the agent to pretty-print tables
+tabulate~=0.9.0
