@@ -147,13 +147,13 @@ def query_pandas_agent(agent, query: str):
         return error_message
 
 # ------------------------------
-# 主應用入口 (最終簡化版)
+# 主應用入口 (最終完整版)
 # ------------------------------
 def main():
     st.set_page_config(
         page_title="Gemini CSV 資料分析助理",
         page_icon="🤖",
-        layout="centered" # 使用置中佈局，讓介面更聚焦
+        layout="centered"
     )
     st.title("🤖 Gemini CSV 資料分析助理")
 
@@ -176,15 +176,15 @@ def main():
         st.header("⚙️ 設定")
         st.caption("請先提供您的 API Key 並上傳 CSV 檔案。")
 
-        # 保留側邊欄輸入 Key 的功能
-        gemini_api_key_input = st.text_input(
+        # --- MODIFIED SECTION: Removed the problematic if block ---
+        # The st.text_input widget with a key will automatically manage the session state.
+        st.text_input(
             "請輸入您的 Google Gemini API Key",
             value=st.session_state.get("gemini_api_key_input", ""),
             type="password",
             key="gemini_api_key_input"
         )
-        if gemini_api_key_input:
-            st.session_state.gemini_api_key_input = gemini_api_key_input
+        # No need for: if gemini_api_key_input: st.session_state.gemini_api_key_input = ...
 
         # CSV 檔案上傳器
         uploaded_file = st.file_uploader(
@@ -196,7 +196,6 @@ def main():
         # 檔案上傳後的處理邏輯
         if uploaded_file:
             file_path = save_uploaded_file(uploaded_file)
-            # 如果檔案變更，或代理尚未建立，則重新建立代理
             if file_path != st.session_state.get("uploaded_file_path") or not st.session_state.get("pandas_agent"):
                 st.session_state.uploaded_file_path = file_path
                 with st.spinner("正在初始化資料分析代理..."):
@@ -206,9 +205,10 @@ def main():
 
         # 清除按鈕與偵錯工具
         if st.button("🗑️ 清除對話與資料"):
+            # A list of keys to clear from session state
             keys_to_clear = [
                 "messages", "pandas_agent", "uploaded_file_path", 
-                "debug_logs", "debug_errors"
+                "debug_logs", "debug_errors", "gemini_api_key_input" # Also clear the key
             ]
             for key in keys_to_clear:
                 if key in st.session_state:
@@ -223,33 +223,6 @@ def main():
                 st.json(st.session_state.get("debug_logs", []))
                 st.write("錯誤日誌:")
                 st.json(st.session_state.get("debug_errors", []))
-
-    # --- 主聊天介面 ---
-    # 顯示對話歷史
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # 接收使用者輸入
-    if user_input := st.chat_input("請對您上傳的 CSV 檔案提問..."):
-        append_message_to_stream("user", user_input)
-        st.rerun()
-
-    # 處理並生成回應
-    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-        last_user_prompt = st.session_state.messages[-1]["content"]
-        
-        # 只有在代理存在時才呼叫
-        if st.session_state.get("pandas_agent"):
-            with st.chat_message("assistant"):
-                with st.spinner("資料分析代理正在思考中..."):
-                    response = query_pandas_agent(st.session_state.pandas_agent, last_user_prompt)
-                    st.markdown(response)
-                    # 將 assistant 的回應也加入歷史紀錄
-                    append_message_to_stream("assistant", response)
-        else:
-            # 如果代理不存在，提示使用者上傳檔案
-            st.info("請先在左側側邊欄上傳一個 CSV 檔案以開始分析。")
 
 
 if __name__ == "__main__":
