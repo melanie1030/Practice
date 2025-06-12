@@ -274,38 +274,59 @@ def query_pandas_agent(agent, query: str):
         st.error(error_message)
         return error_message
 
-# --- NEW HELPER FUNCTION to handle OpenAI client initialization with proxy support ---
+# --- FINAL AND MOST ROBUST HELPER FUNCTION ---
 def get_openai_client_with_proxy_support():
     """
-    Creates an OpenAI client instance with proper proxy handling for openai library v1.0.0+.
-    It checks for HTTPS_PROXY environment variable.
+    Creates an OpenAI client instance with robust proxy handling.
+    This version temporarily removes proxy environment variables during client initialization
+    to prevent the library's problematic auto-detection, then restores them.
     """
     openai_api_key = st.session_state.get("openai_api_key_input") or os.getenv("OPENAI_API_KEY", "")
     if not openai_api_key:
         st.error("未在側邊欄設定 OpenAI API 金鑰。")
         return None
 
-    # Get proxy from environment variables
-    proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+    # List of common proxy environment variables (case-insensitive)
+    PROXY_ENV_VARS = [
+        "http_proxy", "https_proxy", "all_proxy",
+        "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"
+    ]
+    
+    # Backup original proxy settings
+    original_proxies = {key: os.environ.get(key) for key in PROXY_ENV_VARS if os.environ.get(key)}
+    
+    # Get the proxy URL to be used by httpx, before we clear the environment variables
+    proxy_url_for_httpx = original_proxies.get("HTTPS_PROXY") or original_proxies.get("https_proxy") or \
+                          original_proxies.get("HTTP_PROXY") or original_proxies.get("http_proxy")
 
+    # Temporarily remove proxy settings from environment to prevent OpenAI lib's auto-detection
+    for key in original_proxies:
+        del os.environ[key]
+
+    client = None
     try:
-        if proxy_url:
-            debug_log(f"Proxy detected: {proxy_url}. Configuring httpx client.")
-            # Configure httpx client with proxy
-            proxies = {"http://": proxy_url, "https://": proxy_url}
-            http_client = httpx.Client(proxies=proxies)
-            # Pass the configured httpx client to OpenAI client
+        debug_log("Temporarily cleared proxy env variables for OpenAI client initialization.")
+        
+        if proxy_url_for_httpx:
+            debug_log(f"Manually configuring httpx client with proxy: {proxy_url_for_httpx}")
+            proxies_for_httpx = {"http://": proxy_url_for_httpx, "https://": proxy_url_for_httpx}
+            http_client = httpx.Client(proxies=proxies_for_httpx)
             client = OpenAI(api_key=openai_api_key, http_client=http_client)
         else:
-            # If no proxy, initialize normally
             debug_log("No proxy detected. Initializing OpenAI client normally.")
             client = OpenAI(api_key=openai_api_key)
-        
-        return client
+            
     except Exception as e:
-        st.error(f"OpenAI Client 初始化失敗: {e}")
-        debug_error(f"OpenAI Client init with proxy support failed: {e}, Traceback: {traceback.format_exc()}")
-        return None
+        st.error(f"OpenAI Client 初始化時發生最終錯誤: {e}")
+        debug_error(f"Final OpenAI Client init failed: {e}, Traceback: {traceback.format_exc()}")
+        
+    finally:
+        # CRITICAL: Restore original environment variables
+        for key, value in original_proxies.items():
+            os.environ[key] = value
+        debug_log("Restored original proxy env variables.")
+
+    return client
         
 # --- All original LLM interaction functions below remain the same ---
 # (get_gemini_response_for_generic_role, get_gemini_executive_analysis, etc.)
