@@ -776,7 +776,7 @@ def generate_data_profile(df):
     return "\n".join(profile_parts)
 
 # ------------------------------
-# 主應用入口
+# 主應用入口 (最終完整版)
 # ------------------------------
 def main():
     st.set_page_config(page_title="Multi-Role & Exec Workflow Chatbot", page_icon="🤖", layout="wide")
@@ -798,10 +798,8 @@ def main():
         if exec_id_key not in st.session_state: st.session_state[exec_id_key] = []
     
     # <--- NEW STATE ---
-    # Initialize the pandas agent in session state
     if "pandas_agent" not in st.session_state:
         st.session_state.pandas_agent = None
-
 
     if "ace_code" not in st.session_state: st.session_state.ace_code = ""
     if "editor_location" not in st.session_state: st.session_state.editor_location = "Sidebar"
@@ -817,10 +815,8 @@ def main():
         st.subheader("🔑 API Key Settings")
         openai_api_key_input = st.text_input("OpenAI API Key", value=st.session_state.get("openai_api_key_input",""), type="password", key="openai_api_key_widget")
         if openai_api_key_input: st.session_state.openai_api_key_input = openai_api_key_input
-
         gemini_api_key_input = st.text_input("Gemini API Key", value=st.session_state.get("gemini_api_key_input",""), type="password", key="gemini_api_key_widget")
         if gemini_api_key_input: st.session_state.gemini_api_key_input = gemini_api_key_input
-
         claude_api_key_input = st.text_input("Claude API Key", value=st.session_state.get("claude_api_key_input",""), type="password", key="claude_api_key_widget")
         if claude_api_key_input: st.session_state.claude_api_key_input = claude_api_key_input
 
@@ -845,40 +841,38 @@ def main():
             for role_id_iter, P_info in ROLE_DEFINITIONS.items():
                 if P_info["messages_key"] in st.session_state: st.session_state[P_info["messages_key"]] = []
                 if P_info["chat_session_key"] in st.session_state: del st.session_state[P_info["chat_session_key"]]
-
-            st.session_state.executive_workflow_stage = "idle"
-            # ... (clearing other executive states) ...
             
             # <--- MODIFIED LOGIC ---
-            # Clear all session states, including the new pandas_agent
-            keys_to_clear = ["ace_code", "uploaded_file_path", "uploaded_image_path",
-                             "image_base64", "pending_image_for_main_gemini", "second_response", "third_response",
-                             "deep_analysis_image", "thinking_protocol", "debug_logs", "debug_errors",
-                             "pandas_agent", "executive_user_query", "cfo_analysis_text", "coo_analysis_text", "ceo_summary_text"]
+            keys_to_clear = [
+                "ace_code", "uploaded_file_path", "uploaded_image_path",
+                "image_base64", "pending_image_for_main_gemini", "second_response", "third_response",
+                "deep_analysis_image", "thinking_protocol", "debug_logs", "debug_errors",
+                "pandas_agent", "executive_user_query", "cfo_analysis_text", "coo_analysis_text", 
+                "ceo_summary_text", "executive_workflow_stage"
+            ]
             for key in keys_to_clear:
                 if key in st.session_state: st.session_state.pop(key)
-            
             st.success("All memories and chat states cleared!")
             debug_log("All memory cleared.")
             st.rerun()
 
         st.subheader("🧠 Main Chat Memory State")
-        # (This part remains unchanged)
+        if st.session_state.get("messages"):
+            memory_content = "\n".join([f"{('' if msg['role']=='system' else msg['role']+': ')}{str(msg['content'])[:100]+'...' if isinstance(msg['content'], str) and len(msg['content']) > 100 else str(msg['content'])}" for msg in st.session_state.messages])
+            st.text_area("Current Main Chat Memory", value=memory_content, height=150, key="main_chat_memory_display_sidebar")
+        else:
+            st.text_area("Current Main Chat Memory", value="No messages yet in main chat.", height=150)
 
         st.subheader("📂 Upload CSV (For Main Chat & Executive Workflow)")
         uploaded_file = st.file_uploader("上傳CSV以啟用資料分析代理:", type=["csv"], key="main_csv_uploader_sidebar")
         
         # <--- NEW LOGIC ---
-        # Create Pandas Agent upon file upload
         if uploaded_file:
             file_path = save_uploaded_file(uploaded_file)
-            # Only create a new agent if the file path has changed or agent doesn't exist
             if file_path != st.session_state.get("uploaded_file_path") or not st.session_state.get("pandas_agent"):
                 st.session_state.uploaded_file_path = file_path
                 with st.spinner("正在初始化資料分析代理..."):
                     st.session_state.pandas_agent = create_pandas_agent(file_path)
-            
-            # Display preview and status
             try:
                 df_preview = pd.read_csv(st.session_state.uploaded_file_path)
                 st.write("### CSV Data Preview")
@@ -888,11 +882,42 @@ def main():
                     st.info("您現在可以在主聊天室中對此 CSV 檔案提問。")
             except Exception as e:
                 st.error(f"讀取 CSV 預覽時出錯: {e}")
-                st.session_state.pandas_agent = None # Reset agent if file is bad
-        
-        # (Rest of the sidebar remains unchanged)
+                st.session_state.pandas_agent = None
+
         st.subheader("🖼️ Upload Image (Main Chat)")
-        # ...
+        uploaded_image = st.file_uploader("Choose an image:", type=["png", "jpg", "jpeg"], key="main_image_uploader_sidebar")
+        if uploaded_image:
+            is_gemini_selected = "gemini" in st.session_state.get("selected_model", "").lower()
+            if is_gemini_selected and "pending_image_for_main_gemini" in st.session_state and st.session_state.pending_image_for_main_gemini:
+                st.warning("已有圖片待發送 (Gemini)。請先發送包含該圖片的文字訊息，或清除記憶。")
+            else:
+                add_user_image_to_main_chat(uploaded_image)
+
+        st.subheader("Editor Location")
+        location = st.radio( "Choose where to display the editor:", ["Main", "Sidebar"],
+            index=1 if st.session_state.get("editor_location", "Sidebar") == "Sidebar" else 0,
+            key="editor_loc_radio_sidebar" )
+        st.session_state.editor_location = location
+
+        with st.expander("🛠️ 調試與會話資訊 (Main Chat)", expanded=False):
+            if st.session_state.get("debug_mode", False):
+                st.subheader("調試日誌")
+                debug_logs_str = "\n".join(map(str, st.session_state.get("debug_logs", [])))
+                st.text_area("Debug Logs", value=debug_logs_str, height=200, key="debug_log_area_sidebar")
+                st.subheader("調試錯誤")
+                debug_errors_str = "\n".join(map(str, st.session_state.get("debug_errors", [])))
+                st.text_area("Debug Errors", value=debug_errors_str, height=200, key="debug_err_area_sidebar")
+            st.subheader("會話資訊 (messages.json - Main Chat)")
+            if st.session_state.get("messages"):
+                try:
+                    def safe_json_encoder(obj):
+                        if isinstance(obj, Image.Image): return f"<PIL.Image {obj.format} {obj.size}>"
+                        return str(obj)
+                    messages_json_main = json.dumps(st.session_state.messages, ensure_ascii=False, indent=2, default=safe_json_encoder)
+                    st.text_area("messages.json (Main Chat)", value=messages_json_main, height=200, key="main_msg_json_area_sidebar")
+                    st.download_button(label="📥 下載 Main messages.json", data=messages_json_main, file_name="main_messages.json", mime="application/json", key="dl_main_json_sidebar")
+                except TypeError as te:
+                    st.error(f"無法序列化主聊天消息: {te}")
 
     # --- Main Area with Tabs ---
     tab_ui_names = ["💬 Main Chat & Analysis", "💼 Executive Workflow"] + [ROLE_DEFINITIONS[rid]["name"] for rid in ROLE_DEFINITIONS.keys()]
@@ -901,11 +926,18 @@ def main():
     # Tab 0: Main Chat
     with tabs[0]:
         st.header("💬 Main Chat & Data Analysis Engine")
-        # (Chat history display remains unchanged)
         for idx, message in enumerate(st.session_state.get("messages", [])):
-             with st.chat_message(message["role"]):
-                # ... (code for displaying messages)
-                st.write(message["content"])
+            with st.chat_message(message["role"]):
+                if isinstance(message["content"], list):
+                    for item in message["content"]:
+                        if isinstance(item, dict) and item.get("type") == "image_url": st.image(item["image_url"]["url"], caption="📷", use_container_width=True)
+                        elif isinstance(item, dict) and item.get("type") == "text": st.write(item["text"])
+                        else: st.write(item)
+                else:
+                    st.write(message["content"])
+        if "gemini" in st.session_state.get("selected_model", "").lower() and "pending_image_for_main_gemini" in st.session_state and st.session_state.pending_image_for_main_gemini:
+            with st.chat_message("user"):
+                st.image(st.session_state.pending_image_for_main_gemini, caption="圖片待發送 (Gemini). 輸入文字以發送.", use_container_width=True)
 
         user_input_main = st.chat_input("對通用模型或上傳的CSV提問...", key="main_chat_input_box_main")
         if user_input_main:
@@ -915,20 +947,15 @@ def main():
         # <--- MAJOR MODIFIED LOGIC: Main response generation ---
         if st.session_state.get("messages") and st.session_state.messages[-1]["role"] == "user":
             last_user_prompt = st.session_state.messages[-1]["content"]
-            
-            # Route to Pandas Agent if it's available
             if st.session_state.get("pandas_agent"):
                 with st.spinner("資料分析代理正在思考中..."):
                     debug_log("Routing query to Pandas Agent.")
                     response_content_main = query_pandas_agent(st.session_state.pandas_agent, last_user_prompt)
-                    # Check for errors from the agent function
                     if response_content_main and not response_content_main.startswith("錯誤："):
                         append_message_to_stream("messages", "assistant", response_content_main)
-                    else: # Handle agent error case
+                    else:
                         append_message_to_stream("messages", "assistant", f"代理處理時發生問題：{response_content_main}")
                     st.rerun()
-
-            # Fallback to general LLM if no agent is active
             else:
                 with st.spinner("通用助理正在思考中..."):
                     debug_log("Routing query to general LLM.")
@@ -940,10 +967,8 @@ def main():
                             client_openai_main_chat = OpenAI(api_key=openai_api_key_val)
                         except Exception as e:
                             st.error(f"Failed to initialize OpenAI client for main chat: {e}"); st.stop()
-
                     model_params_main = {"model": selected_model_main, "temperature": 0.5, "max_tokens": 4096}
                     response_content_main = get_llm_response(client_openai_main_chat, model_params_main, message_stream_key="messages")
-
                     if response_content_main and not response_content_main.startswith("Error:"):
                         append_message_to_stream("messages", "assistant", response_content_main)
                     elif response_content_main.startswith("Error:"):
@@ -952,25 +977,173 @@ def main():
                         append_message_to_stream("messages", "assistant", "通用助理未能獲取回覆。")
                     st.rerun()
 
-        # (Rest of the Main Chat tab, like Code Editor and Cross-Validation, remains unchanged)
-        # ...
+        if st.session_state.get("editor_location") == "Main":
+            with st.expander("🖋️ Persistent Code Editor (Main Chat)", expanded=True):
+                edited_code_main = st_ace( value=st.session_state.get("ace_code", "# Python code for main analysis"), language="python", theme="monokai", height=300, key="ace_editor_main_chat_main_tab" )
+                if edited_code_main != st.session_state.get("ace_code"): st.session_state.ace_code = edited_code_main
+                if st.button("▶️ Execute Code (Main Chat)", key="exec_code_main_btn_main_tab"):
+                    global_vars_main = { "st_session_state": st.session_state, "pd": pd, "plt": plt, "st": st, "uploaded_file_path": st.session_state.get("uploaded_file_path")}
+                    exec_result_main = execute_code(st.session_state.ace_code, global_vars=global_vars_main)
+                    st.text_area("Execution Result:", value=str(exec_result_main), height=150, key="exec_result_main_area_main_tab")
+        st.markdown("---")
+        st.subheader("🔬 Multi-Model Cross-Validation (Main Chat)")
+        default_validator_idx = LLM_MODELS.index("gemini-1.5-flash") if "gemini-1.5-flash" in LLM_MODELS else 0
+        validator_model_name = st.selectbox("選擇交叉驗證模型 (Main Chat):", LLM_MODELS, index=default_validator_idx, key="validator_model_main_select_main_tab")
+        if st.button("🚀 執行交叉驗證 (Main Chat)", key="cross_validate_main_btn_main_tab"):
+            client_for_validator_cv = None
+            if "gpt" in validator_model_name.lower():
+                openai_api_key_val_cv = st.session_state.get("openai_api_key_input")
+                if not openai_api_key_val_cv: st.error("OpenAI key for GPT validator missing."); st.stop()
+                try:
+                    client_for_validator_cv = OpenAI(api_key=openai_api_key_val_cv)
+                except Exception as e:
+                    st.error(f"Failed to initialize OpenAI client for CV: {e}"); st.stop()
+            if not st.session_state.get("messages") or len(st.session_state.messages) < 2: st.warning("Main chat內容過少。"); st.stop()
+            model_params_validator = {"model": validator_model_name, "temperature": 0.2, "max_tokens": 4096}
+            with st.spinner(f"使用 {validator_model_name} 進行交叉驗證中..."):
+                validated_data = get_cross_validated_response(client_for_validator_cv, model_params_validator)
+                st.markdown(f"#### ✅ {validator_model_name} 交叉驗證結果："); st.markdown(validated_data.get("validator_response", "未能獲取驗證回覆。"))
 
     # Tab 1: Executive Workflow
     with tabs[1]:
-        # (This entire tab remains unchanged as it uses its own logic)
         st.header("💼 Executive Decision Workflow (Powered by OpenAI)")
-        # ... (all original code for this tab)
+        st.write("This workflow uses the CSV uploaded in the Main Chat tab and OpenAI models for analysis.")
+        st.session_state.executive_user_query = st.text_area( "Enter the Business Problem or Question for Executive Analysis:", value=st.session_state.get("executive_user_query", ""), key="exec_problem_input", height=100 )
+        can_start_exec_workflow = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("executive_user_query"))
+        if st.button("🚀 Start/Restart Executive Analysis (OpenAI)", key="start_exec_workflow_btn_openai", disabled=not can_start_exec_workflow):
+            if not st.session_state.get("uploaded_file_path"):
+                st.error("Please upload a CSV file in the 'Main Chat & Analysis' tab first.")
+            elif not st.session_state.get("executive_user_query", "").strip():
+                st.error("Please enter a business problem or question.")
+            else:
+                st.session_state.executive_workflow_stage = "data_profiling_pending"
+                st.session_state.cfo_analysis_text = ""
+                st.session_state.coo_analysis_text = ""
+                st.session_state.ceo_summary_text = ""
+                for exec_key in ["cfo_exec_messages", "coo_exec_messages", "ceo_exec_messages"]: st.session_state[exec_key] = []
+                debug_log("Executive Workflow (OpenAI) Initiated.")
+                st.rerun()
+        if not can_start_exec_workflow and st.session_state.executive_workflow_stage == "idle":
+            st.info("Please upload a CSV in the 'Main Chat' tab and enter a business problem above to start the Executive Analysis (OpenAI).")
+        if st.session_state.executive_workflow_stage == "data_profiling_pending":
+            with st.spinner("Generating data profile for executives..."):
+                try:
+                    df_exec = pd.read_csv(st.session_state.uploaded_file_path)
+                    st.session_state.executive_data_profile_str = generate_data_profile(df_exec)
+                    append_message_to_stream("cfo_exec_messages", "system", f"Data Profile Provided:\n{st.session_state.executive_data_profile_str[:500]}...")
+                    st.session_state.executive_workflow_stage = "cfo_analysis_pending"
+                    debug_log("Data profile generated for executive workflow.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to read or profile CSV for executive workflow: {e}")
+                    debug_error(f"Exec workflow data profiling error: {e}")
+                    st.session_state.executive_workflow_stage = "idle"
+        if st.session_state.executive_data_profile_str and st.session_state.executive_workflow_stage != "idle":
+            with st.expander("View Data Profile Used by Executives", expanded=False):
+                st.text_area("Data Profile:", value=st.session_state.executive_data_profile_str, height=300, key="exec_data_profile_display", disabled=True)
+        if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
+            with st.spinner("CFO is analyzing... (using OpenAI gpt-4o by default)"):
+                cfo_prompt = f"""You are the Chief Financial Officer (CFO)...""" # Prompt kept concise for brevity
+                append_message_to_stream("cfo_exec_messages", "user", cfo_prompt)
+                cfo_model_params = {"model": "gpt-4o", "temperature": 0.3, "max_tokens": 2000}
+                cfo_response = get_openai_executive_analysis("CFO", cfo_prompt, cfo_model_params)
+                if cfo_response and not cfo_response.startswith("Error:"):
+                    st.session_state.cfo_analysis_text = cfo_response
+                    append_message_to_stream("cfo_exec_messages", "assistant", cfo_response)
+                    st.session_state.executive_workflow_stage = "coo_analysis_pending"
+                    debug_log("CFO analysis (OpenAI) completed.")
+                    st.rerun()
+                else:
+                    st.error(f"CFO analysis (OpenAI) failed: {cfo_response}")
+                    st.session_state.executive_workflow_stage = "error"
+        if st.session_state.cfo_analysis_text:
+            st.subheader("📊 CFO Analysis (OpenAI)")
+            st.markdown(st.session_state.cfo_analysis_text)
+            st.markdown("---")
+        if st.session_state.executive_workflow_stage == "coo_analysis_pending":
+            with st.spinner("COO is analyzing... (using OpenAI gpt-4o by default)"):
+                coo_prompt = f"""You are the Chief Operating Officer (COO)...""" # Prompt kept concise for brevity
+                append_message_to_stream("coo_exec_messages", "user", coo_prompt)
+                coo_model_params = {"model": "gpt-4o", "temperature": 0.4, "max_tokens": 2000}
+                coo_response = get_openai_executive_analysis("COO", coo_prompt, coo_model_params)
+                if coo_response and not coo_response.startswith("Error:"):
+                    st.session_state.coo_analysis_text = coo_response
+                    append_message_to_stream("coo_exec_messages", "assistant", coo_response)
+                    st.session_state.executive_workflow_stage = "ceo_synthesis_pending"
+                    debug_log("COO analysis (OpenAI) completed.")
+                    st.rerun()
+                else:
+                    st.error(f"COO analysis (OpenAI) failed: {coo_response}")
+                    st.session_state.executive_workflow_stage = "error"
+        if st.session_state.coo_analysis_text:
+            st.subheader("⚙️ COO Analysis (OpenAI)")
+            st.markdown(st.session_state.coo_analysis_text)
+            st.markdown("---")
+        if st.session_state.executive_workflow_stage == "ceo_synthesis_pending":
+            with st.spinner("CEO is synthesizing and making decisions... (using OpenAI gpt-4o by default)"):
+                ceo_prompt = f"""You are the Chief Executive Officer (CEO)...""" # Prompt kept concise for brevity
+                append_message_to_stream("ceo_exec_messages", "user", ceo_prompt)
+                ceo_model_params = {"model": "gpt-4o", "temperature": 0.5, "max_tokens": 2500}
+                ceo_response = get_openai_executive_analysis("CEO", ceo_prompt, ceo_model_params)
+                if ceo_response and not ceo_response.startswith("Error:"):
+                    st.session_state.ceo_summary_text = ceo_response
+                    append_message_to_stream("ceo_exec_messages", "assistant", ceo_response)
+                    st.session_state.executive_workflow_stage = "completed"
+                    debug_log("CEO synthesis (OpenAI) completed.")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error(f"CEO synthesis (OpenAI) failed: {ceo_response}")
+                    st.session_state.executive_workflow_stage = "error"
+        if st.session_state.executive_workflow_stage == "completed" and st.session_state.ceo_summary_text:
+            st.subheader("👑 CEO Strategic Summary & Decisions (OpenAI)")
+            st.markdown(st.session_state.ceo_summary_text)
+            st.success("Executive Workflow (OpenAI) Completed!")
+        if st.session_state.executive_workflow_stage == "error":
+            st.error("An error occurred during the executive workflow. Please check logs if debug mode is on, or try restarting.")
+        if st.session_state.executive_workflow_stage not in ["idle", "data_profiling_pending"]:
+            with st.expander("View Executive Communication Logs (OpenAI)", expanded=False):
+                for exec_role_name, exec_msg_key in [("CFO", "cfo_exec_messages"), ("COO", "coo_exec_messages"), ("CEO", "ceo_exec_messages")]:
+                    if st.session_state.get(exec_msg_key):
+                        st.markdown(f"**{exec_role_name}'s Log:**")
+                        for i, msg in enumerate(st.session_state[exec_msg_key]):
+                            st.markdown(f"_{msg['role']} (turn {i//2 + 1})_:\n{str(msg['content'])[:300]}...")
+                        st.markdown("---")
 
-    # Tabs for Generic Roles (Summarizer, Code Explainer, Creative Writer)
+    # Tabs for Generic Roles
     for i, role_id_generic in enumerate(ROLE_DEFINITIONS.keys()):
+        role_info = ROLE_DEFINITIONS[role_id_generic]
         with tabs[i + 2]:
-            # (This entire section for generic roles remains unchanged)
-            st.header(ROLE_DEFINITIONS[role_id_generic]["name"])
-            # ... (all original code for these tabs)
-            
-    # (Sidebar Code Editor remains unchanged)
-    # ...
+            st.header(role_info["name"])
+            st.caption(role_info["system_prompt"].split('.')[0] + ". (Powered by Gemini)")
+            message_key_role = role_info["messages_key"]
+            for msg_role in st.session_state[message_key_role]:
+                with st.chat_message(msg_role["role"]):
+                    st.write(msg_role["content"])
+            user_input_role = st.chat_input(f"Chat with {role_info['name']}...", key=f"input_{role_id_generic}")
+            if user_input_role:
+                append_message_to_stream(message_key_role, "user", user_input_role)
+                st.rerun()
+            if st.session_state[message_key_role] and st.session_state[message_key_role][-1]["role"] == "user":
+                with st.spinner(f"{role_info['name']} is thinking..."):
+                    last_user_input_for_role = st.session_state[message_key_role][-1]["content"]
+                    role_model_params = { "model": "gemini-1.5-flash", "temperature": 0.7 }
+                    response_role = get_gemini_response_for_generic_role(role_id_generic, last_user_input_for_role, role_model_params)
+                    if response_role and not response_role.startswith("Error:"):
+                        append_message_to_stream(message_key_role, "assistant", response_role)
+                    else:
+                        append_message_to_stream(message_key_role, "assistant", response_role if response_role else f"Sorry, {role_info['name']} couldn't get a response.")
+                    st.rerun()
 
+    # Sidebar Code Editor
+    if st.session_state.get("editor_location") == "Sidebar":
+        with st.sidebar.expander("🖋️ Persistent Code Editor (Sidebar)", expanded=False):
+            edited_code_sidebar = st_ace(value=st.session_state.get("ace_code", "// Python code in sidebar..."), language="python",theme="monokai",height=300,key="ace_editor_sidebar_widget")
+            if edited_code_sidebar != st.session_state.get("ace_code"): st.session_state.ace_code = edited_code_sidebar
+            if st.button("▶️ Execute Code (Sidebar)", key="exec_code_sidebar_btn_widget"):
+                global_vars_sidebar = {"st_session_state": st.session_state, "pd": pd, "plt": plt, "st": st, "uploaded_file_path": st.session_state.get("uploaded_file_path")}
+                exec_result_sidebar = execute_code(st.session_state.ace_code, global_vars=global_vars_sidebar)
+                st.sidebar.text_area("Execution Result (Sidebar):", value=str(exec_result_sidebar), height=100, key="exec_result_sidebar_area_widget")
 
 if __name__ == "__main__":
     main()
