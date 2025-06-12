@@ -149,7 +149,7 @@ def query_pandas_agent(agent, query: str):
         return error_message
 
 # ------------------------------
-# 主應用入口
+# 主應用入口 (最終修正版)
 # ------------------------------
 def main():
     st.set_page_config(
@@ -166,6 +166,8 @@ def main():
         st.session_state.pandas_agent = None
     if "uploaded_file_path" not in st.session_state:
         st.session_state.uploaded_file_path = None
+    if "last_uploaded_filename" not in st.session_state:
+        st.session_state.last_uploaded_filename = None
     if "debug_mode" not in st.session_state:
         st.session_state.debug_mode = False
     if "debug_logs" not in st.session_state:
@@ -178,7 +180,6 @@ def main():
         st.header("⚙️ 設定")
         st.caption("請先提供您的 API Key 並上傳 CSV 檔案。")
 
-        # 保留側邊欄輸入 Key 的功能
         st.text_input(
             "請輸入您的 Google Gemini API Key",
             value=st.session_state.get("gemini_api_key_input", ""),
@@ -186,24 +187,22 @@ def main():
             key="gemini_api_key_input"
         )
 
-        # CSV 檔案上傳器
         uploaded_file = st.file_uploader(
             "上傳您的 CSV 檔案",
             type=["csv"],
             key="main_csv_uploader_sidebar"
         )
         
-        # 檔案上傳後的處理邏輯
         if uploaded_file:
-            # 檢查檔案是否已上傳且未改變，避免重複建立 agent
-            if uploaded_file.name != st.session_state.get("last_uploaded_filename"):
+            # --- 關鍵邏輯修正 ---
+            # 只有在新檔案上傳，或者雖然是舊檔案但代理不存在（上次建立失敗）時，才重新建立
+            if uploaded_file.name != st.session_state.get("last_uploaded_filename") or not st.session_state.get("pandas_agent"):
                 st.session_state.last_uploaded_filename = uploaded_file.name
                 file_path = save_uploaded_file(uploaded_file)
                 st.session_state.uploaded_file_path = file_path
                 with st.spinner("正在初始化資料分析代理..."):
                     st.session_state.pandas_agent = create_pandas_agent(file_path)
             
-            # 顯示預覽（如果檔案路徑存在）
             if st.session_state.uploaded_file_path:
                 try:
                     df_preview = pd.read_csv(st.session_state.uploaded_file_path)
@@ -212,13 +211,11 @@ def main():
                 except Exception as e:
                     st.error(f"讀取 CSV 預覽時出錯: {e}")
         
-        # 如果代理已成功建立，顯示成功訊息
         if st.session_state.get("pandas_agent"):
             st.success("✅ 資料分析代理已啟用！")
 
         st.divider()
 
-        # 清除按鈕與偵錯工具
         if st.button("🗑️ 清除對話與資料"):
             keys_to_clear = [
                 "messages", "pandas_agent", "uploaded_file_path", 
@@ -240,37 +237,27 @@ def main():
                 st.json(st.session_state.get("debug_errors", []))
 
     # --- 主聊天介面 ---
-    # 顯示對話歷史
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # 接收使用者輸入
     if user_input := st.chat_input("請對您上傳的 CSV 檔案提問..."):
         append_message_to_stream("user", user_input)
         st.rerun()
 
-    # 處理並生成回應
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
         last_user_prompt = st.session_state.messages[-1]["content"]
         
-        # 只有在代理存在時才呼叫
         if st.session_state.get("pandas_agent"):
             with st.chat_message("assistant"):
                 with st.spinner("資料分析代理正在思考中..."):
                     response = query_pandas_agent(st.session_state.pandas_agent, last_user_prompt)
                     st.markdown(response)
-                    # 將 assistant 的回應也加入歷史紀錄
                     append_message_to_stream("assistant", response)
         else:
-            # 如果代理不存在，在主畫面提示使用者上傳檔案
-            st.info("👈 請先在左側側邊欄上傳一個 CSV 檔案以開始分析。")
-            # 為了避免這個訊息被當作 assistant 的回覆存起來，我們在這裡直接結束
-            # 或者可以將它加入 messages，但需要特殊的角色
-            # 這裡選擇不加入，讓介面更乾淨
-            # We can clear the last user message to prevent re-triggering this block
-            # st.session_state.messages.pop() # Optional: remove user prompt if no agent
-            
+            # 只有在使用者已經提問但代理還沒好的情況下，才顯示此訊息
+            st.info("👈 請先在左側側邊欄成功上傳 CSV 檔案，並等待代理啟用。")
 
 if __name__ == "__main__":
     main()
+            
