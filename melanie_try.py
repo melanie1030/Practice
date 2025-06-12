@@ -70,15 +70,15 @@ def append_message_to_stream(role, content):
     if len(st.session_state.messages) > MAX_MESSAGES_PER_STREAM:
         st.session_state.messages = st.session_state.messages[-MAX_MESSAGES_PER_STREAM:]
 
-# --- Gemini Pandas Agent 核心函數 ---
+# --- 請用這個更換為 Flash 模型的最終版本，替換您現有的 create_pandas_agent 函數 ---
 def create_pandas_agent(file_path: str):
     """
     建立由 Google Gemini 驅動的 LangChain Pandas DataFrame Agent。
-    API Key 的獲取順序為：側邊欄輸入 > Streamlit Secrets。
+    使用對免費額度更友好的 gemini-1.5-flash 模型。
     """
-    debug_log(f"準備為檔案 '{file_path}' 建立 Gemini Pandas Agent。")
+    debug_log(f"準備為檔案 '{file_path}' 建立 Gemini Pandas Agent (Flash Model)。")
     
-    # --- Gemini API Key 的優先級邏輯 ---
+    # --- Gemini API Key 的優先級邏輯 (保持不變) ---
     gemini_api_key = st.session_state.get("gemini_api_key_input")
     if not gemini_api_key:
         try:
@@ -86,7 +86,7 @@ def create_pandas_agent(file_path: str):
             if gemini_api_key:
                 debug_log("從 Streamlit Secrets 備用載入 Gemini API Key。")
         except Exception:
-            pass # 如果 Secrets 不存在則忽略
+            pass
             
     if not gemini_api_key:
         st.error("建立 Gemini 資料分析代理需要 API Key。請在側邊欄輸入或在應用的 Secrets 中設定。")
@@ -95,23 +95,23 @@ def create_pandas_agent(file_path: str):
     try:
         df = pd.read_csv(file_path)
 
-        # 初始化 Gemini LLM
+        # --- 關鍵修改在此：更換為 Flash 模型 ---
         llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro-latest",
+            model="gemini-1.5-flash-latest", # <-- 從 "gemini-1.5-pro-latest" 改為此模型
             google_api_key=gemini_api_key,
             convert_system_message_to_human=True 
         )
         
-        # 建立 Pandas Agent
+        # 建立 Pandas Agent (其餘不變)
         agent = create_pandas_dataframe_agent(
             llm,
             df,
             verbose=st.session_state.get("debug_mode", False),
             handle_parsing_errors=True,
-            allow_dangerous_code=True # 在受信任的環境中執行
+            allow_dangerous_code=True
         )
         
-        debug_log("由 Gemini 驅動的 Pandas Agent 已成功建立。")
+        debug_log("由 Gemini Flash 驅動的 Pandas Agent 已成功建立。")
         return agent
         
     except FileNotFoundError:
