@@ -199,38 +199,35 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-# --- MODIFIED FUNCTION ---
+# --- FINAL, MORE ROBUST VERSION ---
 def create_pandas_agent(file_path: str):
     """
     Creates a LangChain Pandas DataFrame Agent from a given CSV file path.
-    Includes robust proxy handling for the ChatOpenAI client.
+    This version manually creates a robust OpenAI client and injects it into ChatOpenAI
+    to bypass internal initialization issues with proxies.
     """
-    debug_log(f"Attempting to create Pandas Agent for {file_path}")
-    openai_api_key = st.session_state.get("openai_api_key_input")
-    if not openai_api_key:
-        st.error("請在側邊欄設定您的 OpenAI API 金鑰以啟用資料分析代理。")
-        return None
-
+    debug_log(f"Attempting to create Pandas Agent with robust client injection for {file_path}")
+    
     try:
-        df = pd.read_csv(file_path)
+        # Step 1: Create a guaranteed-to-work OpenAI client instance using our helper.
+        # This client already has the correct proxy settings.
+        client_instance = get_openai_client_with_proxy_support()
+        if not client_instance:
+            # The helper function already shows the error message to the user.
+            return None
 
-        # --- Proxy handling logic for ChatOpenAI ---
-        proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
-        http_client_for_llm = None
-        if proxy_url:
-            debug_log(f"Proxy detected for Pandas Agent: {proxy_url}")
-            proxies = {"http://": proxy_url, "https://": proxy_url}
-            http_client_for_llm = httpx.Client(proxies=proxies)
+        # Step 2: Read the dataframe.
+        df = pd.read_csv(file_path)
         
-        # Use a powerful model like gpt-4o for better reasoning and code generation
+        # Step 3: Initialize ChatOpenAI and pass the pre-built client to it.
+        # This forces ChatOpenAI to use our client instead of making its own.
         llm = ChatOpenAI(
             temperature=0, 
             model="gpt-4o", 
-            api_key=openai_api_key,
-            http_client=http_client_for_llm  # Pass the configured httpx client
+            client=client_instance # Inject the entire client instance
         )
         
-        # Create the agent
+        # Step 4: Create the agent as before.
         agent = create_pandas_dataframe_agent(
             llm,
             df,
@@ -239,7 +236,7 @@ def create_pandas_agent(file_path: str):
             handle_parsing_errors=True,
             allow_dangerous_code=True
         )
-        debug_log("Pandas Agent created successfully.")
+        debug_log("Pandas Agent created successfully with injected client.")
         return agent
         
     except FileNotFoundError:
