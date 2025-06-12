@@ -1,107 +1,256 @@
 import streamlit as st
-import os
-import openai
-from langchain_openai import ChatOpenAI
-import httpx
+import pandas as pd
+import matplotlib.pyplot as plt
+import json
 import traceback
+import re
+import os
+import dotenv
+from io import StringIO
+import google.generativeai as genai
+import time
+import matplotlib.font_manager as fm
+import matplotlib
+import sys
 
-# --- 測試一：原生 OpenAI 函式庫 ---
-def test_native_openai(api_key):
-    st.info("--- 開始測試一：原生 OpenAI ---")
-    if not api_key:
-        st.error("API Key 為空，無法測試。")
-        return
+# --- LangChain and Gemini Imports ---
+from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
+from langchain_google_genai import ChatGoogleGenerativeAI
 
-    # 使用我們之前最穩健的代理處理邏輯
-    PROXY_ENV_VARS = ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]
-    original_proxies = {key: os.environ.get(key) for key in PROXY_ENV_VARS if os.environ.get(key)}
-    proxy_url_for_httpx = next((p for p in original_proxies.values() if p), None)
+# --- 指定中文字型 ---
+try:
+    font_path = "./fonts/msjh.ttc"
+    fm.fontManager.addfont(font_path)
+    matplotlib.rcParams['font.family'] = fm.FontProperties(fname=font_path).get_name()
+    matplotlib.rcParams['axes.unicode_minus'] = False
+except Exception as e:
+    print(f"中文字型載入失敗，圖表可能無法正常顯示中文: {e}")
+
+# --- 初始化設置 ---
+dotenv.load_dotenv()
+UPLOAD_DIR = "uploaded_files"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
+MAX_MESSAGES_PER_STREAM = 20 # 可以適當增加對話歷史長度
+
+# --- 基礎輔助函數 ---
+def debug_log(msg):
+    """在 session state 和控制台中記錄偵錯訊息。"""
+    if st.session_state.get("debug_mode", False):
+        if "debug_logs" not in st.session_state:
+            st.session_state.debug_logs = []
+        st.session_state.debug_logs.append(f"**LOG ({time.strftime('%H:%M:%S')}):** {msg}")
+        print(f"DEBUG LOG: {msg}")
+
+def debug_error(msg):
+    """在 session state 和控制台中記錄錯誤訊息。"""
+    if st.session_state.get("debug_mode", False):
+        if "debug_errors" not in st.session_state:
+            st.session_state.debug_errors = []
+        st.session_state.debug_errors.append(f"**ERROR ({time.strftime('%H:%M:%S')}):** {msg}")
+        print(f"DEBUG ERROR: {msg}")
+
+def save_uploaded_file(uploaded_file):
+    """將上傳的檔案儲存到本地，並返回檔案路徑。"""
+    if not os.path.exists(UPLOAD_DIR):
+        os.makedirs(UPLOAD_DIR)
+    file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+def append_message_to_stream(role, content):
+    """將訊息附加到主對話流中，並管理歷史長度。"""
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    st.session_state.messages.append({"role": role, "content": content})
+    if len(st.session_state.messages) > MAX_MESSAGES_PER_STREAM:
+        st.session_state.messages = st.session_state.messages[-MAX_MESSAGES_PER_STREAM:]
+
+# --- Gemini Pandas Agent 核心函數 ---
+def create_pandas_agent(file_path: str):
+    """
+    建立由 Google Gemini 驅動的 LangChain Pandas DataFrame Agent。
+    API Key 的獲取順序為：側邊欄輸入 > Streamlit Secrets。
+    """
+    debug_log(f"準備為檔案 '{file_path}' 建立 Gemini Pandas Agent。")
     
-    for key in original_proxies:
-        if key in os.environ: del os.environ[key]
-    
-    client = None
-    try:
-        st.write("環境變數已暫時移除，準備初始化 Client...")
-        http_client = httpx.Client(proxies=proxy_url_for_httpx) if proxy_url_for_httpx else None
-        
-        # 直接初始化基礎 OpenAI Client
-        client = openai.OpenAI(api_key=api_key, http_client=http_client)
-        
-        st.write("原生 OpenAI Client 初始化成功！正在嘗試發送請求...")
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": "Say this is a test!"}],
-            max_tokens=5
-        )
-        
-        st.success(f"✅ **測試一成功！** 模型回應: {response.choices[0].message.content}")
-
-    except Exception as e:
-        st.error(f"❌ **測試一失敗！**")
-        st.code(f"錯誤類型: {type(e)}\n錯誤訊息: {e}")
-        st.text("錯誤追蹤:")
-        st.code(traceback.format_exc())
-    finally:
-        # 恢復環境變數
-        for key, value in original_proxies.items():
-            os.environ[key] = value
-        st.info("環境變數已恢復。")
-
-
-# --- 測試二：LangChain 的 ChatOpenAI ---
-def test_langchain_openai(api_key):
-    st.info("--- 開始測試二：LangChain ChatOpenAI ---")
-    if not api_key:
-        st.error("API Key 為空，無法測試。")
-        return
-
-    try:
-        st.write("準備初始化 LangChain 的 ChatOpenAI...")
-        
-        # 這是我們一直遇到問題的地方
-        llm = ChatOpenAI(
-            temperature=0, 
-            model="gpt-4o", 
-            api_key=api_key
-        )
-        
-        st.write("LangChain ChatOpenAI 初始化成功！正在嘗試發送請求...")
-        
-        response = llm.invoke("Say this is a test!")
-        
-        st.success(f"✅ **測試二成功！** 模型回應: {response.content}")
-
-    except Exception as e:
-        st.error(f"❌ **測試二失敗！**")
-        st.code(f"錯誤類型: {type(e)}\n錯誤訊息: {e}")
-        st.text("錯誤追蹤:")
-        st.code(traceback.format_exc())
-
-
-# --- 主應用介面 ---
-def main():
-    st.title("🔴 最終根本原因診斷")
-    st.write("這個頁面用來隔離並找出導致 `proxies` 錯誤的根本原因。")
-
-    api_key = st.text_input(
-        "請輸入您的 OpenAI API Key", 
-        type="password", 
-        help="此金鑰僅用於本次測試，不會被儲存。"
-    )
-
-    st.divider()
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("執行測試一：原生 OpenAI 函式庫", use_container_width=True):
-            test_native_openai(api_key)
-
-    with col2:
-        if st.button("執行測試二：LangChain 的 ChatOpenAI", use_container_width=True, type="primary"):
-            test_langchain_openai(api_key)
+    # --- Gemini API Key 的優先級邏輯 ---
+    gemini_api_key = st.session_state.get("gemini_api_key_input")
+    if not gemini_api_key:
+        try:
+            gemini_api_key = st.secrets.get("GEMINI_API_KEY")
+            if gemini_api_key:
+                debug_log("從 Streamlit Secrets 備用載入 Gemini API Key。")
+        except Exception:
+            pass # 如果 Secrets 不存在則忽略
             
+    if not gemini_api_key:
+        st.error("建立 Gemini 資料分析代理需要 API Key。請在側邊欄輸入或在應用的 Secrets 中設定。")
+        return None
+
+    try:
+        df = pd.read_csv(file_path)
+
+        # 初始化 Gemini LLM
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-1.5-pro-latest",
+            google_api_key=gemini_api_key,
+            convert_system_message_to_human=True 
+        )
+        
+        # 建立 Pandas Agent
+        agent = create_pandas_dataframe_agent(
+            llm,
+            df,
+            verbose=st.session_state.get("debug_mode", False),
+            handle_parsing_errors=True,
+            allow_dangerous_code=True # 在受信任的環境中執行
+        )
+        
+        debug_log("由 Gemini 驅動的 Pandas Agent 已成功建立。")
+        return agent
+        
+    except FileNotFoundError:
+        st.error(f"檔案未找到：{file_path}")
+        return None
+    except Exception as e:
+        st.error(f"建立資料分析代理時發生錯誤: {e}")
+        debug_error(f"Pandas Agent creation failed: {e}, Traceback: {traceback.format_exc()}")
+        return None
+
+def query_pandas_agent(agent, query: str):
+    """
+    使用給定的問題查詢 Pandas Agent。
+    """
+    if not agent:
+        return "錯誤：資料分析代理尚未初始化。請先上傳 CSV 檔案。"
+    
+    prompt = f"""
+    請針對以下問題進行分析，並用繁體中文回答。
+    你的回答應該清晰、易於理解，如果需要，請直接給出計算結果或結論。
+    
+    問題: "{query}"
+    """
+    debug_log(f"正在用問題查詢 Pandas Agent: '{query}'")
+    try:
+        # 使用標準的 .invoke() 方法呼叫代理
+        response = agent.invoke({"input": prompt})
+        result = response.get("output", "代理沒有提供有效的輸出。")
+        debug_log(f"Pandas Agent 的原始回應: {response}")
+        return result
+    except Exception as e:
+        error_message = f"代理在處理您的請求時發生錯誤: {e}"
+        debug_error(f"Pandas Agent invocation error: {e}, Traceback: {traceback.format_exc()}")
+        st.error(error_message)
+        return error_message
+
+# ------------------------------
+# 主應用入口 (最終簡化版)
+# ------------------------------
+def main():
+    st.set_page_config(
+        page_title="Gemini CSV 資料分析助理",
+        page_icon="🤖",
+        layout="centered" # 使用置中佈局，讓介面更聚焦
+    )
+    st.title("🤖 Gemini CSV 資料分析助理")
+
+    # --- 初始化簡化後的 Session States ---
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "pandas_agent" not in st.session_state:
+        st.session_state.pandas_agent = None
+    if "uploaded_file_path" not in st.session_state:
+        st.session_state.uploaded_file_path = None
+    if "debug_mode" not in st.session_state:
+        st.session_state.debug_mode = False
+    if "debug_logs" not in st.session_state:
+        st.session_state.debug_logs = []
+    if "debug_errors" not in st.session_state:
+        st.session_state.debug_errors = []
+
+    # --- 側邊欄介面 ---
+    with st.sidebar:
+        st.header("⚙️ 設定")
+        st.caption("請先提供您的 API Key 並上傳 CSV 檔案。")
+
+        # 保留側邊欄輸入 Key 的功能
+        gemini_api_key_input = st.text_input(
+            "請輸入您的 Google Gemini API Key",
+            value=st.session_state.get("gemini_api_key_input", ""),
+            type="password",
+            key="gemini_api_key_input"
+        )
+        if gemini_api_key_input:
+            st.session_state.gemini_api_key_input = gemini_api_key_input
+
+        # CSV 檔案上傳器
+        uploaded_file = st.file_uploader(
+            "上傳您的 CSV 檔案",
+            type=["csv"],
+            key="main_csv_uploader_sidebar"
+        )
+        
+        # 檔案上傳後的處理邏輯
+        if uploaded_file:
+            file_path = save_uploaded_file(uploaded_file)
+            # 如果檔案變更，或代理尚未建立，則重新建立代理
+            if file_path != st.session_state.get("uploaded_file_path") or not st.session_state.get("pandas_agent"):
+                st.session_state.uploaded_file_path = file_path
+                with st.spinner("正在初始化資料分析代理..."):
+                    st.session_state.pandas_agent = create_pandas_agent(file_path)
+        
+        st.divider()
+
+        # 清除按鈕與偵錯工具
+        if st.button("🗑️ 清除對話與資料"):
+            keys_to_clear = [
+                "messages", "pandas_agent", "uploaded_file_path", 
+                "debug_logs", "debug_errors"
+            ]
+            for key in keys_to_clear:
+                if key in st.session_state:
+                    st.session_state.pop(key)
+            st.success("所有對話和資料都已清除！")
+            st.rerun()
+
+        st.session_state.debug_mode = st.checkbox("啟用偵錯模式", value=st.session_state.get("debug_mode", False))
+        if st.session_state.debug_mode:
+            with st.expander("🛠️ 偵錯資訊", expanded=False):
+                st.write("除錯日誌:")
+                st.json(st.session_state.get("debug_logs", []))
+                st.write("錯誤日誌:")
+                st.json(st.session_state.get("debug_errors", []))
+
+    # --- 主聊天介面 ---
+    # 顯示對話歷史
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 接收使用者輸入
+    if user_input := st.chat_input("請對您上傳的 CSV 檔案提問..."):
+        append_message_to_stream("user", user_input)
+        st.rerun()
+
+    # 處理並生成回應
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+        last_user_prompt = st.session_state.messages[-1]["content"]
+        
+        # 只有在代理存在時才呼叫
+        if st.session_state.get("pandas_agent"):
+            with st.chat_message("assistant"):
+                with st.spinner("資料分析代理正在思考中..."):
+                    response = query_pandas_agent(st.session_state.pandas_agent, last_user_prompt)
+                    st.markdown(response)
+                    # 將 assistant 的回應也加入歷史紀錄
+                    append_message_to_stream("assistant", response)
+        else:
+            # 如果代理不存在，提示使用者上傳檔案
+            st.info("請先在左側側邊欄上傳一個 CSV 檔案以開始分析。")
+
+
 if __name__ == "__main__":
     main()
