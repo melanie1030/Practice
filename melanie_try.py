@@ -16,6 +16,7 @@ import time
 import matplotlib.font_manager as fm
 import matplotlib
 import sys
+import httpx
 
 # --- LangChain and Pandas Agent Imports (NEW) ---
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
@@ -198,11 +199,11 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-# --- NEW FUNCTION for creating LangChain Pandas Agent ---
+# --- MODIFIED FUNCTION ---
 def create_pandas_agent(file_path: str):
     """
     Creates a LangChain Pandas DataFrame Agent from a given CSV file path.
-    The agent is stored in st.session_state to avoid recreation.
+    Includes robust proxy handling for the ChatOpenAI client.
     """
     debug_log(f"Attempting to create Pandas Agent for {file_path}")
     openai_api_key = st.session_state.get("openai_api_key_input")
@@ -212,20 +213,35 @@ def create_pandas_agent(file_path: str):
 
     try:
         df = pd.read_csv(file_path)
+
+        # --- Proxy handling logic for ChatOpenAI ---
+        proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+        http_client_for_llm = None
+        if proxy_url:
+            debug_log(f"Proxy detected for Pandas Agent: {proxy_url}")
+            proxies = {"http://": proxy_url, "https://": proxy_url}
+            http_client_for_llm = httpx.Client(proxies=proxies)
+        
         # Use a powerful model like gpt-4o for better reasoning and code generation
-        llm = ChatOpenAI(temperature=0, model="gpt-4o", api_key=openai_api_key)
+        llm = ChatOpenAI(
+            temperature=0, 
+            model="gpt-4o", 
+            api_key=openai_api_key,
+            http_client=http_client_for_llm  # Pass the configured httpx client
+        )
         
         # Create the agent
         agent = create_pandas_dataframe_agent(
             llm,
             df,
             agent_type="openai-tools",
-            verbose=st.session_state.get("debug_mode", False), # Show agent's thoughts in console if debug mode is on
-            handle_parsing_errors=True, # Robustly handle errors if the model outputs a non-parsable string
-            allow_dangerous_code=True # Note: Be aware of the security implications
+            verbose=st.session_state.get("debug_mode", False),
+            handle_parsing_errors=True,
+            allow_dangerous_code=True
         )
         debug_log("Pandas Agent created successfully.")
         return agent
+        
     except FileNotFoundError:
         st.error(f"檔案未找到：{file_path}")
         debug_error(f"Pandas Agent creation failed: File not found at {file_path}")
@@ -234,6 +250,7 @@ def create_pandas_agent(file_path: str):
         st.error(f"建立資料分析代理時發生錯誤：{e}")
         debug_error(f"Pandas Agent creation failed: {e}, Traceback: {traceback.format_exc()}")
         return None
+
 
 # --- NEW FUNCTION for querying the Pandas Agent ---
 def query_pandas_agent(agent, query: str):
@@ -260,6 +277,39 @@ def query_pandas_agent(agent, query: str):
         st.error(error_message)
         return error_message
 
+# --- NEW HELPER FUNCTION to handle OpenAI client initialization with proxy support ---
+def get_openai_client_with_proxy_support():
+    """
+    Creates an OpenAI client instance with proper proxy handling for openai library v1.0.0+.
+    It checks for HTTPS_PROXY environment variable.
+    """
+    openai_api_key = st.session_state.get("openai_api_key_input") or os.getenv("OPENAI_API_KEY", "")
+    if not openai_api_key:
+        st.error("未在側邊欄設定 OpenAI API 金鑰。")
+        return None
+
+    # Get proxy from environment variables
+    proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+
+    try:
+        if proxy_url:
+            debug_log(f"Proxy detected: {proxy_url}. Configuring httpx client.")
+            # Configure httpx client with proxy
+            proxies = {"http://": proxy_url, "https://": proxy_url}
+            http_client = httpx.Client(proxies=proxies)
+            # Pass the configured httpx client to OpenAI client
+            client = OpenAI(api_key=openai_api_key, http_client=http_client)
+        else:
+            # If no proxy, initialize normally
+            debug_log("No proxy detected. Initializing OpenAI client normally.")
+            client = OpenAI(api_key=openai_api_key)
+        
+        return client
+    except Exception as e:
+        st.error(f"OpenAI Client 初始化失敗: {e}")
+        debug_error(f"OpenAI Client init with proxy support failed: {e}, Traceback: {traceback.format_exc()}")
+        return None
+        
 # --- All original LLM interaction functions below remain the same ---
 # (get_gemini_response_for_generic_role, get_gemini_executive_analysis, etc.)
 
@@ -327,28 +377,21 @@ def get_gemini_executive_analysis(executive_role_name, full_prompt, model_params
     # ...
     return "This function is kept for reference but workflow now uses OpenAI."
 
+# --- MODIFIED FUNCTION ---
 def get_openai_executive_analysis(executive_role_name, full_prompt, model_params, max_retries=3):
     """
     Handles a single turn OpenAI API request for an executive role in the workflow.
+    Uses a helper function for robust client initialization with proxy support.
     """
-    openai_api_key = st.session_state.get("openai_api_key_input") or os.getenv("OPENAI_API_KEY", "")
-    if not openai_api_key:
-        st.error("未設定 OpenAI API 金鑰，請於側邊欄設定。")
-        return "Error: Missing OpenAI API Key."
-
-    try:
-        client = OpenAI(api_key=openai_api_key)
-    except Exception as e:
-        st.error(f"OpenAI Client 初始化失敗: {e}")
-        debug_error(f"OpenAI Client init error for {executive_role_name}: {e}")
-        return f"Error: OpenAI Client initialization failed: {e}"
+    client = get_openai_client_with_proxy_support()
+    if not client:
+        # The helper function already shows the error message
+        return f"Error: OpenAI Client initialization failed."
 
     model_name = model_params.get("model", "gpt-4o")
     temperature = model_params.get("temperature", 0.3)
     max_tokens_val = model_params.get("max_tokens", 4096)
 
-    # The full_prompt already contains role instruction like "You are the Chief Financial Officer (CFO)..."
-    # We will send this as the user message.
     messages_for_openai = [
         {"role": "user", "content": full_prompt}
     ]
@@ -478,21 +521,17 @@ def get_gemini_response_main_chat(model_params, max_retries=3):
     return response_text_final
 
 
-def get_openai_response(client_openai_passed, model_params, max_retries=3): # Renamed client parameter
-    client_to_use = client_openai_passed
+# --- MODIFIED FUNCTION ---
+def get_openai_response(client_openai_passed, model_params, max_retries=3):
+    # The passed client is ignored to ensure consistent proxy handling via the helper function.
+    client_to_use = get_openai_client_with_proxy_support()
     if not client_to_use:
-        openai_api_key_curr = st.session_state.get("openai_api_key_input") or os.getenv("OPENAI_API_KEY", "")
-        if not openai_api_key_curr: st.error("OpenAI API Key not set."); return ""
-        try:
-            client_to_use = OpenAI(api_key=openai_api_key_curr)
-        except Exception as e:
-            st.error(f"Failed to initialize OpenAI client: {e}"); return ""
-
+        return "" # Error is already shown by the helper function
 
     processed_messages_for_openai = []
-    main_chat_msg_list = st.session_state.get("messages", []) # Always use main chat messages for this generic OpenAI func
+    main_chat_msg_list = st.session_state.get("messages", [])
     for msg in main_chat_msg_list:
-        if isinstance(msg["content"], list): # Handling GPT-Vision style content
+        if isinstance(msg["content"], list):
             new_content_list = []
             has_text = False
             for item in msg["content"]:
@@ -501,19 +540,18 @@ def get_openai_response(client_openai_passed, model_params, max_retries=3): # Re
                 elif isinstance(item, dict) and item.get("type") == "text":
                     new_content_list.append(item)
                     has_text = True
-                elif isinstance(item, str): # if a simple string got mixed into a list
+                elif isinstance(item, str):
                     new_content_list.append({"type": "text", "text": item})
                     has_text = True
-
             if any(c_item.get("type") == "image_url" for c_item in new_content_list) and not has_text:
-                new_content_list.append({"type": "text", "text": " "}) # Add minimal text if only image
+                new_content_list.append({"type": "text", "text": " "})
             processed_messages_for_openai.append({"role": msg["role"], "content": new_content_list})
-        else: # Simple text content
+        else:
             processed_messages_for_openai.append(msg)
 
-
     model_name = model_params.get("model", "gpt-4o")
-    retries = 0; wait_time = 5
+    retries = 0
+    wait_time = 5
     while retries < max_retries:
         try:
             request_params = {
@@ -525,11 +563,18 @@ def get_openai_response(client_openai_passed, model_params, max_retries=3): # Re
             return response.choices[0].message.content.strip()
         except Exception as e:
             debug_error(f"OpenAI API error for main chat (attempt {retries + 1}): {e}")
-            if 'rate limit' in str(e).lower() or '429' in str(e): time.sleep(wait_time); retries += 1; wait_time *= 2
+            if 'rate limit' in str(e).lower() or '429' in str(e):
+                time.sleep(wait_time)
+                retries += 1
+                wait_time *= 2
             elif 'invalid api key' in str(e).lower() or "authentication_error" in str(e).lower() or "access_terminated" in str(e).lower():
-                 st.error(f"OpenAI API金鑰無效/認證失敗/帳戶問題: {e}"); return f"Error: OpenAI API Key Invalid/Authentication Failed/Access Terminated."
-            else: st.error(f"OpenAI請求錯誤：{e}"); return f"Error: OpenAI request error: {e}"
-    st.error("OpenAI請求失敗次數過多"); return "Error: Max retries exceeded for OpenAI."
+                st.error(f"OpenAI API金鑰無效/認證失敗/帳戶問題: {e}")
+                return f"Error: OpenAI API Key Invalid/Authentication Failed/Access Terminated."
+            else:
+                st.error(f"OpenAI請求錯誤：{e}")
+                return f"Error: OpenAI request error: {e}"
+    st.error("OpenAI請求失敗次數過多")
+    return "Error: Max retries exceeded for OpenAI."
 
 def get_claude_response(model_params, max_retries=3):
     import anthropic
@@ -639,7 +684,8 @@ def get_llm_response(client_openai_main_chat, model_params, message_stream_key="
         return ""
 
 
-def get_cross_validated_response(client_openai_validator, model_params_validator, max_retries=3): # client_openai_validator
+# --- MODIFIED FUNCTION ---
+def get_cross_validated_response(client_openai_validator, model_params_validator, max_retries=3):
     cross_validation_prompt_content = (
         "請仔細閱讀以下全部對話記憶 (來自主要聊天室)，對先前模型的回答進行交叉驗證。"
         "你的任務是檢查回答的正確性，指出其中可能存在的錯誤或不足，"
@@ -648,95 +694,55 @@ def get_cross_validated_response(client_openai_validator, model_params_validator
         "在回答時請回答的詳細，內容需要你盡可能的多。"
     )
     original_main_messages = list(st.session_state.get("messages", []))
-
-    # Create a temporary message list for the validator
-    # This list will be passed directly to the LLM functions if they accept message lists
-    # Or, we might need to temporarily set st.session_state.messages (carefully)
     validator_messages_for_api = [{"role": "system", "content": cross_validation_prompt_content}] + original_main_messages
-
-
     validator_model_name = model_params_validator.get('model')
     validator_response_text = ""
     debug_log(f"Cross-validation: Validating with {validator_model_name} using main chat history.")
 
-    # Store original messages and temporarily set them for functions that rely on st.session_state.messages
-    # This is a workaround. Ideally, LLM functions would take message_list as a direct argument.
     original_st_messages_backup = st.session_state.get("messages")
-    st.session_state.messages = validator_messages_for_api # Temporarily set for the call
+    st.session_state.messages = validator_messages_for_api
 
     if "gpt" in validator_model_name.lower():
-        # get_openai_response uses st.session_state.messages, which is now set to validator_messages_for_api
-        # We need to ensure the OpenAI client is correctly initialized for the validator
-        client_for_validator_call = client_openai_validator # Use passed client if available
+        # Use the new helper to get a properly configured client for the validator
+        client_for_validator_call = get_openai_client_with_proxy_support()
         if not client_for_validator_call:
-            openai_api_key_val = st.session_state.get("openai_api_key_input")
-            if not openai_api_key_val:
-                st.error("OpenAI key for GPT validator missing.")
-                st.session_state.messages = original_st_messages_backup # Restore
-                return {"validator_response": "Error: OpenAI Key missing."}
-            client_for_validator_call = OpenAI(api_key=openai_api_key_val)
+            st.session_state.messages = original_st_messages_backup
+            return {"validator_response": "Error: OpenAI Key missing or Client init failed for validator."}
+        
+        # The get_openai_response function will now use the correct client internally
         validator_response_text = get_openai_response(client_for_validator_call, model_params_validator, max_retries)
 
     elif "gemini" in validator_model_name.lower():
-        # For Gemini validation, we'll use generate_content with the full constructed prompt history
         api_key_gem_val = st.session_state.get("gemini_api_key_input", "")
         if not api_key_gem_val:
             st.error("Gemini key for validator missing.")
-            st.session_state.messages = original_st_messages_backup # Restore
+            st.session_state.messages = original_st_messages_backup
             return {"validator_response": "Error: Gemini Key missing."}
         try:
             genai.configure(api_key=api_key_gem_val)
-            val_model_gem = genai.GenerativeModel(
-                validator_model_name,
-                # The system prompt is the first message in validator_messages_for_api
-                # For generate_content, system_instruction is usually set at model init
-                # Let's reconstruct for generate_content
-            )
+            system_instruction_for_gemini_val = validator_messages_for_api[0]['content']
+            val_model_gem = genai.GenerativeModel(validator_model_name, system_instruction=system_instruction_for_gemini_val)
             gemini_formatted_val_history = []
-            system_instruction_for_gemini_val = None
-            if validator_messages_for_api[0]['role'] == 'system':
-                system_instruction_for_gemini_val = validator_messages_for_api[0]['content']
-                # Re-initialize model with system instruction
-                val_model_gem = genai.GenerativeModel(validator_model_name, system_instruction=system_instruction_for_gemini_val)
-
-
-            for m_val in validator_messages_for_api: # Skip system if handled by system_instruction
-                if m_val['role'] == 'system' and system_instruction_for_gemini_val:
-                    continue
+            for m_val in validator_messages_for_api[1:]: # Skip system message
                 role_val = 'model' if m_val['role'] == 'assistant' else m_val['role']
                 if role_val not in ['user', 'model']: continue
-
-                # Content conversion (simplified for validation prompt)
-                content_str = ""
-                if isinstance(m_val['content'], list):
-                    for item in m_val['content']:
-                        if isinstance(item, dict) and item.get('type') == 'text':
-                            content_str += item['text'] + " "
-                        elif isinstance(item, str):
-                            content_str += item + " "
-                        # Images are not easily passed to generate_content in history this way for validation
-                else:
-                    content_str = str(m_val['content'])
-                gemini_formatted_val_history.append({'role': role_val, 'parts': [content_str.strip()]})
-
-            if not gemini_formatted_val_history: # Should not happen if original messages exist
-                 raise ValueError("No content to validate for Gemini.")
-
+                content_str = str(m_val['content']) # Simplified content for validation
+                gemini_formatted_val_history.append({'role': role_val, 'parts': [content_str]})
+            if not gemini_formatted_val_history: raise ValueError("No content to validate for Gemini.")
             response_val = val_model_gem.generate_content(gemini_formatted_val_history)
             validator_response_text = response_val.text.strip()
         except Exception as e_gem_val:
             validator_response_text = f"Error during Gemini validation: {e_gem_val}"
-            debug_error(validator_response_text + f" History for Gemini Val: {gemini_formatted_val_history}")
-
+            debug_error(validator_response_text)
 
     elif "claude" in validator_model_name.lower():
-        # get_claude_response uses st.session_state.messages
         validator_response_text = get_claude_response(model_params_validator, max_retries)
+        
     else:
         st.error(f"Unsupported validator model: {validator_model_name}")
         validator_response_text = "Error: Unsupported validator model."
 
-    st.session_state.messages = original_st_messages_backup # Restore main messages
+    st.session_state.messages = original_st_messages_backup
     debug_log("Cross-validation prompt effect removed from main messages stream.")
     return {"validator_response": validator_response_text}
 
