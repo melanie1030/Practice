@@ -199,55 +199,40 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-# --- FINAL, MORE ROBUST VERSION ---
+# --- FINAL UNIFIED PANDAS AGENT CREATION ---
 def create_pandas_agent(file_path: str):
     """
-    Creates a LangChain Pandas DataFrame Agent from a given CSV file path.
-    This version manually creates a robust OpenAI client and injects it into ChatOpenAI
-    to bypass internal initialization issues with proxies.
+    Creates a LangChain Pandas DataFrame Agent, getting the API key with a
+    priority system (sidebar > st.secrets).
     """
-    debug_log(f"Attempting to create Pandas Agent with robust client injection for {file_path}")
+    debug_log(f"Attempting to create Pandas Agent with unified key logic for {file_path}")
     
-    try:
-        # Step 1: Create a guaranteed-to-work OpenAI client instance using our helper.
-        # This client already has the correct proxy settings.
-        client_instance = get_openai_client_with_proxy_support()
-        if not client_instance:
-            # The helper function already shows the error message to the user.
-            return None
-
-        # Step 2: Read the dataframe.
-        df = pd.read_csv(file_path)
-        
-        # Step 3: Initialize ChatOpenAI and pass the pre-built client to it.
-        # This forces ChatOpenAI to use our client instead of making its own.
-        llm = ChatOpenAI(
-            temperature=0, 
-            model="gpt-4o", 
-            client=client_instance # Inject the entire client instance
-        )
-        
-        # Step 4: Create the agent as before.
-        agent = create_pandas_dataframe_agent(
-            llm,
-            df,
-            agent_type="openai-tools",
-            verbose=st.session_state.get("debug_mode", False),
-            handle_parsing_errors=True,
-            allow_dangerous_code=True
-        )
-        debug_log("Pandas Agent created successfully with injected client.")
-        return agent
-        
-    except FileNotFoundError:
-        st.error(f"檔案未找到：{file_path}")
-        debug_error(f"Pandas Agent creation failed: File not found at {file_path}")
+    # --- Priority Logic for API Key for LangChain ---
+    api_key_for_langchain = st.session_state.get("openai_api_key_input")
+    if not api_key_for_langchain:
+        try:
+            api_key_for_langchain = st.secrets.get("OPENAI_API_KEY")
+        except Exception:
+            pass
+    
+    if not api_key_for_langchain:
+        st.error("建立代理需要 OpenAI API Key。請在側邊欄輸入或在 Secrets 中設定。")
         return None
+
+    try:
+        df = pd.read_csv(file_path)
+        llm = ChatOpenAI(temperature=0, model="gpt-4o", api_key=api_key_for_langchain)
+        agent = create_pandas_dataframe_agent(
+            llm, df, agent_type="openai-tools",
+            verbose=st.session_state.get("debug_mode", False),
+            handle_parsing_errors=True, allow_dangerous_code=True
+        )
+        debug_log("Pandas Agent created successfully with unified key logic.")
+        return agent
     except Exception as e:
         st.error(f"建立資料分析代理時發生錯誤：{e}")
         debug_error(f"Pandas Agent creation failed: {e}, Traceback: {traceback.format_exc()}")
         return None
-
 
 # --- NEW FUNCTION for querying the Pandas Agent ---
 def query_pandas_agent(agent, query: str):
@@ -274,57 +259,51 @@ def query_pandas_agent(agent, query: str):
         st.error(error_message)
         return error_message
 
-# --- FINAL AND MOST ROBUST HELPER FUNCTION ---
+# --- FINAL UNIFIED HELPER FUNCTION ---
 def get_openai_client_with_proxy_support():
     """
-    Creates an OpenAI client instance with robust proxy handling.
-    This version temporarily removes proxy environment variables during client initialization
-    to prevent the library's problematic auto-detection, then restores them.
+    Creates an OpenAI client with robust proxy handling, prioritizing user input
+    from the sidebar, and falling back to st.secrets.
     """
-    openai_api_key = st.session_state.get("openai_api_key_input") or os.getenv("OPENAI_API_KEY", "")
-    if not openai_api_key:
-        st.error("未在側邊欄設定 OpenAI API 金鑰。")
+    # --- Priority Logic for API Key ---
+    # 1. Try to get key from sidebar input first.
+    api_key = st.session_state.get("openai_api_key_input")
+    
+    # 2. If sidebar is empty, fall back to Streamlit Secrets.
+    if not api_key:
+        try:
+            api_key = st.secrets.get("OPENAI_API_KEY")
+            if api_key:
+                debug_log("Read API key from st.secrets as fallback.")
+        except Exception:
+            pass # Ignore error if secrets don't exist
+            
+    # 3. If both are empty, show an error.
+    if not api_key:
+        st.error("請在側邊欄輸入您的 OpenAI API Key，或在 Streamlit Cloud Secrets 中進行設定。")
         return None
 
-    # List of common proxy environment variables (case-insensitive)
-    PROXY_ENV_VARS = [
-        "http_proxy", "https_proxy", "all_proxy",
-        "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"
-    ]
-    
-    # Backup original proxy settings
+    # --- Radical Proxy Handling Logic (Kept from before) ---
+    PROXY_ENV_VARS = ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]
     original_proxies = {key: os.environ.get(key) for key in PROXY_ENV_VARS if os.environ.get(key)}
-    
-    # Get the proxy URL to be used by httpx, before we clear the environment variables
-    proxy_url_for_httpx = original_proxies.get("HTTPS_PROXY") or original_proxies.get("https_proxy") or \
-                          original_proxies.get("HTTP_PROXY") or original_proxies.get("http_proxy")
+    proxy_url_for_httpx = next((p for p in original_proxies.values() if p), None)
 
-    # Temporarily remove proxy settings from environment to prevent OpenAI lib's auto-detection
     for key in original_proxies:
         del os.environ[key]
 
     client = None
     try:
-        debug_log("Temporarily cleared proxy env variables for OpenAI client initialization.")
-        
         if proxy_url_for_httpx:
-            debug_log(f"Manually configuring httpx client with proxy: {proxy_url_for_httpx}")
             proxies_for_httpx = {"http://": proxy_url_for_httpx, "https://": proxy_url_for_httpx}
             http_client = httpx.Client(proxies=proxies_for_httpx)
-            client = OpenAI(api_key=openai_api_key, http_client=http_client)
+            client = openai.OpenAI(api_key=api_key, http_client=http_client)
         else:
-            debug_log("No proxy detected. Initializing OpenAI client normally.")
-            client = OpenAI(api_key=openai_api_key)
-            
+            client = openai.OpenAI(api_key=api_key)
     except Exception as e:
         st.error(f"OpenAI Client 初始化時發生最終錯誤: {e}")
-        debug_error(f"Final OpenAI Client init failed: {e}, Traceback: {traceback.format_exc()}")
-        
     finally:
-        # CRITICAL: Restore original environment variables
         for key, value in original_proxies.items():
             os.environ[key] = value
-        debug_log("Restored original proxy env variables.")
 
     return client
         
