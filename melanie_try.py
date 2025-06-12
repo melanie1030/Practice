@@ -183,6 +183,49 @@ def generate_data_profile(df):
     profile_parts.append(f"\n前 5 筆資料:\n{df.head().to_string()}")
     return "\n".join(profile_parts)
 
+# --- 新增的圖表顯示輔助函數 ---
+def display_response_and_plot(response_text, df):
+    """
+    分析代理程式的回應。如果回應中包含繪圖程式碼，
+    則執行該程式碼以在 Streamlit 中顯示圖表，同時也顯示文字回應。
+    否則，僅顯示文字回應。
+    """
+    # 使用正規表示式尋找 python 程式碼區塊
+    code_match = re.search(r"```python\n(.*?)```", response_text, re.DOTALL)
+
+    if code_match:
+        plot_code = code_match.group(1)
+        try:
+            # 準備一個 figure 來繪製圖表
+            fig, ax = plt.subplots()
+
+            # 代理程式產生的程式碼會用 `df` 來引用 DataFrame。
+            # 我們必須在執行的作用域中提供它，以及 plt。
+            # 警告：exec() 功能強大，可以執行任意程式碼。
+            # 在此情境下是可接受的，因為代理程式已設定 allow_dangerous_code=True。
+            exec_scope = {'df': df, 'plt': plt, 'ax': ax, 'fig': fig}
+            exec(plot_code, exec_scope, exec_scope)
+
+            # 檢查是否有繪製任何資料。
+            # 代理程式有時會產生不包含繪圖指令的程式碼。
+            if ax.has_data():
+                 st.pyplot(fig)
+            else:
+                 # 如果程式碼運行了但沒有畫圖，關閉這個空的 figure
+                 plt.close(fig)
+
+            # 同時也顯示回應的文字部分
+            st.markdown(response_text)
+
+        except Exception as e:
+            st.error(f"圖表生成失敗: {e}")
+            st.markdown(response_text) # 即使出錯，仍然顯示原始文字
+            st.code(plot_code, language="python") # 顯示出錯的程式碼以供除錯
+    else:
+        # 如果沒找到程式碼區塊，就只顯示文字
+        st.markdown(response_text)
+
+
 # ------------------------------
 # 主應用入口 (最終 Gemini 整合版)
 # ------------------------------
@@ -302,18 +345,30 @@ def main():
             append_message_to_stream("messages", "user", user_input)
             st.rerun()
 
+        # --- 修改後的回應處理邏輯 ---
         if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
             last_prompt = st.session_state.messages[-1]["content"]
             with st.chat_message("assistant"):
                 with st.spinner("Gemini 正在思考中..."):
-                    response = ""
-                    if st.session_state.get("pandas_agent"):
-                        response = query_pandas_agent(st.session_state.pandas_agent, last_prompt)
+                    response_text = ""
+                    # 檢查是否處於資料分析模式
+                    if st.session_state.get("pandas_agent") and st.session_state.get("uploaded_file_path"):
+                        response_text = query_pandas_agent(st.session_state.pandas_agent, last_prompt)
+                        
+                        # 載入 dataframe 以便傳遞給我們的新顯示函式
+                        df = pd.read_csv(st.session_state.uploaded_file_path)
+                        
+                        # 使用新的函式來渲染回應以及任何可能存在的圖表
+                        display_response_and_plot(response_text, df)
+
+                    # 標準的圖片/文字聊天
                     else:
                         pending_image = st.session_state.get("pending_image_for_main_gemini")
-                        response = get_gemini_response_main_chat(last_prompt, pending_image)
-                    st.markdown(response)
-                    append_message_to_stream("messages", "assistant", response)
+                        response_text = get_gemini_response_main_chat(last_prompt, pending_image)
+                        st.markdown(response_text)
+
+                    # 將完整的文字回應儲存到歷史紀錄中
+                    append_message_to_stream("messages", "assistant", response_text)
 
     # 高管工作流標籤
     with tabs[1]:
