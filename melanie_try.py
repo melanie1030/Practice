@@ -199,36 +199,49 @@ def extract_json_block(response: str) -> str:
         debug_log("No JSON block found in response.")
         return response.strip()
 
-# --- FINAL UNIFIED PANDAS AGENT CREATION ---
+# --- 請用這個最終版本替換您 GitHub 上的 create_pandas_agent 函數 ---
 def create_pandas_agent(file_path: str):
     """
-    Creates a LangChain Pandas DataFrame Agent, getting the API key with a
-    priority system (sidebar > st.secrets).
+    Creates a LangChain Pandas DataFrame Agent by INJECTING a pre-built,
+    proxy-aware OpenAI client into ChatOpenAI. This is the definitive fix.
     """
-    debug_log(f"Attempting to create Pandas Agent with unified key logic for {file_path}")
+    debug_log(f"Attempting to create Pandas Agent with client injection for {file_path}")
     
-    # --- Priority Logic for API Key for LangChain ---
-    api_key_for_langchain = st.session_state.get("openai_api_key_input")
-    if not api_key_for_langchain:
-        try:
-            api_key_for_langchain = st.secrets.get("OPENAI_API_KEY")
-        except Exception:
-            pass
-    
-    if not api_key_for_langchain:
-        st.error("建立代理需要 OpenAI API Key。請在側邊欄輸入或在 Secrets 中設定。")
-        return None
-
     try:
+        # Step 1: Create a guaranteed-to-work OpenAI client instance using our helper.
+        # This client has already correctly handled the proxy situation.
+        client_instance = get_openai_client_with_proxy_support()
+        if not client_instance:
+            # The helper function has already shown the error to the user.
+            return None
+
+        # Step 2: Read the dataframe.
         df = pd.read_csv(file_path)
-        llm = ChatOpenAI(temperature=0, model="gpt-4o", api_key=api_key_for_langchain)
-        agent = create_pandas_dataframe_agent(
-            llm, df, agent_type="openai-tools",
-            verbose=st.session_state.get("debug_mode", False),
-            handle_parsing_errors=True, allow_dangerous_code=True
+        
+        # Step 3: Initialize ChatOpenAI and INJECT the pre-built client.
+        # This forces ChatOpenAI to use our "clean" client instead of making its own.
+        llm = ChatOpenAI(
+            temperature=0, 
+            model="gpt-4o", 
+            client=client_instance  # <--- 關鍵修改在此！注入完整的 client 實例
         )
-        debug_log("Pandas Agent created successfully with unified key logic.")
+        
+        # Step 4: Create the agent as before.
+        agent = create_pandas_dataframe_agent(
+            llm,
+            df,
+            agent_type="openai-tools",
+            verbose=st.session_state.get("debug_mode", False),
+            handle_parsing_errors=True,
+            allow_dangerous_code=True
+        )
+        debug_log("Pandas Agent created successfully with an injected client.")
         return agent
+        
+    except FileNotFoundError:
+        st.error(f"檔案未找到：{file_path}")
+        debug_error(f"Pandas Agent creation failed: File not found at {file_path}")
+        return None
     except Exception as e:
         st.error(f"建立資料分析代理時發生錯誤：{e}")
         debug_error(f"Pandas Agent creation failed: {e}, Traceback: {traceback.format_exc()}")
