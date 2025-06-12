@@ -50,6 +50,7 @@ try:
     matplotlib.rcParams['axes.unicode_minus'] = False
 except Exception as e:
     print(f"中文字型載入失敗: {e}")
+    st.warning(f"中文字型載入失敗，圖表中的中文可能無法正常顯示。請確認字型路徑 '{font_path}' 是否正確。")
 
 # --- 初始化設置 ---
 dotenv.load_dotenv()
@@ -228,7 +229,7 @@ def main():
             type="password",
             key="gemini_api_key_input"
         )
-        st.caption("優先使用此處輸入的金鑰，若為空則嘗試從雲端 Secrets 載入。")
+        st.caption("優先使用此處輸入的金鑰，若為空則嘗試從雲端 Secrets 或 .env 檔案載入。")
         
         st.divider()
 
@@ -317,16 +318,26 @@ def main():
     # 高管工作流標籤
     with tabs[1]:
         st.header("💼 高管工作流 (由 Gemini Pro 驅動)")
-        st.session_state.executive_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("executive_user_query", ""), height=100)
+        st.write("請先在側邊欄上傳CSV資料，然後在此輸入商業問題，最後點擊按鈕啟動分析。")
+        st.session_state.executive_user_query = st.text_area(
+            "請輸入商業問題以啟動分析:", 
+            value=st.session_state.get("executive_user_query", ""), 
+            height=100
+        )
         can_start = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("executive_user_query"))
+        
         if st.button("🚀 啟動/重啟高管分析", disabled=not can_start):
-             st.session_state.executive_workflow_stage = "data_profiling_pending"
-             # ... (Reset other exec states)
-             st.rerun()
+             # 重置狀態以重新開始
+            st.session_state.executive_workflow_stage = "data_profiling_pending"
+            st.session_state.executive_data_profile_str = ""
+            st.session_state.cfo_analysis_text = ""
+            st.session_state.coo_analysis_text = ""
+            st.session_state.ceo_summary_text = ""
+            st.rerun()
         
         # --- 工作流狀態機 ---
         if st.session_state.executive_workflow_stage == "data_profiling_pending":
-             with st.spinner("正在生成資料摘要..."):
+            with st.spinner("正在生成資料摘要..."):
                 df = pd.read_csv(st.session_state.uploaded_file_path)
                 st.session_state.executive_data_profile_str = generate_data_profile(df)
                 st.session_state.executive_workflow_stage = "cfo_analysis_pending"
@@ -336,11 +347,16 @@ def main():
             with st.expander("查看資料摘要"):
                 st.text(st.session_state.executive_data_profile_str)
 
+        # --- CFO 分析階段 ---
         if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
             with st.spinner("CFO 正在分析... (Gemini Pro)"):
-                cfo_prompt = f"""作為財務長(CFO)，請基於以下商業問題和資料摘要，提供財務角度的簡潔分析...
+                cfo_prompt = f"""作為財務長(CFO)，請基於以下商業問題和資料摘要，提供財務角度的簡潔分析，包括成本、營收、利潤等潛在影響。
+
                 商業問題: {st.session_state.executive_user_query}
-                資料摘要:\n{st.session_state.executive_data_profile_str}"""
+                
+                資料摘要:
+                {st.session_state.executive_data_profile_str}
+                """
                 response = get_gemini_executive_analysis("CFO", cfo_prompt)
                 st.session_state.cfo_analysis_text = response
                 st.session_state.executive_workflow_stage = "coo_analysis_pending"
@@ -349,10 +365,54 @@ def main():
         if st.session_state.cfo_analysis_text:
             st.subheader("📊 財務長 (CFO) 分析")
             st.markdown(st.session_state.cfo_analysis_text)
+        
+        # --- COO 分析階段 (已補全) ---
+        if st.session_state.executive_workflow_stage == "coo_analysis_pending":
+            with st.spinner("COO 正在分析... (Gemini Pro)"):
+                coo_prompt = f"""作為營運長(COO)，請基於以下商業問題、資料摘要和財務長(CFO)的分析，提供營運和執行層面的策略與潛在風險。請保持簡潔有力。
 
-        # ... (COO and CEO stages would follow a similar pattern) ...
-        # The full implementation is omitted here for brevity but follows the same logic
-        # of getting prompt, calling get_gemini_executive_analysis, setting state, and rerunning.
+                商業問題: {st.session_state.executive_user_query}
+                
+                資料摘要:
+                {st.session_state.executive_data_profile_str}
+
+                CFO 的財務分析:
+                {st.session_state.cfo_analysis_text}
+                """
+                response = get_gemini_executive_analysis("COO", coo_prompt)
+                st.session_state.coo_analysis_text = response
+                st.session_state.executive_workflow_stage = "ceo_summary_pending" # 更新狀態到下一步
+                st.rerun()
+
+        if st.session_state.coo_analysis_text:
+            st.subheader("🏭 營運長 (COO) 分析")
+            st.markdown(st.session_state.coo_analysis_text)
+
+        # --- CEO 總結階段 (已補全) ---
+        if st.session_state.executive_workflow_stage == "ceo_summary_pending":
+            with st.spinner("CEO 正在進行最終總結... (Gemini Pro)"):
+                ceo_prompt = f"""作為執行長(CEO)，請整合以下所有資訊（原始商業問題、資料摘要、CFO的財務分析、COO的營運分析），提供一個高層次的決策總結與明確的行動建議。
+
+                商業問題: {st.session_state.executive_user_query}
+
+                資料摘要:
+                {st.session_state.executive_data_profile_str}
+
+                CFO 的財務分析:
+                {st.session_state.cfo_analysis_text}
+
+                COO 的營運分析:
+                {st.session_state.coo_analysis_text}
+                """
+                response = get_gemini_executive_analysis("CEO", ceo_prompt)
+                st.session_state.ceo_summary_text = response
+                st.session_state.executive_workflow_stage = "completed" # 標記工作流完成
+                st.rerun()
+
+        if st.session_state.ceo_summary_text:
+            st.subheader("👑 執行長 (CEO) 最終決策")
+            st.markdown(st.session_state.ceo_summary_text)
+
 
     # 其他 AI 角色標籤
     for i, (role_id, role_info) in enumerate(ROLE_DEFINITIONS.items()):
@@ -365,11 +425,15 @@ def main():
                     st.markdown(msg["content"])
             if user_input := st.chat_input(f"與 {role_info['name']} 對話..."):
                 append_message_to_stream(message_key, "user", user_input)
+                # 直接在輸入後處理回應，避免需要兩次rerun
+                with st.chat_message("user"):
+                    st.markdown(user_input)
                 with st.chat_message("assistant"):
                     with st.spinner("正在生成回應..."):
                         response = get_gemini_response_for_generic_role(role_id, user_input)
                         st.markdown(response)
                         append_message_to_stream(message_key, "assistant", response)
+
 
 if __name__ == "__main__":
     main()
