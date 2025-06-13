@@ -81,7 +81,9 @@ def get_gemini_response_with_history(client, history, user_prompt):
     gemini_history = []
     for msg in history:
         role = "user" if msg["role"] == "human" else "model"
+        # Gemini API expects a list of parts
         gemini_history.append({"role": role, "parts": [msg["content"]]})
+    
     chat = client.start_chat(history=gemini_history)
     response = chat.send_message(user_prompt)
     return response.text
@@ -121,8 +123,9 @@ def generate_data_profile(df):
     profile_parts.append(f"\n前 5 筆資料:\n{df.head().to_string()}")
     return "\n".join(profile_parts)
 
-
-# --- 主應用入口 ---
+# ------------------------------
+# 主應用入口
+# ------------------------------
 def main():
     st.set_page_config(page_title="Gemini Multi-Function Bot", page_icon="✨", layout="wide")
     st.title("✨ Gemini 多功能 AI 助理 (混合架構版)")
@@ -132,7 +135,7 @@ def main():
         "retriever_chain": None, "uploaded_file_path": None, "last_uploaded_filename": None,
         "pending_image_for_main_gemini": None, "chat_histories": {},
         "executive_workflow_stage": "idle", "executive_user_query": "",
-        "executive_data_profile_str": "", "cfo_analysis_text": "",
+        "executive_data_profile_str": "", "executive_rag_context": "", "cfo_analysis_text": "",
         "coo_analysis_text": "", "ceo_summary_text": ""
     }
     for key, default_value in keys_to_init.items():
@@ -169,7 +172,16 @@ def main():
         
         st.divider()
         if st.button("🗑️ 清除所有對話與資料"):
+            # 保留 API Key 輸入，清除其他所有 session state
+            api_keys = {
+                'gemini_api_key_input': st.session_state.get('gemini_api_key_input'),
+                'openai_api_key_input': st.session_state.get('openai_api_key_input')
+            }
             st.session_state.clear()
+            # 將 API Key 加回去
+            for key, value in api_keys.items():
+                if value: st.session_state[key] = value
+
             st.cache_resource.clear()
             st.success("所有對話、Session 記憶和快取已清除！")
             st.rerun()
@@ -188,6 +200,7 @@ def main():
     # --- 主要聊天室 ---
     with tabs[0]:
         st.header("💬 主要聊天室")
+        st.caption("可進行 RAG 資料問答、圖片分析、或一般對話。")
         session_id = "main_chat"
         if session_id not in st.session_state.chat_histories: st.session_state.chat_histories[session_id] = []
         
@@ -201,13 +214,16 @@ def main():
             with st.chat_message("ai"):
                 with st.spinner("正在思考中..."):
                     response = ""
+                    # 情境1：RAG 問答
                     if st.session_state.retriever_chain:
                         retrieved_docs = st.session_state.retriever_chain.invoke(user_input)
                         context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
                         prompt = f"請根據上下文回答問題。\n[上下文]:\n{context}\n\n[問題]:\n{user_input}\n\n[回答]:"
                         response = gemini_client.generate_content(prompt).text
+                    # 情境2：圖片問答
                     elif st.session_state.pending_image_for_main_gemini:
                         response = get_gemini_response_for_image(gemini_api_key, user_input, st.session_state.pending_image_for_main_gemini)
+                    # 情境3：一般聊天
                     else:
                         history = st.session_state.chat_histories[session_id][:-1]
                         response = get_gemini_response_with_history(gemini_client, history, user_input)
@@ -215,48 +231,55 @@ def main():
                     st.markdown(response)
                     st.session_state.chat_histories[session_id].append({"role": "ai", "content": response})
 
-    # --- 高管工作流 (已恢復) ---
+    # --- 高管工作流 (已恢復並整合 RAG) ---
     with tabs[1]:
-        st.header("💼 高管工作流 (由 Gemini Pro 驅動)")
-        st.write("請先在側邊欄上傳CSV資料，然後在此輸入商業問題，最後點擊按鈕啟動分析。")
+        st.header("💼 高管工作流 (由 Gemini Pro + RAG 驅動)")
+        st.write("請先在側邊欄上傳CSV資料，RAG 功能將自動為高管提供深入的數據洞察。")
+        
         st.session_state.executive_user_query = st.text_area(
             "請輸入商業問題以啟動分析:", value=st.session_state.get("executive_user_query", ""), height=100
         )
-        can_start = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("executive_user_query"))
+        can_start = bool(st.session_state.get("retriever_chain") and st.session_state.get("executive_user_query"))
         
         if st.button("🚀 啟動/重啟高管分析", disabled=not can_start, key="exec_flow_button"):
-             st.session_state.executive_workflow_stage = "data_profiling_pending"
+             st.session_state.executive_workflow_stage = "cfo_analysis_pending"
+             st.session_state.executive_rag_context = ""
              st.session_state.cfo_analysis_text = ""
              st.session_state.coo_analysis_text = ""
              st.session_state.ceo_summary_text = ""
              st.rerun()
-        
-        if st.session_state.executive_workflow_stage == "data_profiling_pending":
-             with st.spinner("正在生成資料摘要..."):
+
+        if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
+            with st.spinner("RAG 正在檢索相關資料...CFO 正在分析..."):
                 df = pd.read_csv(st.session_state.uploaded_file_path)
                 st.session_state.executive_data_profile_str = generate_data_profile(df)
-                st.session_state.executive_workflow_stage = "cfo_analysis_pending"
-                st.rerun()
+                
+                retriever = st.session_state.retriever_chain
+                query = st.session_state.executive_user_query
+                retrieved_docs = retriever.invoke(query)
+                rag_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
+                st.session_state.executive_rag_context = rag_context
 
-        if st.session_state.get('executive_data_profile_str'):
-            with st.expander("查看資料摘要"):
-                st.text(st.session_state.executive_data_profile_str)
-        
-        if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
-            with st.spinner("CFO 正在分析... (Gemini Pro)"):
-                cfo_prompt = f"作為財務長(CFO)，請基於商業問題 '{st.session_state.executive_user_query}' 和以下資料摘要，提供財務角度的簡潔分析。\n\n資料摘要:\n{st.session_state.executive_data_profile_str}"
+                cfo_prompt = f"作為財務長(CFO)，請基於你的專業知識，並嚴格參考以下提供的「統計摘要」和「RAG 檢索出的相關數據」，為商業問題提供財務角度的簡潔分析。\n\n[商業問題]:\n{query}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}\n\n[RAG 檢索出的相關數據]:\n{rag_context}"
                 response = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
                 st.session_state.cfo_analysis_text = response
                 st.session_state.executive_workflow_stage = "coo_analysis_pending"
                 st.rerun()
-        
+
+        if st.session_state.get('executive_data_profile_str'):
+            with st.expander("查看統計摘要"):
+                st.text(st.session_state.executive_data_profile_str)
+        if st.session_state.get('executive_rag_context'):
+            with st.expander("查看 RAG 檢索出的相關資料"):
+                st.markdown(st.session_state.executive_rag_context)
+
         if st.session_state.cfo_analysis_text:
             st.subheader("📊 財務長 (CFO) 分析")
             st.markdown(st.session_state.cfo_analysis_text)
         
         if st.session_state.executive_workflow_stage == "coo_analysis_pending":
-            with st.spinner("COO 正在分析... (Gemini Pro)"):
-                coo_prompt = f"作為營運長(COO)，請基於商業問題、資料摘要和CFO的分析，提供營運層面的策略與風險。\n\n商業問題: {st.session_state.executive_user_query}\n\nCFO分析:\n{st.session_state.cfo_analysis_text}\n\n資料摘要:\n{st.session_state.executive_data_profile_str}"
+            with st.spinner("COO 正在分析..."):
+                coo_prompt = f"作為營運長(COO)，請基於商業問題、統計摘要、RAG 檢索數據以及 CFO 的分析，提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}"
                 response = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
                 st.session_state.coo_analysis_text = response
                 st.session_state.executive_workflow_stage = "ceo_summary_pending"
@@ -267,8 +290,8 @@ def main():
             st.markdown(st.session_state.coo_analysis_text)
 
         if st.session_state.executive_workflow_stage == "ceo_summary_pending":
-            with st.spinner("CEO 正在進行最終總結... (Gemini Pro)"):
-                ceo_prompt = f"作為執行長(CEO)，請整合所有資訊，提供高層次的決策總結與行動建議。\n\n商業問題: {st.session_state.executive_user_query}\n\nCFO分析:\n{st.session_state.cfo_analysis_text}\n\nCOO分析:\n{st.session_state.coo_analysis_text}"
+            with st.spinner("CEO 正在進行最終總結..."):
+                ceo_prompt = f"作為執行長(CEO)，請整合所有資訊，提供一個高層次的、可執行的決策總結與明確的行動建議。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}"
                 response = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt)
                 st.session_state.ceo_summary_text = response
                 st.session_state.executive_workflow_stage = "completed"
@@ -280,7 +303,7 @@ def main():
 
     # --- 其他 AI 角色標籤 ---
     for i, (role_id, role_info) in enumerate(ROLE_DEFINITIONS.items()):
-        with tabs[i + 2]: # 索引從 2 開始，因為 0 是主要聊天室, 1 是高管工作流
+        with tabs[i + 2]:
             st.header(role_info["name"])
             st.caption(role_info["system_prompt"])
             session_id = role_info["session_id"]
@@ -296,10 +319,8 @@ def main():
                 with st.chat_message("ai"):
                     with st.spinner("正在生成回應..."):
                         client_with_prompt = get_gemini_client(gemini_api_key)
-                        client_with_prompt.system_instruction = genai.types.Content(
-                            parts=[genai.types.Part(text=role_info["system_prompt"])],
-                            role="system"
-                        )
+                        client_with_prompt.system_instruction = role_info["system_prompt"]
+                        
                         history = st.session_state.chat_histories[session_id][:-1]
                         response = get_gemini_response_with_history(client_with_prompt, history, user_input)
                         
