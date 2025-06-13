@@ -23,3 +23,4 @@ streamlit
 streamlit_ace
 tabulate
 langchain
+langchain-openai
