@@ -192,11 +192,10 @@ def generate_data_profile(df):
     profile_parts.append(f"\n前 5 筆資料:\n{df.head().to_string()}")
     return "\n".join(profile_parts)
 
-# --- 新增的圖表顯示輔助函數 ---
 def display_response_and_plot(response_text, df):
     """
     分析代理程式的回應。如果回應中包含繪圖程式碼，
-    則執行該程式碼以在 Streamlit 中顯示圖表，同時也顯示文字回應。
+    則先顯示完整文字回應，然後執行程式碼以在 Streamlit 中顯示圖表。
     否則，僅顯示文字回應。
     """
     # 使用正規表示式尋找 python 程式碼區塊
@@ -204,32 +203,37 @@ def display_response_and_plot(response_text, df):
 
     if code_match:
         plot_code = code_match.group(1)
+        
+        # 步驟 1: 立即顯示代理的完整回應（包含文字和程式碼）
+        # 這樣使用者能立刻看到 AI 的思考和它要執行的程式碼。
+        st.markdown(response_text)
+        
+        # 步驟 2: 嘗試執行程式碼並捕捉圖表
         try:
-            # 準備一個 figure 來繪製圖表
-            fig, ax = plt.subplots()
-
-            # 代理程式產生的程式碼會用 `df` 來引用 DataFrame。
-            # 我們必須在執行的作用域中提供它，以及 plt。
-            # 警告：exec() 功能強大，可以執行任意程式碼。
-            # 在此情境下是可接受的，因為代理程式已設定 allow_dangerous_code=True。
-            exec_scope = {'df': df, 'plt': plt, 'ax': ax, 'fig': fig}
-            exec(plot_code, exec_scope, exec_scope)
-
-            # 檢查是否有繪製任何資料。
-            # 代理程式有時會產生不包含繪圖指令的程式碼。
-            if ax.has_data():
-                 st.pyplot(fig)
-            else:
-                 # 如果程式碼運行了但沒有畫圖，關閉這個空的 figure
-                 plt.close(fig)
-
-            # 同時也顯示回應的文字部分
-            st.markdown(response_text)
+            # 準備執行環境，我們不再預先建立 figure 或 axes
+            exec_scope = {
+                'df': df,
+                'plt': plt,
+                'st': st
+            }
+            
+            # 執行代理程式提供的程式碼
+            exec(plot_code, exec_scope)
+            
+            # 關鍵！執行後，使用 plt.gcf() 來「捕捉」當前由 exec 產生的圖表
+            fig = plt.gcf()
+            
+            # 檢查捕捉到的圖表是否真的有內容 (檢查它是否有座標軸)
+            if fig.get_axes():
+                st.write("--- 圖表生成結果 ---") # 加上一個標題
+                st.pyplot(fig)
+                # 清除當前的圖表，避免影響下一次繪圖
+                plt.close(fig)
 
         except Exception as e:
-            st.error(f"圖表生成失敗: {e}")
-            st.markdown(response_text) # 即使出錯，仍然顯示原始文字
-            st.code(plot_code, language="python") # 顯示出錯的程式碼以供除錯
+            # 如果程式碼執行出錯，顯示一個更明確的錯誤訊息
+            st.error(f"執行圖表程式碼時發生錯誤: {e}")
+            
     else:
         # 如果沒找到程式碼區塊，就只顯示文字
         st.markdown(response_text)
