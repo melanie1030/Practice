@@ -21,3 +21,4 @@ requests
 seaborn
 streamlit
 streamlit_ace
+tabulate
