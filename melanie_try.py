@@ -115,7 +115,16 @@ def create_pandas_agent(file_path: str):
 
 def query_pandas_agent(agent, query: str):
     if not agent: return "錯誤：資料分析代理未初始化。"
-    prompt = f"請針對以下問題進行分析，並用繁體中文回答：\n問題: \"{query}\""
+    
+    # 在指令中加入強制要求，讓 AI 把程式碼交出來
+    prompt = f"""
+    請針對以下問題進行分析，並用繁體中文回答。
+
+    **重要指示：**
+    如果您的回答中包含或生成了任何圖表 (plot)，您**必須**在最終答案中，用 ```python ... ``` 的格式附上您用來生成圖表的、完整且可執行的 Python 程式碼。
+
+    問題: "{query}"
+    """
     try:
         response = agent.invoke({"input": prompt})
         return response.get("output", "代理沒有提供有效的輸出。")
