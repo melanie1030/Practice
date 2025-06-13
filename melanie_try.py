@@ -73,20 +73,20 @@ def get_session_history(session_id: str) -> BaseChatMessageHistory:
 
 # 這是替換後的函式
 @st.cache_resource
-def create_vector_db_with_openai(file_path: str):
+def create_vector_db_with_openai(file_path: str, openai_api_key: str): # 讓函式接收 key
     """
     使用穩定性高的 OpenAI API 來建立向量資料庫。
     """
     with st.status("正在初始化知識庫 (OpenAI 模式)...", expanded=True) as status:
         try:
-            # 步驟 1：載入與清理資料 (不變)
+            # (步驟 1 的載入與清理資料邏輯不變)
             status.update(label="步驟 1/3：正在載入與清理資料...")
             df = pd.read_csv(file_path, encoding='utf-8')
             df.dropna(how='all', inplace=True)
             df.fillna("", inplace=True)
             clean_file_path = os.path.join(UPLOAD_DIR, f"clean_{os.path.basename(file_path)}")
             df.to_csv(clean_file_path, index=False)
-
+            
             loader = CSVLoader(file_path=clean_file_path, encoding='utf-8')
             documents = loader.load()
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
@@ -95,15 +95,10 @@ def create_vector_db_with_openai(file_path: str):
 
             # 步驟 2：使用 OpenAI 模型生成向量嵌入
             status.update(label="步驟 2/3：正在呼叫 OpenAI API 生成向量嵌入...")
-
-            # --- 核心修改：從 Google 切換到 OpenAI ---
-            openai_api_key = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
-            if not openai_api_key:
-                st.error("請先設定您的 OPENAI_API_KEY！")
-                st.stop()
-
+            
+            # --- 核心修改：直接使用傳入的 API Key ---
             embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
-
+            
             vector_store = FAISS.from_documents(docs, embeddings)
             status.update(label="步驟 2/3 完成！向量嵌入已生成。")
 
@@ -113,6 +108,7 @@ def create_vector_db_with_openai(file_path: str):
 
         except Exception as e:
             st.error(f"建立知識庫過程中發生嚴重錯誤: {e}")
+            # 當快取函式出錯時，返回 None
             status.update(label="建立失敗", state="error")
             return None
 
@@ -183,10 +179,18 @@ def main():
     st.title("✨ Gemini 多功能 AI 助理")
 
     # --- 初始化 Session States ---
+    # 為確保應用程式在各種情況下都能正常運行，我們在此初始化所有需要的鍵
     keys_to_init = {
-        "rag_chain": None, "uploaded_file_path": None, "last_uploaded_filename": None,
-        "pending_image_for_main_gemini": None, "executive_workflow_stage": "idle", "executive_user_query": "",
-        "executive_data_profile_str": "", "cfo_analysis_text": "", "coo_analysis_text": "", "ceo_summary_text": "",
+        "rag_chain": None,
+        "uploaded_file_path": None,
+        "last_uploaded_filename": None,
+        "pending_image_for_main_gemini": None,
+        "executive_workflow_stage": "idle",
+        "executive_user_query": "",
+        "executive_data_profile_str": "",
+        "cfo_analysis_text": "",
+        "coo_analysis_text": "",
+        "ceo_summary_text": "",
         "debug_mode": False
     }
     for key, default_value in keys_to_init.items():
@@ -195,12 +199,25 @@ def main():
 
     # --- 側邊欄介面 ---
     with st.sidebar:
-        st.header("⚙️ 設定")
+        st.header("⚙️ API 金鑰設定")
+
+        # Gemini API Key 輸入框
         st.text_input(
             "請輸入您的 Google Gemini API Key",
-            value=st.session_state.get("gemini_api_key_input", ""), type="password", key="gemini_api_key_input"
+            value=st.session_state.get("gemini_api_key_input", ""),
+            type="password",
+            key="gemini_api_key_input"
         )
-        st.caption("優先使用此處輸入的金鑰。")
+
+        # OpenAI API Key 輸入框
+        st.text_input(
+            "請輸入您的 OpenAI API Key",
+            value=st.session_state.get("openai_api_key_input", ""),
+            type="password",
+            key="openai_api_key_input"
+        )
+        
+        st.caption("本應用使用 Gemini 進行聊天，使用 OpenAI 進行資料嵌入。請提供兩種金鑰。側邊欄輸入的優先級最高。")
         st.divider()
 
         st.subheader("📁 資料問答 (RAG)")
@@ -208,11 +225,24 @@ def main():
         
         if uploaded_file:
             if uploaded_file.name != st.session_state.get("last_uploaded_filename"):
-                st.session_state.last_uploaded_filename = uploaded_file.name
-                file_path = save_uploaded_file(uploaded_file)
-                st.session_state.uploaded_file_path = file_path
-                vector_store = create_vector_db_from_csv(file_path)
-                st.session_state.rag_chain = create_rag_chain(vector_store)
+                # 選擇 API Key 的邏輯
+                openai_api_key = (
+                    st.session_state.get("openai_api_key_input")
+                    or st.secrets.get("OPENAI_API_KEY")
+                    or os.environ.get("OPENAI_API_KEY")
+                )
+
+                if not openai_api_key:
+                    st.error("請在側邊欄或 Secrets 中設定您的 OpenAI API Key！")
+                else:
+                    st.session_state.last_uploaded_filename = uploaded_file.name
+                    file_path = save_uploaded_file(uploaded_file)
+                    st.session_state.uploaded_file_path = file_path
+                    # 將選擇好的 Key 傳入函式
+                    vector_store = create_vector_db_with_openai(file_path, openai_api_key)
+                    
+                    if vector_store: # 檢查是否成功建立
+                        st.session_state.rag_chain = create_rag_chain(vector_store)
         
         if st.session_state.rag_chain:
             st.success("✅ RAG 問答功能已啟用！")
@@ -223,9 +253,10 @@ def main():
         st.divider()
 
         if st.button("🗑️ 清除所有對話與資料"):
-            keys_to_clear = [k for k in st.session_state.keys() if k != 'gemini_api_key_input']
+            keys_to_clear = [k for k in st.session_state.keys() if 'api_key_input' not in k]
             for key in keys_to_clear:
                 st.session_state.pop(key)
+            # 清除所有快取資源
             st.cache_resource.clear()
             st.success("所有對話、Session 記憶和快取已清除！")
             st.rerun()
@@ -244,6 +275,7 @@ def main():
         MAIN_CHAT_SESSION_ID = "main_chat_session"
         history = get_session_history(MAIN_CHAT_SESSION_ID)
 
+        # 顯示歷史訊息
         for msg in history.messages:
             with st.chat_message(msg.type):
                 st.markdown(msg.content)
@@ -266,6 +298,7 @@ def main():
                         response = get_gemini_response_for_image(
                             user_input, st.session_state.pending_image_for_main_gemini
                         )
+                        # 手動將圖文問答加入歷史
                         history.add_user_message(user_input)
                         history.add_ai_message(response)
                     # 情境3：一般聊天
@@ -282,8 +315,11 @@ def main():
     with tabs[1]:
         st.header("💼 高管工作流 (由 Gemini Pro 驅動)")
         st.write("請先在側邊欄上傳CSV資料，然後在此輸入商業問題，最後點擊按鈕啟動分析。")
+        
         st.session_state.executive_user_query = st.text_area(
-            "請輸入商業問題以啟動分析:", value=st.session_state.get("executive_user_query", ""), height=100
+            "請輸入商業問題以啟動分析:", 
+            value=st.session_state.get("executive_user_query", ""), 
+            height=100
         )
         can_start = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("executive_user_query"))
         
@@ -305,8 +341,44 @@ def main():
             with st.expander("查看資料摘要"):
                 st.text(st.session_state.executive_data_profile_str)
         
-        # --- CFO/COO/CEO 執行邏輯 ---
-        # (此處省略了具體的 CFO/COO/CEO 呼叫邏輯以保持簡潔，但它們在您的完整檔案中應該被保留)
+        # --- CFO 分析階段 ---
+        if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
+            with st.spinner("CFO 正在分析... (Gemini Pro)"):
+                cfo_prompt = f"作為財務長(CFO)，請基於商業問題 '{st.session_state.executive_user_query}' 和以下資料摘要，提供財務角度的簡潔分析。\n\n資料摘要:\n{st.session_state.executive_data_profile_str}"
+                response = get_gemini_executive_analysis("CFO", cfo_prompt)
+                st.session_state.cfo_analysis_text = response
+                st.session_state.executive_workflow_stage = "coo_analysis_pending"
+                st.rerun()
+        
+        if st.session_state.cfo_analysis_text:
+            st.subheader("📊 財務長 (CFO) 分析")
+            st.markdown(st.session_state.cfo_analysis_text)
+        
+        # --- COO 分析階段 ---
+        if st.session_state.executive_workflow_stage == "coo_analysis_pending":
+            with st.spinner("COO 正在分析... (Gemini Pro)"):
+                coo_prompt = f"作為營運長(COO)，請基於商業問題 '{st.session_state.executive_user_query}'、資料摘要和CFO的分析，提供營運層面的策略與風險。\n\nCFO分析:\n{st.session_state.cfo_analysis_text}\n\n資料摘要:\n{st.session_state.executive_data_profile_str}"
+                response = get_gemini_executive_analysis("COO", coo_prompt)
+                st.session_state.coo_analysis_text = response
+                st.session_state.executive_workflow_stage = "ceo_summary_pending"
+                st.rerun()
+
+        if st.session_state.coo_analysis_text:
+            st.subheader("🏭 營運長 (COO) 分析")
+            st.markdown(st.session_state.coo_analysis_text)
+
+        # --- CEO 總結階段 ---
+        if st.session_state.executive_workflow_stage == "ceo_summary_pending":
+            with st.spinner("CEO 正在進行最終總結... (Gemini Pro)"):
+                ceo_prompt = f"作為執行長(CEO)，請整合以下所有資訊，提供高層次的決策總結與行動建議。\n\n商業問題: {st.session_state.executive_user_query}\n\nCFO分析:\n{st.session_state.cfo_analysis_text}\n\nCOO分析:\n{st.session_state.coo_analysis_text}\n\n原始資料摘要:\n{st.session_state.executive_data_profile_str}"
+                response = get_gemini_executive_analysis("CEO", ceo_prompt)
+                st.session_state.ceo_summary_text = response
+                st.session_state.executive_workflow_stage = "completed"
+                st.rerun()
+
+        if st.session_state.ceo_summary_text:
+            st.subheader("👑 執行長 (CEO) 最終決策")
+            st.markdown(st.session_state.ceo_summary_text)
 
     # --- 其他 AI 角色標籤 ---
     for i, (role_id, role_info) in enumerate(ROLE_DEFINITIONS.items()):
@@ -321,10 +393,12 @@ def main():
             session_id = role_info["session_id"]
             history = get_session_history(session_id)
             
+            # 顯示歷史訊息
             for msg in history.messages:
                 with st.chat_message(msg.type):
                     st.markdown(msg.content)
             
+            # 聊天輸入
             if user_input := st.chat_input(f"與 {role_info['name']} 對話..."):
                 with st.chat_message("human"):
                     st.markdown(user_input)
@@ -335,6 +409,5 @@ def main():
                             config={"configurable": {"session_id": session_id}}
                         )
                         st.markdown(response)
-
 if __name__ == "__main__":
     main()
