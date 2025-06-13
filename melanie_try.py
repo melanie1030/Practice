@@ -174,7 +174,7 @@ def main():
             st.rerun()
 
     # --- 主工作區 (標籤頁面) ---
-    tab_titles = ["💬 主要聊天室"] + [role["name"] for role in ROLE_DEFINITIONS.values()]
+    tab_titles = ["💬 主要聊天室", "💼 高管工作流"] + [role["name"] for role in ROLE_DEFINITIONS.values()]
     tabs = st.tabs(tab_titles)
 
     # --- API Key 檢查 ---
