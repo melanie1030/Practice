@@ -147,7 +147,7 @@ def create_vector_db_from_csv(file_path: str):
         documents = loader.load()
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         docs = text_splitter.split_documents(documents)
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
         vector_store = FAISS.from_documents(docs, embeddings)
         st.success(f"知識庫建立完成！已載入 {len(docs)} 筆資料。")
         return vector_store
