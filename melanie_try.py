@@ -140,17 +140,42 @@ def create_generic_chat_chain(system_prompt: str):
     )
     return chain_with_history
 
+@st.cache_resource
 def create_vector_db_from_csv(file_path: str):
-    """(保持不變) 從 CSV 檔案載入、切割、嵌入並建立向量資料庫"""
-    with st.spinner("正在處理資料，建立知識庫中..."):
-        loader = CSVLoader(file_path=file_path, encoding='utf-8')
+    """從 CSV 檔案載入、清理、切割、嵌入並建立向量資料庫"""
+
+    with st.status("正在初始化知識庫...", expanded=True) as status:
+        # --- 新增的資料清理步驟 ---
+        st.write("步驟 0/4：正在讀取與清理資料...")
+        df = pd.read_csv(file_path)
+        # 移除完全為空的行
+        df.dropna(how='all', inplace=True)
+        # 將剩餘的 NaN 值填充為空字串
+        df.fillna("", inplace=True)
+
+        # 將清理後的 DataFrame 寫入一個臨時檔案，讓 CSVLoader 讀取
+        clean_file_path = os.path.join(UPLOAD_DIR, f"clean_{os.path.basename(file_path)}")
+        df.to_csv(clean_file_path, index=False)
+
+        st.write("步驟 1/4：正在載入與切割文件...")
+        # 讓 Loader 讀取清理過的檔案
+        loader = CSVLoader(file_path=clean_file_path, encoding='utf-8') 
         documents = loader.load()
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         docs = text_splitter.split_documents(documents)
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+        status.update(label=f"步驟 1/4 完成！已將文件切割成 {len(docs)} 個區塊。")
+
+        st.write("步驟 2/4：正在生成向量嵌入 (此步驟耗時最長)...")
+        # 使用最新的模型
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004") 
         vector_store = FAISS.from_documents(docs, embeddings)
-        st.success(f"知識庫建立完成！已載入 {len(docs)} 筆資料。")
-        return vector_store
+        status.update(label="步驟 2/4 完成！向量嵌入已生成。")
+
+        st.write("步驟 3/4：知識庫準備完成！")
+        status.update(label="知識庫已就緒！", state="complete", expanded=False)
+
+    st.success("知識庫建立完成！")
+    return vector_store
 
 # --- 其他 Gemini 呼叫函式 (保持不變) ---
 def get_gemini_response_for_image(user_prompt, image_pil):
