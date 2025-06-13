@@ -128,7 +128,7 @@ def generate_data_profile(df):
 # ------------------------------
 def main():
     st.set_page_config(page_title="Gemini Multi-Function Bot", page_icon="✨", layout="wide")
-    st.title("✨ Gemini 多功能 AI 助理 P")
+    st.title("✨ Gemini 多功能 AI 助理 ")
 
     # --- 初始化 Session States ---
     keys_to_init = {
