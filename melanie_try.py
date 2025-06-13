@@ -24,6 +24,8 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_google_genai import ChatGoogleGenerativeAI
 # --- 本地嵌入模型 Import ---
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import OpenAIEmbeddings
 from langchain_community.document_loaders import CSVLoader
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -69,34 +71,50 @@ def get_session_history(session_id: str) -> BaseChatMessageHistory:
         st.session_state.history_store[session_id] = ChatMessageHistory()
     return st.session_state.history_store[session_id]
 
+# 這是替換後的函式
 @st.cache_resource
-def create_vector_db_from_csv(file_path: str):
-    """從 CSV 檔案建立向量資料庫 (100% 使用本地嵌入模型)"""
-    with st.status("正在初始化知識庫 (本地模式)...", expanded=True) as status:
-        status.update(label="步驟 1/3：正在載入與清理資料...")
-        df = pd.read_csv(file_path, encoding='utf-8')
-        df.dropna(how='all', inplace=True)
-        df.fillna("", inplace=True)
-        clean_file_path = os.path.join(UPLOAD_DIR, f"clean_{os.path.basename(file_path)}")
-        df.to_csv(clean_file_path, index=False)
-        
-        loader = CSVLoader(file_path=clean_file_path, encoding='utf-8')
-        documents = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        docs = text_splitter.split_documents(documents)
-        status.update(label=f"步驟 1/3 完成！已將文件切割成 {len(docs)} 個區塊。")
+def create_vector_db_with_openai(file_path: str):
+    """
+    使用穩定性高的 OpenAI API 來建立向量資料庫。
+    """
+    with st.status("正在初始化知識庫 (OpenAI 模式)...", expanded=True) as status:
+        try:
+            # 步驟 1：載入與清理資料 (不變)
+            status.update(label="步驟 1/3：正在載入與清理資料...")
+            df = pd.read_csv(file_path, encoding='utf-8')
+            df.dropna(how='all', inplace=True)
+            df.fillna("", inplace=True)
+            clean_file_path = os.path.join(UPLOAD_DIR, f"clean_{os.path.basename(file_path)}")
+            df.to_csv(clean_file_path, index=False)
 
-        status.update(label="步驟 2/3：正在使用本地模型生成向量嵌入 (初次執行會下載模型，請稍候)...")
-        model_name = "paraphrase-multilingual-MiniLM-L12-v2"
-        # 強制使用 CPU，避免在沒有 GPU 的環境中出錯
-        embeddings = HuggingFaceEmbeddings(model_name=model_name, model_kwargs={'device': 'cpu'})
-        
-        vector_store = FAISS.from_documents(docs, embeddings)
-        status.update(label="步驟 2/3 完成！向量嵌入已在本地生成。")
+            loader = CSVLoader(file_path=clean_file_path, encoding='utf-8')
+            documents = loader.load()
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+            docs = text_splitter.split_documents(documents)
+            status.update(label=f"步驟 1/3 完成！已將文件切割成 {len(docs)} 個區塊。")
 
-        status.update(label="步驟 3/3：知識庫準備完成！", state="complete", expanded=False)
-    st.success("知識庫建立完成！")
-    return vector_store
+            # 步驟 2：使用 OpenAI 模型生成向量嵌入
+            status.update(label="步驟 2/3：正在呼叫 OpenAI API 生成向量嵌入...")
+
+            # --- 核心修改：從 Google 切換到 OpenAI ---
+            openai_api_key = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+            if not openai_api_key:
+                st.error("請先設定您的 OPENAI_API_KEY！")
+                st.stop()
+
+            embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
+
+            vector_store = FAISS.from_documents(docs, embeddings)
+            status.update(label="步驟 2/3 完成！向量嵌入已生成。")
+
+            status.update(label="步驟 3/3：知識庫準備完成！", state="complete", expanded=False)
+            st.success("知識庫建立完成！")
+            return vector_store
+
+        except Exception as e:
+            st.error(f"建立知識庫過程中發生嚴重錯誤: {e}")
+            status.update(label="建立失敗", state="error")
+            return None
 
 def create_rag_chain(vector_store):
     """建立一個整合了「對話內記憶」的 RAG 鏈"""
