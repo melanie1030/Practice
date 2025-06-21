@@ -31,13 +31,14 @@ if uploaded_file is not None:
     # --- 步驟 2: 顯示資料集預覽 ---
     st.header("2. 資料集預覽")
     st.write("以下是您上傳資料集的前五行：")
-    st.dataframe(df.head()) # 使用 st.dataframe 以獲得更好的互動式表格
+    st.dataframe(df.head())
 
     # --- 步驟 3: 生成相關圖表 ---
     st.header("3. 資料視覺化")
     st.write("請選擇您想要視覺化的欄位。")
 
     # 偵測數值型態與類別型態的欄位，以提供不同的繪圖選項
+    # 加上 .copy() 避免 SettingWithCopyWarning
     numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
     categorical_columns = df.select_dtypes(include=['object', 'category']).columns.tolist()
 
@@ -48,8 +49,6 @@ if uploaded_file is not None:
         # --- 長條圖 ---
         st.subheader("長條圖")
         
-        # 讓使用者選擇 X 軸 (通常是類別) 和 Y 軸 (通常是數值)
-        # 如果沒有類別欄位，就用第一個數值欄位當作 X 軸
         x_bar_axis = st.selectbox(
             "選擇長條圖的 X 軸 (類別):",
             options=categorical_columns if categorical_columns else numeric_columns,
@@ -62,18 +61,20 @@ if uploaded_file is not None:
         )
 
         if x_bar_axis and y_bar_axis:
-            # 依據 X 軸分組並加總 Y 軸數值
-            # 避免因類別過多導致圖表混亂，只取前 20 名
-            bar_data = df.groupby(x_bar_axis)[y_bar_axis].sum().nlargest(20)
-            st.bar_chart(bar_data)
+            try:
+                # 避免因類別過多導致圖表混亂，只取前 20 名
+                bar_data = df.groupby(x_bar_axis)[y_bar_axis].sum().nlargest(20)
+                st.bar_chart(bar_data)
+            except Exception as e:
+                st.error(f"繪製長條圖時發生錯誤: {e}")
 
-        # --- 折線圖 ---
+
+        # --- 折線圖 (已修正) ---
         st.subheader("折線圖")
 
-        # 折線圖通常用來顯示趨勢，X 軸可以是數值或日期，Y 軸是數值
         x_line_axis = st.selectbox(
             "選擇折線圖的 X 軸:",
-            options=numeric_columns + categorical_columns, # X 軸可以是任何類型
+            options=numeric_columns + categorical_columns,
             key='line_x'
         )
         y_line_axis = st.selectbox(
@@ -84,9 +85,24 @@ if uploaded_file is not None:
 
         if x_line_axis and y_line_axis:
             # 為了讓折線圖有意義，通常會先將 X 軸排序
-            line_data = df.sort_values(by=x_line_axis)
-            # 設定 X 軸和 Y 軸來繪圖
-            st.line_chart(line_data.rename(columns={x_line_axis:'index'}).set_index('index')[y_line_axis])
+            # 使用 .copy() 確保我們在原始資料的複本上操作
+            line_data = df.copy()
+
+            # 確保 X 軸的資料類型不是無法排序的
+            try:
+                # 嘗試將 X 軸轉為數值型態以利排序，如果失敗也沒關係
+                line_data[x_line_axis] = pd.to_numeric(line_data[x_line_axis], errors='ignore')
+                line_data = line_data.sort_values(by=x_line_axis)
+                
+                # 【關鍵修正】
+                # 直接使用 st.line_chart 的 x 和 y 參數來指定欄位
+                # 這樣做更安全，且能避免因改名導致的 KeyError
+                st.line_chart(line_data, x=x_line_axis, y=y_line_axis)
+
+            except Exception as e:
+                 st.error(f"繪製折線圖時發生錯誤: {e}")
+                 st.info("提示：折線圖的 X 軸通常需要是可排序的資料，例如數字、日期或排序過的類別。")
+
 
 else:
     st.info("請上傳一個 CSV 檔案以開始分析。")
