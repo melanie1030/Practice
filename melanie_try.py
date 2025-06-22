@@ -248,6 +248,7 @@ def main():
         st.header("💼 高管工作流")
         st.caption(f"目前模式：{'單一提示整合工作流 (單一記憶)' if st.session_state.use_single_prompt_workflow else '階段式工作流 (多重記憶)'} | RAG 知識庫：{'啟用' if st.session_state.use_rag else '停用'}")
 
+        # 根據工作流開關，動態決定要執行哪個模式的邏輯
         # --- 模式一：單一提示整合工作流 ---
         if st.session_state.use_single_prompt_workflow:
             st.info("**方法說明**：此流程模擬一個全能的 AI 高管團隊。我們只發送**一次**包含了完整指令的請求，AI 在一次生成中完成所有角色思考。")
@@ -260,15 +261,38 @@ def main():
                     data_profile = generate_data_profile(df)
                     query = st.session_state.sp_user_query
                     rag_context_str = ""
+                    # 動態組合 RAG 內容到 Prompt
                     if st.session_state.use_rag and st.session_state.retriever_chain:
                         retrieved_docs = st.session_state.retriever_chain.invoke(query)
                         rag_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
                         rag_context_str = f"\n\n**[RAG 檢索出的相關數據]:**\n{rag_context}"
-                    mega_prompt = f"你是一個頂尖的 AI 商業分析團隊...\n\n### 📊 財務長 (CFO) 分析\n...\n\n### 🏭 營運長 (COO) 分析\n...\n\n### 👑 執行長 (CEO) 最終決策\n...\n\n--- \n現在，請根據以下資訊開始分析：\n\n**[商業問題]:**\n{query}\n\n**[資料統計摘要]:**\n{data_profile}{rag_context_str}"
+                    
+                    mega_prompt = f"""你是一個頂尖的 AI 商業分析團隊，能夠在一次思考中扮演多個高管角色。你的任務是針對給定的商業問題和數據，生成一份包含三個部分的完整分析報告。
+
+請嚴格按照以下結構和要求進行輸出，使用 Markdown 標題來區分每個部分：
+---
+### 📊 財務長 (CFO) 分析
+在此部分，請完全以財務長的角度思考。專注於財務指標、成本效益、投資回報率、毛利率、潛在的財務風險等。你的分析必須完全基於提供的數據。
+
+### 🏭 營運長 (COO) 分析
+在此部分，轉換為營運長的角色。你需要思考，在CFO會提出的財務考量下，營運上是否可行？分析潛在的流程、供應鏈、人力資源或執行風險。你的分析需要務實且著重於可執行性。
+
+### 👑 執行長 (CEO) 最終決策
+在此部分，作為CEO，請綜合上述的財務(CFO)和營運(COO)分析。不要重複細節，而是提供一個高層次的戰略總結。最終，給出一個明確、果斷的**決策**（例如：批准、駁回、需要更多資料），並列出 2-3 個最重要的**後續行動建議**。
+---
+現在，請根據以下資訊開始分析：
+
+**[商業問題]:**
+{query}
+
+**[資料統計摘要]:**
+{data_profile}{rag_context_str}
+"""
                     response = get_gemini_executive_analysis(gemini_api_key, "IntegratedTeam", mega_prompt)
                     st.session_state.sp_final_report = response
                     st.session_state.sp_workflow_stage = "completed"
                     st.rerun()
+
             if st.session_state.sp_workflow_stage == "completed" and st.session_state.sp_final_report:
                 st.subheader("📈 AI 高管團隊整合報告")
                 st.markdown(st.session_state.sp_final_report)
@@ -283,23 +307,23 @@ def main():
                 st.session_state.cfo_analysis_text = ""
                 st.session_state.coo_analysis_text = ""
                 st.session_state.ceo_summary_text = ""
+                st.session_state.executive_rag_context = ""
                 st.rerun()
             
-            # --- CFO 分析階段 ---
+            # CFO 分析階段
             if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
                 with st.spinner("CFO 正在獨立分析..."):
                     df = pd.read_csv(st.session_state.uploaded_file_path)
                     data_profile = generate_data_profile(df)
                     st.session_state.executive_data_profile_str = data_profile
                     query = st.session_state.executive_user_query
-                    rag_context_str = ""
                     rag_context_for_prompt = ""
                     if st.session_state.use_rag and st.session_state.retriever_chain:
                         retrieved_docs = st.session_state.retriever_chain.invoke(query)
                         rag_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
                         st.session_state.executive_rag_context = rag_context
                         rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{rag_context}"
-                    cfo_prompt = f"作為財務長(CFO)...為商業問題提供財務角度的簡潔分析。\n\n[商業問題]:\n{query}\n\n[統計摘要]:\n{data_profile}{rag_context_for_prompt}"
+                    cfo_prompt = f"作為財務長(CFO)，請基於你的專業知識，並嚴格參考以下提供的資料，為商業問題提供財務角度的簡潔分析。\n\n[商業問題]:\n{query}\n\n[統計摘要]:\n{data_profile}{rag_context_for_prompt}"
                     st.session_state.cfo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
                     st.session_state.executive_workflow_stage = "coo_analysis_pending"
                     st.rerun()
@@ -313,11 +337,11 @@ def main():
                 st.subheader("📊 財務長 (CFO) 分析")
                 st.markdown(st.session_state.cfo_analysis_text)
             
-            # --- COO 分析階段 ---
+            # COO 分析階段
             if st.session_state.executive_workflow_stage == "coo_analysis_pending":
                 with st.spinner("COO 正在分析..."):
-                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.use_rag and st.session_state.executive_rag_context else ""
-                    coo_prompt = f"作為營運長(COO)...提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
+                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
+                    coo_prompt = f"作為營運長(COO)，請基於商業問題、統計摘要、CFO 的財務分析以及相關數據，提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
                     st.session_state.coo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
                     st.session_state.executive_workflow_stage = "ceo_summary_pending"
                     st.rerun()
@@ -326,11 +350,11 @@ def main():
                 st.subheader("🏭 營運長 (COO) 分析")
                 st.markdown(st.session_state.coo_analysis_text)
 
-            # --- CEO 總結階段 ---
+            # CEO 總結階段
             if st.session_state.executive_workflow_stage == "ceo_summary_pending":
                 with st.spinner("CEO 正在總結..."):
-                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.use_rag and st.session_state.executive_rag_context else ""
-                    ceo_prompt = f"作為執行長(CEO)...提供一個高層次的決策總結。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}{rag_context_for_prompt}"
+                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
+                    ceo_prompt = f"作為執行長(CEO)，請整合所有資訊，提供一個高層次的決策總結。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}{rag_context_for_prompt}"
                     st.session_state.ceo_summary_text = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt)
                     st.session_state.executive_workflow_stage = "completed"
                     st.rerun()
