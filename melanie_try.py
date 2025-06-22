@@ -125,8 +125,8 @@ def main():
 
     # --- 初始化 Session States ---
     keys_to_init = {
-        # 新增的開關狀態
-        "use_rag": False, "use_single_prompt_workflow": True,
+        # *** 修改開關邏輯 (2025/06/22) ***
+        "use_rag": False, "use_multi_stage_workflow": False, # 預設使用單一整合工作流
         # 原始狀態
         "retriever_chain": None, "uploaded_file_path": None, "last_uploaded_filename": None,
         "pending_image_for_main_gemini": None, "chat_histories": {},
@@ -147,13 +147,13 @@ def main():
         # 開關一：控制 RAG 功能
         st.session_state.use_rag = st.toggle("啟用 RAG 知識庫 (需 OpenAI Key)", value=st.session_state.use_rag)
         
-        # 開關二：控制工作流模式
-        st.session_state.use_single_prompt_workflow = st.toggle("使用單一提示整合工作流", value=st.session_state.use_single_prompt_workflow, help="ON: AI 一次完成所有角色分析 (單一記憶)。OFF: AI 依序完成各角色分析 (多重記憶)。")
+        # *** 修改開關邏輯 (2025/06/22) ***
+        # 開關二：控制工作流模式，預設為 OFF (使用單一整合流程)
+        st.session_state.use_multi_stage_workflow = st.toggle("啟用階段式工作流 (多重記憶)", value=st.session_state.use_multi_stage_workflow, help="預設(OFF): AI 一次完成所有角色分析 (單一記憶)。啟用(ON): AI 依序完成各角色分析 (多重記憶)，開銷較大。")
         st.divider()
 
         st.header("🔑 API 金鑰")
         st.text_input("請輸入您的 Google Gemini API Key", type="password", key="gemini_api_key_input")
-        # 根據 RAG 開關狀態，動態顯示 OpenAI Key 輸入框
         if st.session_state.use_rag:
             st.text_input("請輸入您的 OpenAI API Key (RAG 功能需要)", type="password", key="openai_api_key_input")
         st.divider()
@@ -167,9 +167,8 @@ def main():
                 file_path = save_uploaded_file(uploaded_file)
                 st.session_state.uploaded_file_path = file_path
                 st.success(f"檔案 '{uploaded_file.name}' 上傳成功！")
-                st.session_state.retriever_chain = None # 新檔案上傳時，清除舊的 RAG chain
+                st.session_state.retriever_chain = None 
 
-                # 如果 RAG 開關是 ON，則建立知識庫
                 if st.session_state.use_rag:
                     openai_api_key = st.session_state.get("openai_api_key_input") or os.environ.get("OPENAI_API_KEY")
                     if not openai_api_key:
@@ -186,12 +185,11 @@ def main():
         
         st.divider()
         if st.button("🗑️ 清除所有對話與資料"):
-            # 保留重要設定
             settings = {
                 'gemini_api_key_input': st.session_state.get('gemini_api_key_input'),
                 'openai_api_key_input': st.session_state.get('openai_api_key_input'),
                 'use_rag': st.session_state.get('use_rag'),
-                'use_single_prompt_workflow': st.session_state.get('use_single_prompt_workflow')
+                'use_multi_stage_workflow': st.session_state.get('use_multi_stage_workflow')
             }
             st.session_state.clear()
             for key, value in settings.items():
@@ -228,7 +226,6 @@ def main():
             with st.chat_message("ai"):
                 with st.spinner("正在思考中..."):
                     response = ""
-                    # 根據 RAG 開關決定是否執行 RAG 邏輯
                     if st.session_state.use_rag and st.session_state.retriever_chain:
                         retrieved_docs = st.session_state.retriever_chain.invoke(user_input)
                         context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
@@ -246,12 +243,76 @@ def main():
     # --- 合併後的高管工作流 (tabs[1]) ---
     with tabs[1]:
         st.header("💼 高管工作流")
-        st.caption(f"目前模式：{'單一提示整合工作流 (單一記憶)' if st.session_state.use_single_prompt_workflow else '階段式工作流 (多重記憶)'} | RAG 知識庫：{'啟用' if st.session_state.use_rag else '停用'}")
+        # *** 修改顯示邏輯 (2025/06/22) ***
+        st.caption(f"目前模式：{'階段式工作流 (多重記憶)' if st.session_state.use_multi_stage_workflow else '單一提示整合工作流 (單一記憶)'} | RAG 知識庫：{'啟用' if st.session_state.use_rag else '停用'}")
 
-        # 根據工作流開關，動態決定要執行哪個模式的邏輯
-        # --- 模式一：單一提示整合工作流 ---
-        if st.session_state.use_single_prompt_workflow:
-            st.info("**方法說明**：此流程模擬一個全能的 AI 高管團隊。我們只發送**一次**包含了完整指令的請求，AI 在一次生成中完成所有角色思考。")
+        # *** 修改判斷邏輯 (2025/06/22) ***
+        # 如果開關為 ON，執行階段式工作流
+        if st.session_state.use_multi_stage_workflow:
+            st.info("**方法說明**：此流程模擬三位獨立的專家。每一步都是一次獨立的 API 請求，後一位專家的分析基於前一位的書面報告。")
+            st.session_state.executive_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("executive_user_query", ""), height=100, key="original_workflow_query")
+            can_start = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("executive_user_query"))
+            if st.button("🚀 啟動階段式分析", disabled=not can_start, key="exec_flow_button"):
+                st.session_state.executive_workflow_stage = "cfo_analysis_pending"
+                st.session_state.cfo_analysis_text = ""
+                st.session_state.coo_analysis_text = ""
+                st.session_state.ceo_summary_text = ""
+                st.session_state.executive_rag_context = ""
+                st.rerun()
+            
+            if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
+                with st.spinner("CFO 正在獨立分析..."):
+                    df = pd.read_csv(st.session_state.uploaded_file_path)
+                    data_profile = generate_data_profile(df)
+                    st.session_state.executive_data_profile_str = data_profile
+                    query = st.session_state.executive_user_query
+                    rag_context_for_prompt = ""
+                    if st.session_state.use_rag and st.session_state.retriever_chain:
+                        retrieved_docs = st.session_state.retriever_chain.invoke(query)
+                        rag_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
+                        st.session_state.executive_rag_context = rag_context
+                        rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{rag_context}"
+                    cfo_prompt = f"作為財務長(CFO)，請基於你的專業知識，並嚴格參考以下提供的資料，為商業問題提供財務角度的簡潔分析。\n\n[商業問題]:\n{query}\n\n[統計摘要]:\n{data_profile}{rag_context_for_prompt}"
+                    st.session_state.cfo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
+                    st.session_state.executive_workflow_stage = "coo_analysis_pending"
+                    st.rerun()
+
+            if st.session_state.get('executive_data_profile_str'):
+                with st.expander("查看統計摘要"): st.text(st.session_state.executive_data_profile_str)
+            if st.session_state.use_rag and st.session_state.get('executive_rag_context'):
+                with st.expander("查看 RAG 檢索出的相關資料"): st.markdown(st.session_state.executive_rag_context)
+
+            if st.session_state.cfo_analysis_text:
+                st.subheader("📊 財務長 (CFO) 分析")
+                st.markdown(st.session_state.cfo_analysis_text)
+            
+            if st.session_state.executive_workflow_stage == "coo_analysis_pending":
+                with st.spinner("COO 正在分析..."):
+                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
+                    coo_prompt = f"作為營運長(COO)，請基於商業問題、統計摘要、CFO 的財務分析以及相關數據，提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
+                    st.session_state.coo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
+                    st.session_state.executive_workflow_stage = "ceo_summary_pending"
+                    st.rerun()
+
+            if st.session_state.coo_analysis_text:
+                st.subheader("🏭 營運長 (COO) 分析")
+                st.markdown(st.session_state.coo_analysis_text)
+
+            if st.session_state.executive_workflow_stage == "ceo_summary_pending":
+                with st.spinner("CEO 正在總結..."):
+                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
+                    ceo_prompt = f"作為執行長(CEO)，請整合所有資訊，提供一個高層次的決策總結。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}{rag_context_for_prompt}"
+                    st.session_state.ceo_summary_text = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt)
+                    st.session_state.executive_workflow_stage = "completed"
+                    st.rerun()
+            
+            if st.session_state.ceo_summary_text:
+                st.subheader("👑 執行長 (CEO) 最終決策")
+                st.markdown(st.session_state.ceo_summary_text)
+
+        # 如果開關為 OFF，執行單一整合工作流
+        else:
+            st.info("**方法說明**：此為預設流程。模擬一個全能的 AI 高管團隊，只發送**一次**請求，AI 在一次生成中完成所有角色思考。")
             st.session_state.sp_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("sp_user_query", ""), height=100, key="sp_workflow_query")
             can_start_sp = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("sp_user_query"))
             if st.button("🚀 啟動整合分析", disabled=not can_start_sp, key="sp_flow_button"):
@@ -261,7 +322,6 @@ def main():
                     data_profile = generate_data_profile(df)
                     query = st.session_state.sp_user_query
                     rag_context_str = ""
-                    # 動態組合 RAG 內容到 Prompt
                     if st.session_state.use_rag and st.session_state.retriever_chain:
                         retrieved_docs = st.session_state.retriever_chain.invoke(query)
                         rag_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
@@ -297,71 +357,6 @@ def main():
                 st.subheader("📈 AI 高管團隊整合報告")
                 st.markdown(st.session_state.sp_final_report)
 
-        # --- 模式二：階段式工作流 ---
-        else:
-            st.info("**方法說明**：此流程模擬三位獨立的專家。每一步都是一次獨立的 API 請求，後一位專家的分析基於前一位的書面報告。")
-            st.session_state.executive_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("executive_user_query", ""), height=100, key="original_workflow_query")
-            can_start = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("executive_user_query"))
-            if st.button("🚀 啟動階段式分析", disabled=not can_start, key="exec_flow_button"):
-                st.session_state.executive_workflow_stage = "cfo_analysis_pending"
-                st.session_state.cfo_analysis_text = ""
-                st.session_state.coo_analysis_text = ""
-                st.session_state.ceo_summary_text = ""
-                st.session_state.executive_rag_context = ""
-                st.rerun()
-            
-            # CFO 分析階段
-            if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
-                with st.spinner("CFO 正在獨立分析..."):
-                    df = pd.read_csv(st.session_state.uploaded_file_path)
-                    data_profile = generate_data_profile(df)
-                    st.session_state.executive_data_profile_str = data_profile
-                    query = st.session_state.executive_user_query
-                    rag_context_for_prompt = ""
-                    if st.session_state.use_rag and st.session_state.retriever_chain:
-                        retrieved_docs = st.session_state.retriever_chain.invoke(query)
-                        rag_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
-                        st.session_state.executive_rag_context = rag_context
-                        rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{rag_context}"
-                    cfo_prompt = f"作為財務長(CFO)，請基於你的專業知識，並嚴格參考以下提供的資料，為商業問題提供財務角度的簡潔分析。\n\n[商業問題]:\n{query}\n\n[統計摘要]:\n{data_profile}{rag_context_for_prompt}"
-                    st.session_state.cfo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
-                    st.session_state.executive_workflow_stage = "coo_analysis_pending"
-                    st.rerun()
-
-            if st.session_state.get('executive_data_profile_str'):
-                with st.expander("查看統計摘要"): st.text(st.session_state.executive_data_profile_str)
-            if st.session_state.use_rag and st.session_state.get('executive_rag_context'):
-                with st.expander("查看 RAG 檢索出的相關資料"): st.markdown(st.session_state.executive_rag_context)
-
-            if st.session_state.cfo_analysis_text:
-                st.subheader("📊 財務長 (CFO) 分析")
-                st.markdown(st.session_state.cfo_analysis_text)
-            
-            # COO 分析階段
-            if st.session_state.executive_workflow_stage == "coo_analysis_pending":
-                with st.spinner("COO 正在分析..."):
-                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
-                    coo_prompt = f"作為營運長(COO)，請基於商業問題、統計摘要、CFO 的財務分析以及相關數據，提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
-                    st.session_state.coo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
-                    st.session_state.executive_workflow_stage = "ceo_summary_pending"
-                    st.rerun()
-
-            if st.session_state.coo_analysis_text:
-                st.subheader("🏭 營運長 (COO) 分析")
-                st.markdown(st.session_state.coo_analysis_text)
-
-            # CEO 總結階段
-            if st.session_state.executive_workflow_stage == "ceo_summary_pending":
-                with st.spinner("CEO 正在總結..."):
-                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
-                    ceo_prompt = f"作為執行長(CEO)，請整合所有資訊，提供一個高層次的決策總結。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}{rag_context_for_prompt}"
-                    st.session_state.ceo_summary_text = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt)
-                    st.session_state.executive_workflow_stage = "completed"
-                    st.rerun()
-            
-            if st.session_state.ceo_summary_text:
-                st.subheader("👑 執行長 (CEO) 最終決策")
-                st.markdown(st.session_state.ceo_summary_text)
 
     # --- 其他 AI 角色標籤 (tabs[2] 和 tabs[3]) ---
     role_tab_offset = 2 
