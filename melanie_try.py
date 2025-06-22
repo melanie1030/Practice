@@ -194,7 +194,6 @@ def main():
 
     with st.sidebar:
         st.header("⚙️ 功能與模式設定")
-        # --- 改用 st.checkbox ---
         st.session_state.use_rag = st.checkbox("啟用 RAG 知識庫 (需 OpenAI Key)", value=st.session_state.use_rag)
         st.session_state.use_multi_stage_workflow = st.checkbox("啟用階段式工作流 (多重記憶)", value=st.session_state.use_multi_stage_workflow, help="預設(不勾選): AI 一次完成所有角色分析 (單一記憶)。勾選: AI 依序完成各角色分析 (多重記憶)，開銷較大。")
         st.session_state.use_simple_explorer = st.checkbox("啟用簡易資料探索器", value=st.session_state.use_simple_explorer, help="勾選後，將在工作流的統計摘要區塊顯示互動式圖表。")
@@ -286,9 +285,7 @@ def main():
             st.session_state.executive_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("executive_user_query", ""), height=100, key="original_workflow_query")
             can_start = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("executive_user_query"))
             if st.button("🚀 啟動階段式分析", disabled=not can_start, key="exec_flow_button"):
-                st.session_state.executive_workflow_stage = "cfo_analysis_pending"
-                st.session_state.cfo_analysis_text, st.session_state.coo_analysis_text, st.session_state.ceo_summary_text, st.session_state.executive_rag_context = "", "", "", ""
-                st.rerun()
+                st.session_state.executive_workflow_stage = "cfo_analysis_pending"; st.session_state.cfo_analysis_text, st.session_state.coo_analysis_text, st.session_state.ceo_summary_text, st.session_state.executive_rag_context = "", "", "", ""; st.rerun()
             
             if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
                 with st.spinner("CFO 正在獨立分析..."):
@@ -300,10 +297,9 @@ def main():
                         rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(query)])
                         st.session_state.executive_rag_context = rag_context
                         rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{rag_context}"
-                    cfo_prompt = f"作為財務長(CFO)...為商業問題提供財務角度的簡潔分析。\n\n[商業問題]:\n{query}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
+                    cfo_prompt = f"作為財務長(CFO)，請基於你的專業知識，並嚴格參考以下提供的資料，為商業問題提供財務角度的簡潔分析。\n\n[商業問題]:\n{query}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
                     st.session_state.cfo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
-                    st.session_state.executive_workflow_stage = "coo_analysis_pending"
-                    st.rerun()
+                    st.session_state.executive_workflow_stage = "coo_analysis_pending"; st.rerun()
 
             if st.session_state.get('executive_data_profile_str'):
                 expander_title = "查看統計摘要與資料探索" if st.session_state.use_simple_explorer else "查看統計摘要"
@@ -311,9 +307,7 @@ def main():
                     st.subheader("純文字統計摘要")
                     st.text(st.session_state.executive_data_profile_str)
                     if st.session_state.use_simple_explorer and st.session_state.get("uploaded_file_path"):
-                        st.divider()
-                        df_for_explorer = pd.read_csv(st.session_state.uploaded_file_path)
-                        display_simple_data_explorer(df_for_explorer)
+                        st.divider(); display_simple_data_explorer(pd.read_csv(st.session_state.uploaded_file_path))
 
             if st.session_state.use_rag and st.session_state.get('executive_rag_context'):
                 with st.expander("查看 RAG 檢索出的相關資料"): st.markdown(st.session_state.executive_rag_context)
@@ -323,20 +317,18 @@ def main():
             if st.session_state.executive_workflow_stage == "coo_analysis_pending":
                 with st.spinner("COO 正在分析..."):
                     rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
-                    coo_prompt = f"作為營運長(COO)...提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
+                    coo_prompt = f"作為營運長(COO)，請基於商業問題、統計摘要、CFO 的財務分析以及相關數據，提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
                     st.session_state.coo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
-                    st.session_state.executive_workflow_stage = "ceo_summary_pending"
-                    st.rerun()
+                    st.session_state.executive_workflow_stage = "ceo_summary_pending"; st.rerun()
 
             if st.session_state.coo_analysis_text: st.subheader("🏭 營運長 (COO) 分析"); st.markdown(st.session_state.coo_analysis_text)
             
             if st.session_state.executive_workflow_stage == "ceo_summary_pending":
                 with st.spinner("CEO 正在總結..."):
                     rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
-                    ceo_prompt = f"作為執行長(CEO)...提供一個高層次的決策總結。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}{rag_context_for_prompt}"
+                    ceo_prompt = f"作為執行長(CEO)，請整合所有資訊，提供一個高層次的決策總結。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}{rag_context_for_prompt}"
                     st.session_state.ceo_summary_text = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt)
-                    st.session_state.executive_workflow_stage = "completed"
-                    st.rerun()
+                    st.session_state.executive_workflow_stage = "completed"; st.rerun()
             
             if st.session_state.ceo_summary_text: st.subheader("👑 執行長 (CEO) 最終決策"); st.markdown(st.session_state.ceo_summary_text)
 
@@ -357,11 +349,31 @@ def main():
                         st.session_state.executive_rag_context = rag_context
                         rag_context_str = f"\n\n**[RAG 檢索出的相關數據]:**\n{rag_context}"
                     
-                    mega_prompt = f"""你是一個頂尖的 AI 商業分析團隊...\n\n**[商業問題]:**\n{query}\n\n**[資料統計摘要]:**\n{data_profile}{rag_context_str}"""
+                    # --- 修正後的超級提示詞 ---
+                    mega_prompt = f"""你是一個頂尖的 AI 商業分析團隊，能夠在一次思考中扮演多個高管角色。你的任務是針對給定的商業問題和數據，生成一份包含三個部分的完整分析報告。
+
+請嚴格按照以下結構和要求進行輸出，使用 Markdown 標題來區分每個部分：
+---
+### 📊 財務長 (CFO) 分析
+在此部分，請完全以財務長的角度思考。專注於財務指標、成本效益、投資回報率、毛利率、潛在的財務風險等。你的分析必須完全基於提供的數據。
+
+### 🏭 營運長 (COO) 分析
+在此部分，轉換為營運長的角色。你需要思考，在CFO會提出的財務考量下，營運上是否可行？分析潛在的流程、供應鏈、人力資源或執行風險。你的分析需要務實且著重於可執行性。
+
+### 👑 執行長 (CEO) 最終決策
+在此部分，作為CEO，請綜合上述的財務(CFO)和營運(COO)分析。不要重複細節，而是提供一個高層次的戰略總結。最終，給出一個明確、果斷的**決策**（例如：批准、駁回、需要更多資料），並列出 2-3 個最重要的**後續行動建議**。
+---
+現在，請根據以下資訊開始分析：
+
+**[商業問題]:**
+{query}
+
+**[資料統計摘要]:**
+{data_profile}{rag_context_str}
+"""
                     response = get_gemini_executive_analysis(gemini_api_key, "IntegratedTeam", mega_prompt)
                     st.session_state.sp_final_report = response
-                    st.session_state.sp_workflow_stage = "completed"
-                    st.rerun()
+                    st.session_state.sp_workflow_stage = "completed"; st.rerun()
             
             if st.session_state.sp_workflow_stage == 'completed':
                 expander_title = "查看統計摘要與資料探索" if st.session_state.use_simple_explorer else "查看統計摘要"
@@ -369,9 +381,7 @@ def main():
                     st.subheader("純文字統計摘要")
                     st.text(st.session_state.executive_data_profile_str)
                     if st.session_state.use_simple_explorer and st.session_state.get("uploaded_file_path"):
-                        st.divider()
-                        df_for_explorer = pd.read_csv(st.session_state.uploaded_file_path)
-                        display_simple_data_explorer(df_for_explorer)
+                        st.divider(); display_simple_data_explorer(pd.read_csv(st.session_state.uploaded_file_path))
                 
                 if st.session_state.use_rag and st.session_state.get('executive_rag_context'):
                     with st.expander("查看 RAG 檢索出的相關資料"): st.markdown(st.session_state.executive_rag_context)
