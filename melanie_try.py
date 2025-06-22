@@ -349,7 +349,6 @@ def main():
                         st.session_state.executive_rag_context = rag_context
                         rag_context_str = f"\n\n**[RAG 檢索出的相關數據]:**\n{rag_context}"
                     
-                    # --- 修正後的超級提示詞 ---
                     mega_prompt = f"""你是一個頂尖的 AI 商業分析團隊，能夠在一次思考中扮演多個高管角色。你的任務是針對給定的商業問題和數據，生成一份包含三個部分的完整分析報告。
 
 請嚴格按照以下結構和要求進行輸出，使用 Markdown 標題來區分每個部分：
