@@ -111,7 +111,7 @@ def generate_data_profile(df):
     profile_parts.append(f"\n前 5 筆資料:\n{df.head().to_string()}")
     return "\n".join(profile_parts)
 
-# --- *** 新增：資料探索器核心函數 *** ---
+# --- 資料探索器核心函數 ---
 @st.cache_data
 def get_overview_metrics(df):
     if df is None or df.empty: return 0, 0, 0, 0, 0
@@ -136,8 +136,6 @@ def get_column_quality_assessment(df):
 def display_simple_data_explorer(df):
     st.subheader("互動式資料探索")
     st.markdown("---")
-    
-    # 1. 關鍵指標
     st.markdown("##### 關鍵指標")
     num_rows, num_cols, missing_percentage, numeric_cols_count, duplicate_rows = get_overview_metrics(df)
     kpi_cols = st.columns(5)
@@ -146,28 +144,21 @@ def display_simple_data_explorer(df):
     kpi_cols[2].metric("缺失值比例", f"{missing_percentage:.2f}%")
     kpi_cols[3].metric("數值型欄位", f"{numeric_cols_count}")
     kpi_cols[4].metric("重複行數", f"{duplicate_rows:,}")
-    
-    # 2. 欄位品質評估
     st.markdown("##### 欄位品質評估")
     quality_df = get_column_quality_assessment(df)
     st.dataframe(quality_df, use_container_width=True)
     st.markdown("---")
-
-    # 3. 分佈圖
     st.markdown("##### 欄位資料分佈")
     plot_col1, plot_col2 = st.columns(2)
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
     categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-
     with plot_col1:
         if numeric_cols:
             selected_numeric = st.selectbox("選擇一個數值型欄位查看分佈:", numeric_cols, key="explorer_numeric")
             if selected_numeric:
                 fig = px.histogram(df, x=selected_numeric, title=f"'{selected_numeric}' 的分佈", marginal="box")
                 st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("無數值型欄位可供分析。")
-
+        else: st.info("無數值型欄位可供分析。")
     with plot_col2:
         if categorical_cols:
             selected_categorical = st.selectbox("選擇一個類別型欄位查看分佈:", categorical_cols, key="explorer_categorical")
@@ -176,27 +167,21 @@ def display_simple_data_explorer(df):
                 counts = df[selected_categorical].value_counts().nlargest(top_n)
                 fig = px.bar(counts, x=counts.index, y=counts.values, title=f"'{selected_categorical}' 的前 {top_n} 個類別分佈", labels={'index':selected_categorical, 'y':'數量'})
                 st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("無類別型欄位可供分析。")
-    
-    # 4. 相關性熱力圖
+        else: st.info("無類別型欄位可供分析。")
     st.markdown("##### 數值欄位相關性熱力圖")
     if len(numeric_cols) > 1:
-        corr_matrix = df[numeric_cols].corr()
+        corr_matrix = df[numeric_cols].corr(numeric_only=True)
         fig_heatmap = px.imshow(corr_matrix, text_auto=True, aspect="auto", title="數值欄位相關性熱力圖", color_continuous_scale='RdBu_r')
         st.plotly_chart(fig_heatmap, use_container_width=True)
-    else:
-        st.info("需要至少兩個數值型欄位才能計算相關性。")
+    else: st.info("需要至少兩個數值型欄位才能計算相關性。")
 
 # --- 主應用入口 ---
 def main():
     st.set_page_config(page_title="Gemini Multi-Function Bot", page_icon="✨", layout="wide")
     st.title("✨ Gemini 多功能 AI 助理 ")
 
-    # --- 初始化 Session States ---
     keys_to_init = {
-        "use_rag": False, "use_multi_stage_workflow": False, 
-        "use_simple_explorer": False, # 新增開關狀態
+        "use_rag": False, "use_multi_stage_workflow": False, "use_simple_explorer": False,
         "retriever_chain": None, "uploaded_file_path": None, "last_uploaded_filename": None,
         "pending_image_for_main_gemini": None, "chat_histories": {},
         "executive_workflow_stage": "idle", "executive_user_query": "",
@@ -207,12 +192,12 @@ def main():
     for key, default_value in keys_to_init.items():
         if key not in st.session_state: st.session_state[key] = default_value
 
-    # --- 側邊欄介面 ---
     with st.sidebar:
         st.header("⚙️ 功能與模式設定")
-        st.session_state.use_rag = st.toggle("啟用 RAG 知識庫 (需 OpenAI Key)", value=st.session_state.use_rag)
-        st.session_state.use_multi_stage_workflow = st.toggle("啟用階段式工作流 (多重記憶)", value=st.session_state.use_multi_stage_workflow, help="預設(OFF): AI 一次完成所有角色分析 (單一記憶)。啟用(ON): AI 依序完成各角色分析 (多重記憶)，開銷較大。")
-        st.session_state.use_simple_explorer = st.toggle("啟用簡易資料探索器", value=st.session_state.use_simple_explorer, help="啟用後，將在工作流的統計摘要區塊顯示互動式圖表。")
+        # --- 改用 st.checkbox ---
+        st.session_state.use_rag = st.checkbox("啟用 RAG 知識庫 (需 OpenAI Key)", value=st.session_state.use_rag)
+        st.session_state.use_multi_stage_workflow = st.checkbox("啟用階段式工作流 (多重記憶)", value=st.session_state.use_multi_stage_workflow, help="預設(不勾選): AI 一次完成所有角色分析 (單一記憶)。勾選: AI 依序完成各角色分析 (多重記憶)，開銷較大。")
+        st.session_state.use_simple_explorer = st.checkbox("啟用簡易資料探索器", value=st.session_state.use_simple_explorer, help="勾選後，將在工作流的統計摘要區塊顯示互動式圖表。")
         st.divider()
 
         st.header("🔑 API 金鑰")
@@ -231,7 +216,6 @@ def main():
                 st.session_state.uploaded_file_path = file_path
                 st.success(f"檔案 '{uploaded_file.name}' 上傳成功！")
                 st.session_state.retriever_chain = None 
-
                 if st.session_state.use_rag:
                     openai_api_key = st.session_state.get("openai_api_key_input") or os.environ.get("OPENAI_API_KEY")
                     if not openai_api_key: st.error("RAG 功能已啟用，請在上方輸入您的 OpenAI API Key！")
@@ -258,22 +242,18 @@ def main():
             st.success("所有對話、Session 記憶和快取已清除！")
             st.rerun()
 
-    # --- 主工作區 (標籤頁面) ---
     tab_titles = ["💬 主要聊天室", "💼 高管工作流"] + [role["name"] for role in ROLE_DEFINITIONS.values()]
     tabs = st.tabs(tab_titles)
 
-    # --- API Key 檢查 ---
     gemini_api_key = st.session_state.get("gemini_api_key_input") or os.environ.get("GOOGLE_API_KEY")
     if not gemini_api_key:
         st.warning("請在側邊欄輸入您的 Google Gemini API Key 以啟動聊天功能。")
         st.stop()
     gemini_client = get_gemini_client(gemini_api_key)
 
-    # --- 主要聊天室 (tabs[0]) ---
     with tabs[0]:
         st.header("💬 主要聊天室")
         st.caption("可進行一般對話、圖片分析。RAG 問答功能可由側邊欄開關啟用。")
-        # Chat history logic...
         session_id = "main_chat"
         if session_id not in st.session_state.chat_histories: st.session_state.chat_histories[session_id] = []
         for msg in st.session_state.chat_histories[session_id]:
@@ -283,6 +263,7 @@ def main():
             with st.chat_message("human"): st.markdown(user_input)
             with st.chat_message("ai"):
                 with st.spinner("正在思考中..."):
+                    response = ""
                     if st.session_state.use_rag and st.session_state.retriever_chain:
                         retrieved_docs = st.session_state.retriever_chain.invoke(user_input)
                         context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
@@ -296,12 +277,10 @@ def main():
                     st.markdown(response)
                     st.session_state.chat_histories[session_id].append({"role": "ai", "content": response})
 
-    # --- 合併後的高管工作流 (tabs[1]) ---
     with tabs[1]:
         st.header("💼 高管工作流")
         st.caption(f"目前模式：{'階段式 (多重記憶)' if st.session_state.use_multi_stage_workflow else '整合式 (單一記憶)'} | RAG：{'啟用' if st.session_state.use_rag else '停用'} | 簡易探索器：{'啟用' if st.session_state.use_simple_explorer else '停用'}")
 
-        # --- 模式二 (因為 on/off 反轉)：階段式工作流 ---
         if st.session_state.use_multi_stage_workflow:
             st.info("**方法說明**：此流程模擬三位獨立的專家。每一步都是一次獨立的 API 請求，後一位專家的分析基於前一位的書面報告。")
             st.session_state.executive_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("executive_user_query", ""), height=100, key="original_workflow_query")
@@ -339,26 +318,29 @@ def main():
             if st.session_state.use_rag and st.session_state.get('executive_rag_context'):
                 with st.expander("查看 RAG 檢索出的相關資料"): st.markdown(st.session_state.executive_rag_context)
 
-            if st.session_state.cfo_analysis_text:
-                st.subheader("📊 財務長 (CFO) 分析")
-                st.markdown(st.session_state.cfo_analysis_text)
+            if st.session_state.cfo_analysis_text: st.subheader("📊 財務長 (CFO) 分析"); st.markdown(st.session_state.cfo_analysis_text)
             
-            # COO 和 CEO 階段... (與前一版相同)
             if st.session_state.executive_workflow_stage == "coo_analysis_pending":
-                #... COO logic
-                pass
-            if st.session_state.coo_analysis_text:
-                #... display COO
-                pass
-            if st.session_state.executive_workflow_stage == "ceo_summary_pending":
-                #... CEO logic
-                pass
-            if st.session_state.ceo_summary_text:
-                #... display CEO
-                pass
+                with st.spinner("COO 正在分析..."):
+                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
+                    coo_prompt = f"作為營運長(COO)...提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}"
+                    st.session_state.coo_analysis_text = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
+                    st.session_state.executive_workflow_stage = "ceo_summary_pending"
+                    st.rerun()
 
-        # --- 模式一 (預設)：單一提示整合工作流 ---
-        else:
+            if st.session_state.coo_analysis_text: st.subheader("🏭 營運長 (COO) 分析"); st.markdown(st.session_state.coo_analysis_text)
+            
+            if st.session_state.executive_workflow_stage == "ceo_summary_pending":
+                with st.spinner("CEO 正在總結..."):
+                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
+                    ceo_prompt = f"作為執行長(CEO)...提供一個高層次的決策總結。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}{rag_context_for_prompt}"
+                    st.session_state.ceo_summary_text = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt)
+                    st.session_state.executive_workflow_stage = "completed"
+                    st.rerun()
+            
+            if st.session_state.ceo_summary_text: st.subheader("👑 執行長 (CEO) 最終決策"); st.markdown(st.session_state.ceo_summary_text)
+
+        else: # 預設模式：單一整合工作流
             st.info("**方法說明**：此為預設流程。模擬一個全能的 AI 高管團隊，只發送**一次**請求，AI 在一次生成中完成所有角色思考。")
             st.session_state.sp_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("sp_user_query", ""), height=100, key="sp_workflow_query")
             can_start_sp = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("sp_user_query"))
@@ -367,9 +349,9 @@ def main():
                 with st.spinner("AI 高管團隊正在進行全面分析..."):
                     df = pd.read_csv(st.session_state.uploaded_file_path)
                     data_profile = generate_data_profile(df)
-                    st.session_state.executive_data_profile_str = data_profile # 儲存起來供 expander 使用
+                    st.session_state.executive_data_profile_str = data_profile
                     query = st.session_state.sp_user_query
-                    rag_context_str = ""
+                    rag_context_str, rag_context = "", ""
                     if st.session_state.use_rag and st.session_state.retriever_chain:
                         rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(query)])
                         st.session_state.executive_rag_context = rag_context
@@ -381,8 +363,7 @@ def main():
                     st.session_state.sp_workflow_stage = "completed"
                     st.rerun()
             
-            # 整合模式下的 expander
-            if st.session_state.get('executive_data_profile_str') and st.session_state.sp_workflow_stage == 'completed':
+            if st.session_state.sp_workflow_stage == 'completed':
                 expander_title = "查看統計摘要與資料探索" if st.session_state.use_simple_explorer else "查看統計摘要"
                 with st.expander(expander_title, expanded=st.session_state.use_simple_explorer):
                     st.subheader("純文字統計摘要")
@@ -394,17 +375,29 @@ def main():
                 
                 if st.session_state.use_rag and st.session_state.get('executive_rag_context'):
                     with st.expander("查看 RAG 檢索出的相關資料"): st.markdown(st.session_state.executive_rag_context)
-
-            if st.session_state.sp_workflow_stage == "completed" and st.session_state.sp_final_report:
+                
                 st.subheader("📈 AI 高管團隊整合報告")
                 st.markdown(st.session_state.sp_final_report)
 
-    # --- 其他 AI 角色標籤 (tabs[2] 和 tabs[3]) ---
     role_tab_offset = 2 
     for i, (role_id, role_info) in enumerate(ROLE_DEFINITIONS.items()):
         with tabs[i + role_tab_offset]:
-            # ... (此處代碼與前一版完全相同)
-            pass
+            st.header(role_info["name"])
+            st.caption(role_info["system_prompt"])
+            session_id = role_info["session_id"]
+            if session_id not in st.session_state.chat_histories: st.session_state.chat_histories[session_id] = []
+            for msg in st.session_state.chat_histories[session_id]:
+                with st.chat_message(msg["role"]): st.markdown(msg["content"])
+            if user_input := st.chat_input(f"與 {role_info['name']} 對話...", key=session_id):
+                st.session_state.chat_histories[session_id].append({"role": "human", "content": user_input})
+                with st.chat_message("human"): st.markdown(user_input)
+                with st.chat_message("ai"):
+                    with st.spinner("正在生成回應..."):
+                        history = st.session_state.chat_histories[session_id][:-1]
+                        final_prompt = f"{role_info['system_prompt']}\n\n{user_input}"
+                        response = get_gemini_response_with_history(gemini_client, history, final_prompt)
+                        st.markdown(response)
+                        st.session_state.chat_histories[session_id].append({"role": "ai", "content": response})
 
 if __name__ == "__main__":
     main()
