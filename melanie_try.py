@@ -91,7 +91,7 @@ def get_gemini_response_for_image(api_key, user_prompt, image_pil):
     except Exception as e: return f"錯誤: {e}"
 
 def get_gemini_executive_analysis(api_key, executive_role_name, full_prompt):
-    if not api_key: return f"錯誤：層鏈運作 ({executive_role_name}) 未能獲取 Gemini API Key。"
+    if not api_key: return f"錯誤：專業經理人 ({executive_role_name}) 未能獲取 Gemini API Key。"
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-1.5-pro-latest")
@@ -241,7 +241,7 @@ def main():
             st.success("所有對話、Session 記憶和快取已清除！")
             st.rerun()
 
-    tab_titles = ["💬 主要聊天室", "💼 層鏈運作"] + [role["name"] for role in ROLE_DEFINITIONS.values()]
+    tab_titles = ["💬 主要聊天室", "💼 專業經理人"] + [role["name"] for role in ROLE_DEFINITIONS.values()]
     tabs = st.tabs(tab_titles)
 
     gemini_api_key = st.session_state.get("gemini_api_key_input") or os.environ.get("GOOGLE_API_KEY")
@@ -277,7 +277,7 @@ def main():
                     st.session_state.chat_histories[session_id].append({"role": "ai", "content": response})
 
     with tabs[1]:
-        st.header("💼 層鏈運作")
+        st.header("💼 專業經理人")
         st.caption(f"目前模式：{'階段式 (多重記憶)' if st.session_state.use_multi_stage_workflow else '整合式 (單一記憶)'} | RAG：{'啟用' if st.session_state.use_rag else '停用'} | 簡易探索器：{'啟用' if st.session_state.use_simple_explorer else '停用'}")
 
         if st.session_state.use_multi_stage_workflow:
@@ -333,12 +333,12 @@ def main():
             if st.session_state.ceo_summary_text: st.subheader("👑 執行長 (CEO) 最終決策"); st.markdown(st.session_state.ceo_summary_text)
 
         else: # 預設模式：單一整合工作流
-            st.info("**方法說明**：此為預設流程。模擬一個全能的 AI 層鏈運作團隊，只發送**一次**請求，AI 在一次生成中完成所有角色思考。")
+            st.info("**方法說明**：此為預設流程。模擬一個全能的 AI 專業經理人團隊，只發送**一次**請求，AI 在一次生成中完成所有角色思考。")
             st.session_state.sp_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("sp_user_query", ""), height=100, key="sp_workflow_query")
             can_start_sp = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("sp_user_query"))
             if st.button("🚀 啟動整合分析", disabled=not can_start_sp, key="sp_flow_button"):
                 st.session_state.sp_workflow_stage = "running"
-                with st.spinner("AI 層鏈運作團隊正在進行全面分析..."):
+                with st.spinner("AI 專業經理人團隊正在進行全面分析..."):
                     df = pd.read_csv(st.session_state.uploaded_file_path)
                     data_profile = generate_data_profile(df)
                     st.session_state.executive_data_profile_str = data_profile
@@ -349,7 +349,7 @@ def main():
                         st.session_state.executive_rag_context = rag_context
                         rag_context_str = f"\n\n**[RAG 檢索出的相關數據]:**\n{rag_context}"
                     
-                    mega_prompt = f"""你是一個頂尖的 AI 商業分析團隊，能夠在一次思考中扮演多個層鏈運作角色。你的任務是針對給定的商業問題和數據，生成一份包含三個部分的完整分析報告。
+                    mega_prompt = f"""你是一個頂尖的 AI 商業分析團隊，能夠在一次思考中扮演多個專業經理人角色。你的任務是針對給定的商業問題和數據，生成一份包含三個部分的完整分析報告。
 
 請嚴格按照以下結構和要求進行輸出，使用 Markdown 標題來區分每個部分：
 ---
@@ -385,7 +385,7 @@ def main():
                 if st.session_state.use_rag and st.session_state.get('executive_rag_context'):
                     with st.expander("查看 RAG 檢索出的相關資料"): st.markdown(st.session_state.executive_rag_context)
                 
-                st.subheader("📈 AI 層鏈運作團隊整合報告")
+                st.subheader("📈 AI 專業經理人團隊整合報告")
                 st.markdown(st.session_state.sp_final_report)
 
     role_tab_offset = 2 
