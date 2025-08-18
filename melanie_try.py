@@ -99,8 +99,18 @@ def get_gemini_executive_analysis(api_key, executive_role_name, full_prompt):
         return response.text
     except Exception as e: return f"錯誤: {e}"
 
-def generate_data_profile(df):
+def generate_data_profile(df, is_simple=False):
     if df is None or df.empty: return "沒有資料可供分析。"
+    
+    # For simple profile in chat, we only show shape and head
+    if is_simple:
+        profile_parts = [
+            f"資料共有 {df.shape[0]} 行, {df.shape[1]} 個欄位。",
+            f"前 {len(df)} 筆資料預覽:\n{df.to_string()}"
+        ]
+        return "\n".join(profile_parts)
+
+    # Full profile for manager tab
     buffer = io.StringIO()
     df.info(buf=buffer)
     profile_parts = [f"資料形狀: {df.shape}", f"欄位資訊:\n{buffer.getvalue()}"]
@@ -263,16 +273,37 @@ def main():
             with st.chat_message("ai"):
                 with st.spinner("正在思考中..."):
                     response = ""
+                    prompt_context = ""
+
+                    # --- START: MODIFIED LOGIC ---
+                    # 優先使用 RAG
                     if st.session_state.use_rag and st.session_state.retriever_chain:
                         retrieved_docs = st.session_state.retriever_chain.invoke(user_input)
                         context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
-                        prompt = f"請根據以下上下文回答問題。\n\n[上下文]:\n{context}\n\n[問題]:\n{user_input}\n\n[回答]:"
-                        response = gemini_client.generate_content(prompt).text
-                    elif st.session_state.pending_image_for_main_gemini:
-                        response = get_gemini_response_for_image(gemini_api_key, user_input, st.session_state.pending_image_for_main_gemini)
+                        prompt_context = f"請根據以下上下文回答問題。\n\n[上下文]:\n{context}\n\n"
+                    
+                    # 如果 RAG 未啟用，但有上傳檔案，則提供檔案摘要
+                    elif not st.session_state.use_rag and st.session_state.get("uploaded_file_path"):
+                        try:
+                            df = pd.read_csv(st.session_state.uploaded_file_path)
+                            # 產生簡化版摘要 (只看前5筆)，避免 prompt 過長
+                            data_summary = generate_data_profile(df.head(), is_simple=True)
+                            prompt_context = f"請參考以下資料摘要來回答問題。\n\n[資料摘要]:\n{data_summary}\n\n"
+                        except Exception as e:
+                            st.warning(f"讀取 CSV 檔案時發生錯誤: {e}")
+                    
+                    # 處理圖片
+                    if st.session_state.pending_image_for_main_gemini:
+                        final_prompt = f"{prompt_context} [問題]:\n{user_input}"
+                        response = get_gemini_response_for_image(gemini_api_key, final_prompt, st.session_state.pending_image_for_main_gemini)
+                    
+                    # 處理純文字對話
                     else:
                         history = st.session_state.chat_histories[session_id][:-1]
-                        response = get_gemini_response_with_history(gemini_client, history, user_input)
+                        final_prompt = f"{prompt_context}[問題]:\n{user_input}"
+                        response = get_gemini_response_with_history(gemini_client, history, final_prompt)
+                    # --- END: MODIFIED LOGIC ---
+                        
                     st.markdown(response)
                     st.session_state.chat_histories[session_id].append({"role": "ai", "content": response})
 
