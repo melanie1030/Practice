@@ -25,3 +25,4 @@ tabulate
 langchain
 langchain-openai
 openai
+pygwalker
