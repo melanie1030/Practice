@@ -314,6 +314,12 @@ def main():
         st.header("💼 專業經理人")
         st.caption(f"目前模式：{'階段式 (多重記憶)' if st.session_state.use_multi_stage_workflow else '整合式 (單一記憶)'} | RAG：{'啟用' if st.session_state.use_rag else '停用'} | 簡易探索器：{'啟用' if st.session_state.use_simple_explorer else '停用'}")
 
+        # --- ▼▼▼ 新增的偵錯區塊 ▼▼▼ ---
+        with st.expander("🚨 點此展開偵錯資訊 (Debug Info)", expanded=True):
+            st.json(st.session_state.to_dict())
+        st.divider()
+        # --- ▲▲▲ 新增的偵錯區塊 ▲▲▲ ---
+
         # --- 模式一：階段式工作流 ---
         if st.session_state.use_multi_stage_workflow:
             st.info("**方法說明**：此流程模擬三位獨立的專家。每一步都是一次獨立的 API 請求，後一位專家的分析基於前一位的書面報告。")
@@ -326,7 +332,6 @@ def main():
                 st.session_state.cfo_analysis_text, st.session_state.coo_analysis_text, st.session_state.ceo_summary_text, st.session_state.executive_rag_context = "", "", "", ""
                 st.rerun()
 
-            # --- 階段式工作流的後端處理 ---
             if st.session_state.executive_workflow_stage == "cfo_analysis_pending":
                 with st.spinner("CFO 正在獨立分析..."):
                     df = pd.read_csv(st.session_state.uploaded_file_path)
