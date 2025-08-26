@@ -25,10 +25,10 @@ dotenv.load_dotenv()
 UPLOAD_DIR = "uploaded_files"
 if not os.path.exists(UPLOAD_DIR): os.makedirs(UPLOAD_DIR)
 
-ROLE_DEFINITIONS = {
-    "summarizer": { "name": "📝 摘要專家", "system_prompt": "你是一位專業的摘要專家。你的任務是將提供的任何文本或對話，濃縮成清晰、簡潔的繁體中文摘要。專注於要點和關鍵結論。", "session_id": "summarizer_chat" },
-    "creative_writer": { "name": "✍️ 創意作家", "system_prompt": "你是一位充滿想像力的創意作家。你的任務是幫助使用者完成創意寫作，例如寫故事、詩歌、劇本或腦力激盪，全部使用繁體中文。", "session_id": "creative_writer_chat" }
-}
+# ROLE_DEFINITIONS = {
+#     "summarizer": { "name": "📝 摘要專家", "system_prompt": "你是一位專業的摘要專家。你的任務是將提供的任何文本或對話，濃縮成清晰、簡潔的繁體中文摘要。專注於要點和關鍵結論。", "session_id": "summarizer_chat" },
+#     "creative_writer": { "name": "✍️ 創意作家", "system_prompt": "你是一位充滿想像力的創意作家。你的任務是幫助使用者完成創意寫作，例如寫故事、詩歌、劇本或腦力激盪，全部使用繁體中文。", "session_id": "creative_writer_chat" }
+# }
 
 # --- 基礎輔助函數 ---
 def save_uploaded_file(uploaded_file):
