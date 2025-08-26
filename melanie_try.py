@@ -25,8 +25,6 @@ dotenv.load_dotenv()
 UPLOAD_DIR = "uploaded_files"
 if not os.path.exists(UPLOAD_DIR): os.makedirs(UPLOAD_DIR)
 
-# ROLE_DEFINITIONS 已被移除
-
 # --- 基礎輔助函數 ---
 def save_uploaded_file(uploaded_file):
     if not os.path.exists(UPLOAD_DIR): os.makedirs(UPLOAD_DIR)
@@ -264,11 +262,9 @@ def main():
             st.success("所有對話、Session 記憶和快取已清除！")
             st.rerun()
 
-    # --- ▼▼▼ 修改處 ▼▼▼ ---
     # 簡化分頁標題，只保留需要的
     tab_titles = ["💬 主要聊天室", "💼 專業經理人"]
     tabs = st.tabs(tab_titles)
-    # --- ▲▲▲ 修改處 ▲▲▲ ---
 
     gemini_api_key = st.session_state.get("gemini_api_key_input") or os.environ.get("GOOGLE_API_KEY")
     if not gemini_api_key:
@@ -406,9 +402,14 @@ def main():
                     st.session_state.chat_histories[executive_session_id].append({"role": "ai", "content": response})
                     st.rerun()
 
-        workflow_completed = st.session_state.executive_workflow_stage == "completed" or st.session_state.sp_workflow_stage == 'completed'
+        # --- ▼▼▼ 全新、統一的顯示邏輯 (修正後) ▼▼▼ ---
 
-        if workflow_completed:
+        # 判斷工作流是否已經啟動
+        workflow_has_started = (st.session_state.executive_workflow_stage != "idle" or 
+                                st.session_state.sp_workflow_stage != 'idle')
+
+        if workflow_has_started:
+            # 顯示資料摘要和 RAG 的摺疊區塊
             if st.session_state.get('executive_data_profile_str'):
                 expander_title = "查看統計摘要與資料探索" if st.session_state.use_simple_explorer else "查看統計摘要"
                 with st.expander(expander_title, expanded=False):
@@ -424,31 +425,77 @@ def main():
             st.divider()
             st.subheader("分析報告與後續對話")
 
-            for msg in st.session_state.chat_histories[executive_session_id]:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-            
-            if st.session_state.follow_up_stage != "idle":
-                with st.chat_message("ai"):
-                    if st.session_state.follow_up_cfo_analysis:
-                        st.markdown(f"#### 📊 財務長 (CFO) 分析\n{st.session_state.follow_up_cfo_analysis}")
-                    if st.session_state.follow_up_coo_analysis:
-                        st.markdown(f"#### 🏭 營運長 (COO) 分析\n{st.session_state.follow_up_coo_analysis}")
-                    if st.session_state.follow_up_ceo_analysis:
-                         st.markdown(f"#### 👑 執行長 (CEO) 最終決策\n{st.session_state.follow_up_ceo_analysis}")
-                    if st.session_state.follow_up_stage in ["cfo_pending", "coo_pending", "ceo_pending"]:
-                        st.spinner("專業團隊正在分析中...")
+            # 顯示使用者的原始問題
+            user_query = st.session_state.get("executive_user_query") or st.session_state.get("sp_user_query")
+            if user_query:
+                with st.chat_message("human"):
+                    st.markdown(user_query)
 
-            if st.session_state.follow_up_stage == "idle":
-                if user_input := st.chat_input("針對以上報告進行提問..."):
-                    st.session_state.chat_histories[executive_session_id].append({"role": "human", "content": user_input})
-                    st.session_state.follow_up_query = user_input
-                    st.session_state.follow_up_stage = "cfo_pending" 
-                    st.session_state.follow_up_cfo_analysis = ""
-                    st.session_state.follow_up_coo_analysis = ""
-                    st.session_state.follow_up_ceo_analysis = ""
-                    st.rerun()
+            # 根據工作流模式，顯示主報告
+            # 階段式工作流的即時顯示
+            if st.session_state.use_multi_stage_workflow:
+                if st.session_state.cfo_analysis_text:
+                    with st.chat_message("ai"):
+                        st.markdown(f"### 📊 財務長 (CFO) 分析\n{st.session_state.cfo_analysis_text}")
+                if st.session_state.coo_analysis_text:
+                    with st.chat_message("ai"):
+                        st.markdown(f"### 🏭 營運長 (COO) 分析\n{st.session_state.coo_analysis_text}")
+                if st.session_state.ceo_summary_text:
+                    with st.chat_message("ai"):
+                        st.markdown(f"### 👑 執行長 (CEO) 最終決策\n{st.session_state.ceo_summary_text}")
+                
+                # 顯示下一個階段的等待提示
+                current_stage = st.session_state.executive_workflow_stage
+                if current_stage == "coo_analysis_pending":
+                    with st.chat_message("ai"):
+                        with st.spinner("營運長 (COO) 正在分析中..."):
+                            st.markdown("...")
+                elif current_stage == "ceo_summary_pending":
+                     with st.chat_message("ai"):
+                        with st.spinner("執行長 (CEO) 正在總結..."):
+                            st.markdown("...")
+            # 整合式工作流的顯示
+            else:
+                if st.session_state.sp_final_report:
+                    with st.chat_message("ai"):
+                        st.markdown(st.session_state.sp_final_report)
 
+            # --- 後續追問的對話邏輯 ---
+            workflow_completed = (st.session_state.executive_workflow_stage == "completed" or
+                                  st.session_state.sp_workflow_stage == 'completed')
+
+            if workflow_completed:
+                # 顯示歷史紀錄中的追問（跳過已被獨立顯示的主報告）
+                history = st.session_state.chat_histories[executive_session_id]
+                if len(history) > 1: # 0是主報告, 1以後是追問
+                    for msg in history[1:]:
+                        with st.chat_message(msg["role"]):
+                            st.markdown(msg["content"])
+
+                # 顯示正在進行中的追問分析
+                if st.session_state.follow_up_stage != "idle":
+                    with st.chat_message("ai"):
+                        if st.session_state.follow_up_cfo_analysis:
+                            st.markdown(f"#### 📊 財務長 (CFO) 分析\n{st.session_state.follow_up_cfo_analysis}")
+                        if st.session_state.follow_up_coo_analysis:
+                            st.markdown(f"#### 🏭 營運長 (COO) 分析\n{st.session_state.follow_up_coo_analysis}")
+                        if st.session_state.follow_up_ceo_analysis:
+                            st.markdown(f"#### 👑 執行長 (CEO) 最終決策\n{st.session_state.follow_up_ceo_analysis}")
+                        if st.session_state.follow_up_stage in ["cfo_pending", "coo_pending", "ceo_pending"]:
+                            st.spinner("專業團隊正在分析您的追問...")
+                
+                # 當追問流程閒置時，顯示輸入框
+                if st.session_state.follow_up_stage == "idle":
+                    if user_input := st.chat_input("針對以上報告進行提問..."):
+                        st.session_state.chat_histories[executive_session_id].append({"role": "human", "content": user_input})
+                        st.session_state.follow_up_query = user_input
+                        st.session_state.follow_up_stage = "cfo_pending" 
+                        st.session_state.follow_up_cfo_analysis = ""
+                        st.session_state.follow_up_coo_analysis = ""
+                        st.session_state.follow_up_ceo_analysis = ""
+                        st.rerun()
+
+        # 處理追問的後端邏輯
         history_context = "\n\n".join([f"**{msg['role']}:**\n{msg['content']}" for msg in st.session_state.chat_histories[executive_session_id]])
         
         if st.session_state.follow_up_stage == "cfo_pending":
@@ -500,8 +547,7 @@ def main():
 請提供一個簡潔、高層次的總結，並給出明確的後續行動建議。"""
             st.session_state.follow_up_ceo_analysis = get_gemini_executive_analysis(gemini_api_key, "CEO-FollowUp", ceo_prompt)
             
-            full_follow_up_response = f"""
-### 📊 財務長 (CFO) 分析
+            full_follow_up_response = f"""### 📊 財務長 (CFO) 分析
 {st.session_state.follow_up_cfo_analysis}
 
 ### 🏭 營運長 (COO) 分析
@@ -513,11 +559,6 @@ def main():
             st.session_state.chat_histories[executive_session_id].append({"role": "ai", "content": full_follow_up_response})
             st.session_state.follow_up_stage = "idle" 
             st.rerun()
-            
-    # --- ▼▼▼ 修改處 ▼▼▼ ---
-    # 移除生成其他角色分頁的迴圈
-    # for i, (role_id, role_info) in enumerate(ROLE_DEFINITIONS.items()): ...
-    # --- ▲▲▲ 修改處 ▲▲▲ ---
 
 if __name__ == "__main__":
     main()
