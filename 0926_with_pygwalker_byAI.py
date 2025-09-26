@@ -69,7 +69,7 @@ def create_lc_retriever(file_path: str, openai_api_key: str):
 def get_gemini_client(api_key):
     """取得 Gemini 客戶端"""
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-1.5-flash")
+    return genai.GenerativeModel("gemini-2.5-flash")
 
 def get_gemini_response_with_history(client, history, user_prompt):
     """帶有歷史紀錄的 Gemini 對話"""
@@ -90,7 +90,7 @@ def get_gemini_response_for_image(api_key, user_prompt, image_pil):
     if not api_key: return "錯誤：未設定 Gemini API Key。"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content([user_prompt, image_pil])
         st.session_state.pending_image_for_main_gemini = None
         return response.text
@@ -114,7 +114,7 @@ def get_gemini_executive_analysis(api_key, executive_role_name, full_prompt):
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         final_prompt = f"{full_prompt}\n\n{plotting_instruction}"
         response = model.generate_content(final_prompt)
         return response.text
@@ -252,7 +252,7 @@ def run_pandas_analyst_agent(api_key: str, df: pd.DataFrame, user_query: str) ->
 def generate_plot_code(api_key: str, df_context: str, user_query: str, analyst_conclusion: str = None) -> str:
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         if analyst_conclusion:
             prompt = f"""
 你是一位頂尖的 Python 數據視覺化專家，精通使用 Plotly Express 函式庫。
