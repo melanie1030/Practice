@@ -89,10 +89,26 @@ def get_gemini_response_for_image(api_key, user_prompt, image_pil):
 
 def get_gemini_executive_analysis(api_key, executive_role_name, full_prompt):
     if not api_key: return f"錯誤：專業經理人 ({executive_role_name}) 未能獲取 Gemini API Key。"
+    
+    plotting_instruction = """
+**[圖表建議格式指令]**:
+在你的分析文字結束後，請務必根據你的分析判斷是否需要圖表。
+- 如果**需要**圖表來視覺化你的核心觀點，請**必須**提供一個 JSON 物件，格式如下：
+```json
+{"plotting_suggestion": {"plot_type": "類型", "x": "X軸欄位名", "y": "Y軸欄位名", "title": "圖表標題", "explanation": "一句話解釋為何需要此圖表"}}
+```
+其中 `plot_type` 必須是 `bar`, `scatter`, `line`, `histogram` 中的一種。對於 `histogram`，`y` 欄位可以省略或設為 `null`。
+- 如果你認為文字分析已足夠清楚，**不需要**圖表，請**必須**使用以下格式表示：
+```json
+{"plotting_suggestion": null}
+```
+"""
+    
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(full_prompt)
+        final_prompt = f"{full_prompt}\n\n{plotting_instruction}"
+        response = model.generate_content(final_prompt)
         return response.text
     except Exception as e: return f"錯誤: {e}"
 
@@ -114,60 +130,69 @@ def generate_data_profile(df, is_simple=False):
 # --- 【新功能】專業經理人工作流的圖表生成輔助函式 ---
 def parse_plotting_suggestion(response_text: str):
     """從 AI 的回應中解析出圖表建議 JSON 和分析文字"""
-    # 使用正則表達式尋找被 ```json ... ``` 包裹的區塊，或是裸露的 JSON 物件
     json_pattern = r"```json\s*(\{.*?\})\s*```|(\{.*plotting_suggestion.*?\})"
     match = re.search(json_pattern, response_text, re.DOTALL)
-
+    
     if not match:
-        return None, response_text
-
-    # 確定是哪個捕獲組匹配到了
+        return None, response_text.strip()
+        
     json_str = match.group(1) if match.group(1) else match.group(2)
     
     try:
-        # 將分析文字與 JSON 字串分離
         analysis_text = response_text.replace(match.group(0), "").strip()
         suggestion_data = json.loads(json_str)
         plotting_info = suggestion_data.get("plotting_suggestion")
         return plotting_info, analysis_text
+        
     except (json.JSONDecodeError, AttributeError):
-        # 如果 JSON 格式錯誤或解析失敗，安全地返回
-        return None, response_text
+        analysis_text = response_text.replace(match.group(0), "").strip()
+        st.warning("AI 提供了格式不正確的圖表建議，已忽略。")
+        return None, analysis_text
 
 def create_plot_from_suggestion(df: pd.DataFrame, suggestion: dict):
     """根據 AI 提供的結構化建議來生成 Plotly 圖表"""
-    if not suggestion or not all(k in suggestion for k in ["plot_type", "x", "y"]):
+    if not suggestion:
         return None
-
+    
     plot_type = suggestion.get("plot_type", "").lower()
     x_col = suggestion.get("x")
     y_col = suggestion.get("y")
-    title = suggestion.get("title", f"{y_col} vs. {x_col}")
+    title = suggestion.get("title", f"AI 建議圖表")
 
-    # 檢查欄位是否存在於 DataFrame 中
-    if x_col not in df.columns or (plot_type != 'histogram' and y_col not in df.columns):
+    if not all([plot_type, x_col]):
+        st.warning(f"AI 建議的資訊不完整 (缺少圖表類型或X軸)，無法繪圖。")
+        return None
+
+    if x_col not in df.columns or (y_col and y_col not in df.columns):
         st.warning(f"AI 建議的欄位 '{x_col}' 或 '{y_col}' 不存在於資料中，無法繪圖。")
         return None
 
     fig = None
     try:
         if plot_type == "bar":
-            # 為避免欄位不存在的錯誤，再次檢查 y_col
-            if y_col not in df.columns:
-                 st.warning(f"長條圖需要 Y 軸欄位 '{y_col}'，但它不存在。")
-                 return None
-            grouped_df = df.groupby(x_col)[y_col].sum().reset_index()
-            fig = px.bar(grouped_df, x=x_col, y=y_col, title=title)
+            if y_col and pd.api.types.is_numeric_dtype(df[y_col]):
+                grouped_df = df.groupby(x_col)[y_col].sum().reset_index()
+                fig = px.bar(grouped_df, x=x_col, y=y_col, title=title)
+            else:
+                counts = df[x_col].value_counts().reset_index()
+                counts.columns = [x_col, 'count']
+                fig = px.bar(counts, x=x_col, y='count', title=title)
         elif plot_type == "scatter":
+            if not y_col: 
+                st.warning("散佈圖需要 y 軸欄位。")
+                return None
             fig = px.scatter(df, x=x_col, y=y_col, title=title)
         elif plot_type == "line":
+            if not y_col:
+                st.warning("折線圖需要 y 軸欄位。")
+                return None
             sorted_df = df.sort_values(by=x_col)
             fig = px.line(sorted_df, x=x_col, y=y_col, title=title)
         elif plot_type == "histogram":
-            # 直方圖只需要 x_col
             fig = px.histogram(df, x=x_col, title=title)
         else:
             st.warning(f"尚不支援的圖表類型: '{plot_type}'")
+            return None
         return fig
     except Exception as e:
         st.error(f"根據 AI 建議 '{title}' 繪製圖表時發生錯誤: {e}")
@@ -223,7 +248,7 @@ def display_simple_data_explorer(df):
         else: st.info("無類別型欄位可供分析。")
     st.markdown("##### 數值欄位相關性熱力圖")
     if len(numeric_cols) > 1:
-        corr_df = df[numeric_cols].corr()
+        corr_df = df[numeric_cols].corr(numeric_only=True)
         st.plotly_chart(px.imshow(corr_df, text_auto=True, aspect="auto", title="數值欄位相關性熱力圖", color_continuous_scale='RdBu_r'), use_container_width=True)
     else: st.info("需要至少兩個數值型欄位才能計算相關性。")
 
@@ -312,7 +337,7 @@ def generate_plot_code(api_key: str, df_context: str, user_query: str, analyst_c
 
 # --- 主應用入口 ---
 def main():
-    st.set_page_config(page_title="Gemini Multi-Function Bot", page_icon="✨", layout="wide")
+    st.set_page_config(page_title="Gemini 多功能 AI 助理", page_icon="✨", layout="wide")
     st.title("✨ Gemini 多功能 AI 助理 ")
 
     executive_session_id = "executive_chat"
@@ -378,6 +403,15 @@ def main():
         st.warning("請在側邊欄輸入您的 Google Gemini API Key 以啟動主要功能。")
         st.stop()
     gemini_client = get_gemini_client(gemini_api_key)
+    
+    # 在主邏輯中讀取一次 df，避免重複讀取
+    df = None
+    if st.session_state.uploaded_file_path:
+        try:
+            df = pd.read_csv(st.session_state.uploaded_file_path)
+        except Exception as e:
+            st.error(f"讀取 CSV 檔案失敗: {e}")
+
 
     with tabs[0]:
         st.header("💬 主要聊天室")
@@ -395,11 +429,9 @@ def main():
                     if st.session_state.use_rag and st.session_state.retriever_chain:
                         context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(user_input)])
                         prompt_context = f"請根據以下上下文回答問題。\n\n[上下文]:\n{context}\n\n"
-                    elif not st.session_state.use_rag and st.session_state.get("uploaded_file_path"):
-                        try:
-                            df = pd.read_csv(st.session_state.uploaded_file_path)
-                            prompt_context = f"請參考以下資料摘要來回答問題。\n\n[資料摘要]:\n{generate_data_profile(df.head(), is_simple=True)}\n\n"
-                        except Exception as e: st.warning(f"讀取 CSV 檔案時發生錯誤: {e}")
+                    elif not st.session_state.use_rag and df is not None:
+                        prompt_context = f"請參考以下資料摘要來回答問題。\n\n[資料摘要]:\n{generate_data_profile(df.head(), is_simple=True)}\n\n"
+                        
                     if st.session_state.pending_image_for_main_gemini:
                         response = get_gemini_response_for_image(gemini_api_key, f"{prompt_context} [問題]:\n{user_input}", st.session_state.pending_image_for_main_gemini)
                     else:
@@ -410,267 +442,118 @@ def main():
     with tabs[1]:
         st.header("💼 專業經理人")
         st.caption(f"目前模式：{'階段式 (多重記憶)' if st.session_state.use_multi_stage_workflow else '整合式 (單一記憶)'} | RAG：{'啟用' if st.session_state.use_rag else '停用'} | 簡易探索器：{'啟用' if st.session_state.use_simple_explorer else '停用'}")
-
-        # --- 共用的圖表建議指示 ---
-        plotting_instruction = """
-**[圖表建議]**:
-在你的分析文字結束後，請獨立一行，判斷是否需要一個圖表來輔助說明你的觀點。
-- 如果**需要**，請提供一個 JSON 物件，格式為：
-```json
-{"plotting_suggestion": {"plot_type": "類型", "x": "X軸欄位名", "y": "Y軸欄位名", "title": "圖表標題", "explanation": "一句話解釋為何需要此圖表"}}
-```
-其中 `plot_type` 必須是 `bar`, `scatter`, `line`, `histogram` 中的一種。對於 `histogram`，`y` 欄位可以省略。
-- 如果**不需要**圖表，請這樣表示：
-```json
-{"plotting_suggestion": null}
-```
-"""
-
-        if st.session_state.use_multi_stage_workflow:
-            st.info("**方法說明**：此流程將依序（CFO->COO->CEO）進行分析，每一步完成後會立刻顯示結果與圖表，並自動觸發下一步。")
-            st.session_state.executive_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("executive_user_query", ""), height=100, key="original_workflow_query")
-            can_start = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("executive_user_query"))
-            if st.button("🚀 啟動階段式分析", disabled=not can_start or st.session_state.executive_workflow_stage != "idle", key="exec_flow_button"):
-                st.session_state.chat_histories[executive_session_id] = []
-                st.session_state.executive_workflow_stage = "cfo_analysis_pending"
-                # Reset all analysis content
-                for key in ["cfo_analysis_text", "coo_analysis_text", "ceo_summary_text", "executive_rag_context"]: st.session_state[key] = ""
-                for key in ["cfo_plot_suggestion", "coo_plot_suggestion", "ceo_plot_suggestion"]: st.session_state[key] = None
-                st.rerun()
-
-            stage = st.session_state.executive_workflow_stage
-            if stage == "cfo_analysis_pending":
-                with st.spinner("CFO 正在分析中..."):
-                    df = pd.read_csv(st.session_state.uploaded_file_path)
-                    st.session_state.executive_data_profile_str = generate_data_profile(df)
-                    query = st.session_state.executive_user_query
-                    rag_context_for_prompt = ""
-                    if st.session_state.use_rag and st.session_state.retriever_chain:
-                        rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(query)])
-                        st.session_state.executive_rag_context = rag_context
-                        rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{rag_context}"
-                    cfo_prompt = f"作為財務長(CFO)，請基於你的專業知識，並嚴格參考以下提供的資料，為商業問題提供財務角度的簡潔分析。\n\n[商業問題]:\n{query}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}\n\n{plotting_instruction}"
-                    response = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
-                    st.session_state.cfo_plot_suggestion, st.session_state.cfo_analysis_text = parse_plotting_suggestion(response)
-                    st.session_state.executive_workflow_stage = "coo_analysis_pending"
-                    st.rerun()
-
-            elif stage == "coo_analysis_pending":
-                with st.spinner("COO 正在分析中..."):
-                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
-                    coo_prompt = f"作為營運長(COO)，請基於商業問題、統計摘要、CFO 的財務分析以及相關數據，提供營運層面的策略與潛在風險。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[統計摘要]:\n{st.session_state.executive_data_profile_str}{rag_context_for_prompt}\n\n{plotting_instruction}"
-                    response = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
-                    st.session_state.coo_plot_suggestion, st.session_state.coo_analysis_text = parse_plotting_suggestion(response)
-                    st.session_state.executive_workflow_stage = "ceo_summary_pending"
-                    st.rerun()
-
-            elif stage == "ceo_summary_pending":
-                with st.spinner("CEO 正在總結中..."):
-                    rag_context_for_prompt = f"\n\n[RAG 檢索出的相關數據]:\n{st.session_state.executive_rag_context}" if st.session_state.executive_rag_context else ""
-                    ceo_prompt = f"作為執行長(CEO)，請整合所有資訊，提供一個高層次的決策總結。\n\n[商業問題]:\n{st.session_state.executive_user_query}\n\n[CFO 的財務分析]:\n{st.session_state.cfo_analysis_text}\n\n[COO 的營運分析]:\n{st.session_state.coo_analysis_text}{rag_context_for_prompt}\n\n{plotting_instruction}"
-                    response = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt)
-                    st.session_state.ceo_plot_suggestion, st.session_state.ceo_summary_text = parse_plotting_suggestion(response)
-                    st.session_state.executive_workflow_stage = "completed"
-                    st.rerun()
-
-        else: # 整合分析模式
-            st.info("**方法說明**：此為預設流程。模擬一個全能的 AI 專業經理人團隊，只發送**一次**請求，AI 在一次生成中完成所有角色思考與圖表建議。")
-            st.session_state.sp_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("sp_user_query", ""), height=100, key="sp_workflow_query")
-            can_start_sp = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("sp_user_query"))
-
-            if st.button("🚀 啟動整合分析", disabled=not can_start_sp or st.session_state.sp_workflow_stage != "idle", key="sp_flow_button"):
-                st.session_state.chat_histories[executive_session_id] = []
-                st.session_state.sp_workflow_stage = "running"
-                st.rerun()
-
-            if st.session_state.sp_workflow_stage == "running":
-                with st.spinner("AI 專業經理人團隊正在進行全面分析..."):
-                    df = pd.read_csv(st.session_state.uploaded_file_path)
-                    data_profile = generate_data_profile(df)
-                    st.session_state.executive_data_profile_str = data_profile
-                    query = st.session_state.sp_user_query
-                    rag_context_str = ""
-                    if st.session_state.use_rag and st.session_state.retriever_chain:
-                        rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(query)])
-                        st.session_state.executive_rag_context = rag_context
-                        rag_context_str = f"\n\n**[RAG 檢索出的相關數據]:**\n{rag_context}"
-
-                    mega_prompt = f"""你是一個頂尖的 AI 商業分析團隊，由三位專家組成：財務長(CFO)、營運長(COO)和執行長(CEO)。
-你的任務是根據以下提供的商業問題和數據資料，協同完成一份專業的商業分析報告。
-
-**[商業問題]:**
-{query}
-
-**[數據統計摘要]:**
-{data_profile}
-{rag_context_str}
-
-**請嚴格遵循以下格式和步驟輸出報告：**
-
-1.  **📊 財務長 (CFO) 分析:**
-    * 從財務角度分析數據，找出關鍵的財務指標、成本結構、營收趨勢或潛在的盈利機會與風險。
-    * {plotting_instruction}
-
-2.  **🏭 營運長 (COO) 分析:**
-    * 基於CFO的見解和原始數據，從營運效率、生產流程、供應鏈等角度進行分析。
-    * {plotting_instruction}
-
-3.  **👑 執行長 (CEO) 最終決策:**
-    * 整合 CFO 和 COO 的分析，提供一個高層次的、戰略性的總結和 2-3 個明確的下一步行動建議。
-    * {plotting_instruction}
-
-現在，請開始分析並生成報告。
-"""
-                    response = get_gemini_executive_analysis(gemini_api_key, "IntegratedTeam", mega_prompt)
-                    st.session_state.chat_histories[executive_session_id].append({"role": "ai", "content": response})
-                    st.session_state.sp_workflow_stage = "completed"
-                    st.rerun()
-
-        # --- 統一的報告顯示邏輯 ---
-        workflow_has_started = (st.session_state.executive_workflow_stage != "idle" or st.session_state.sp_workflow_stage != 'idle')
-        if workflow_has_started:
-            if st.session_state.get('executive_data_profile_str'):
-                with st.expander("查看統計摘要與資料探索" if st.session_state.use_simple_explorer else "查看統計摘要", expanded=False):
-                    st.subheader("純文字統計摘要")
-                    st.text(st.session_state.executive_data_profile_str)
-                    if st.session_state.use_simple_explorer and st.session_state.get("uploaded_file_path"):
-                        st.divider(); display_simple_data_explorer(pd.read_csv(st.session_state.uploaded_file_path))
-            if st.session_state.use_rag and st.session_state.get('executive_rag_context'):
-                with st.expander("查看 RAG 檢索出的相關資料"):
-                    st.markdown(st.session_state.executive_rag_context)
-
-            st.divider()
-            st.subheader("分析報告與後續對話")
-
-            # --- 顯示報告與圖表 ---
-            # 整合模式：解析一次性的大報告
-            if st.session_state.sp_workflow_stage == 'completed':
-                if executive_session_id in st.session_state.chat_histories and st.session_state.chat_histories[executive_session_id]:
-                    # 通常最新的一條是 AI 的報告
-                    full_report = st.session_state.chat_histories[executive_session_id][-1]['content']
-                    parts = re.split(r'###? (📊 財務長 \(CFO\) 分析:|🏭 營運長 \(COO\) 分析:|👑 執行長 \(CEO\) 最終決策:)', full_report)
-                    i = 1
-                    with st.chat_message("ai"):
-                        while i < len(parts):
-                            role_title = parts[i].strip()
-                            content = parts[i+1].strip()
-                            suggestion, analysis_text = parse_plotting_suggestion(content)
-                            st.markdown(f"### {role_title}")
-                            st.markdown(analysis_text)
-                            if suggestion:
-                                df = pd.read_csv(st.session_state.uploaded_file_path)
-                                st.info(f"📈 圖表洞察: {suggestion.get('explanation', 'AI 認為此圖表有助於理解分析。')}")
-                                fig = create_plot_from_suggestion(df, suggestion)
-                                if fig: st.plotly_chart(fig, use_container_width=True)
-                            i += 2
-
-            # 階段模式：逐步顯示每個角色的報告
-            else:
-                roles_data = [
-                    ("📊 財務長 (CFO) 分析", st.session_state.cfo_analysis_text, st.session_state.cfo_plot_suggestion),
-                    ("🏭 營運長 (COO) 分析", st.session_state.coo_analysis_text, st.session_state.coo_plot_suggestion),
-                    ("👑 執行長 (CEO) 最終決策", st.session_state.ceo_summary_text, st.session_state.ceo_plot_suggestion),
-                ]
-                with st.chat_message("ai"):
-                    for title, text, suggestion in roles_data:
-                        if text: # 只有在有內容時才顯示
-                            st.markdown(f"### {title}")
-                            st.markdown(text)
-                            if suggestion:
-                                df = pd.read_csv(st.session_state.uploaded_file_path)
-                                st.info(f"📈 圖表洞察: {suggestion.get('explanation', 'AI 認為此圖表有助於理解分析。')}")
-                                fig = create_plot_from_suggestion(df, suggestion)
-                                if fig: st.plotly_chart(fig, use_container_width=True)
-                            st.divider()
-
-            # --- 顯示後續對話 ---
-            for msg in st.session_state.chat_histories[executive_session_id]:
-                if msg.get("is_follow_up"): # 標記為後續追問的才顯示
-                    with st.chat_message(msg["role"]):
-                        st.markdown(msg["content"])
+        
+        if df is None:
+            st.info("請先在側邊欄上傳 CSV 檔案以啟用此功能。")
+        else:
+            user_query = st.text_input("請輸入您的分析目標：", key="executive_query", placeholder="例如：分析各產品線的銷售表現")
             
-            # --- 後續追問輸入框 ---
-            if st.session_state.executive_workflow_stage == "completed" or st.session_state.sp_workflow_stage == "completed":
-                if follow_up_query := st.chat_input("針對報告內容進行追問..."):
-                    # 將追問內容加入歷史，並標記
-                    st.session_state.chat_histories[executive_session_id].append({"role": "user", "content": follow_up_query, "is_follow_up": True})
-                    with st.spinner("AI 正在思考中..."):
-                        # 建立一個包含完整報告和之前追問的歷史給 AI
-                        history_for_follow_up = st.session_state.chat_histories[executive_session_id][:-1]
-                        response = get_gemini_response_with_history(gemini_client, history_for_follow_up, follow_up_query)
-                        st.session_state.chat_histories[executive_session_id].append({"role": "ai", "content": response, "is_follow_up": True})
-                        st.rerun()
+            if st.button("開始分析", key="start_executive_analysis"):
+                # 重置之前的分析結果
+                st.session_state.cfo_analysis_text = ""
+                st.session_state.cfo_plot_suggestion = None
+                # 在這裡可以添加其他角色的重置
+
+                with st.spinner("CFO 正在分析中..."):
+                    # 準備 Prompt
+                    data_profile = generate_data_profile(df)
+                    rag_context = ""
+                    if st.session_state.use_rag and st.session_state.retriever_chain:
+                        rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(user_query)])
+                    
+                    cfo_prompt = f"""
+作為一名專業的財務長 (CFO)，請根據以下提供的資料和上下文，對使用者的目標進行深入分析。
+
+**使用者目標:**
+{user_query}
+
+**資料摘要:**
+{data_profile}
+
+**相關知識庫上下文 (RAG):**
+{rag_context if rag_context else "無"}
+
+**你的任務:**
+1.  從財務角度，例如成本、收入、利潤、趨勢等，徹底分析資料。
+2.  提供簡潔、清晰、數據驅動的洞見。
+3.  根據你的分析，判斷是否需要一個圖表來更好地呈現你的觀點，並遵循指定的 JSON 格式提供建議。
+"""
+                    cfo_response = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
+                    plot_suggestion, analysis_text = parse_plotting_suggestion(cfo_response)
+                    st.session_state.cfo_analysis_text = analysis_text
+                    st.session_state.cfo_plot_suggestion = plot_suggestion
+                
+                # 在這裡可以添加 COO 和 CEO 的分析邏輯
+                # 如果是多階段工作流，可以在此處觸發下一個角色的分析
+                
+            # 總是顯示最新的分析結果
+            if st.session_state.cfo_analysis_text:
+                with st.container(border=True):
+                    st.subheader("CFO (財務長) 分析報告")
+                    st.markdown(st.session_state.cfo_analysis_text)
+                    if st.session_state.cfo_plot_suggestion:
+                        st.markdown("---")
+                        st.write(f"**建議圖表:** {st.session_state.cfo_plot_suggestion.get('title', '')}")
+                        st.caption(st.session_state.cfo_plot_suggestion.get("explanation", ""))
+                        fig = create_plot_from_suggestion(df, st.session_state.cfo_plot_suggestion)
+                        if fig:
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.warning("無法生成 CFO 建議的圖表。請檢查 AI 建議的欄位名稱是否正確。")
+                    else:
+                        st.info("CFO 認為當前分析無需圖表。")
 
     with tabs[2]:
-        st.header("📊 自然語言圖表生成 Agent")
-        st.markdown("上傳 CSV，然後選擇模式：您可以直接命令 AI 畫圖，也可以讓 AI 先分析再畫圖！")
-        if not st.session_state.get("uploaded_file_path"):
-            st.warning("請先在側邊欄上傳一個 CSV 檔案以啟用此功能。")
+        st.header("📊 圖表生成 Agent")
+        st.caption("這是一個使用 Agent 來生成圖表程式碼的範例。")
+        
+        if df is None:
+            st.info("請先在側邊欄上傳 CSV 檔案以啟用此功能。")
         else:
-            try:
-                df = pd.read_csv(st.session_state.uploaded_file_path)
-                st.subheader("資料預覽")
-                st.dataframe(df.head())
-                st.divider()
+            if 'plot_code' not in st.session_state:
+                st.session_state.plot_code = ""
 
-                st.subheader("請選擇操作模式")
-                agent_mode = st.radio("模式選擇", ["直接繪圖模式", "分析與繪圖模式"],
-                    captions=["您很清楚要畫什麼圖，請下達具體指令。", "您不確定要畫什麼，希望 AI 先分析數據找出洞見再畫圖。"],
-                    horizontal=True, key="plotting_agent_mode")
+            st.write("#### DataFrame 預覽")
+            st.dataframe(df.head())
+            
+            mode = st.radio("選擇模式：", ("AI 分析師建議", "直接下指令"), horizontal=True, key="agent_mode")
 
-                st.subheader("請下達您的指令")
-                if agent_mode == "直接繪圖模式":
-                    user_query = st.text_area("請輸入具體的繪圖指令：", "範例：畫出 x 軸是 'sepal_length'，y 軸是 'sepal_width' 的散點圖", height=100, key="plot_direct_query")
-                else:
-                    user_query = st.text_area("請輸入模糊的、高層次的分析目標：", "範例：分析這份數據，幫我找出最重要的趨勢並視覺化", height=100, key="plot_analysis_query")
+            user_plot_query = st.text_input("請輸入您的繪圖目標：", key="agent_query", placeholder="例如：我想看各個城市的平均房價")
 
-                if st.button("🚀 生成圖表", key="plot_generate_button", disabled=(not user_query)):
-                    generated_code = ""
-                    analyst_conclusion = None
-                    if agent_mode == "直接繪圖模式":
-                        if not gemini_api_key:
-                            st.error("此模式需要您在側邊欄輸入 Google Gemini API Key！")
-                        else:
-                            with st.spinner("AI 正在為您撰寫繪圖程式碼..."):
-                                df_context = get_df_context(df)
-                                generated_code = generate_plot_code(gemini_api_key, df_context, user_query)
-                            st.subheader("🤖 AI 生成的繪圖程式碼 (直接模式)")
-                            st.code(generated_code, language='python')
-                    else: # 分析與繪圖模式
-                        if not openai_api_key or not gemini_api_key:
-                            st.error("分析模式需要同時在側邊欄輸入 Google Gemini 和 OpenAI 的 API Keys！")
-                        else:
-                            with st.status("執行分析與繪圖工作流...", expanded=True) as status:
-                                st.write("第一階段：Pandas Agent 正在進行深度數據分析...")
-                                analyst_conclusion = run_pandas_analyst_agent(openai_api_key, df, user_query)
-                                st.write("✅ 分析完成！")
-                                status.update(label="第一階段分析完成！")
-                                st.write("第二階段：視覺化 Coder 正在根據分析結論生成程式碼...")
-                                df_context = get_df_context(df)
-                                generated_code = generate_plot_code(gemini_api_key, df_context, user_query, analyst_conclusion)
-                                st.write("✅ 程式碼生成完成！")
-                                status.update(label="工作流執行完畢！", state="complete")
-                            st.subheader("🧐 Pandas Agent 的分析結論")
-                            st.info(analyst_conclusion)
-                            st.subheader("🤖 AI 生成的繪圖程式碼 (分析模式)")
-                            st.code(generated_code, language='python')
+            if st.button("生成圖表", key="agent_generate"):
+                df_context = get_df_context(df)
+                if mode == "AI 分析師建議":
+                    if not openai_api_key:
+                        st.error("此模式需要 OpenAI API Key，請在側邊欄輸入。")
+                    else:
+                        with st.spinner("AI 分析師正在思考最佳圖表..."):
+                            analyst_conclusion = run_pandas_analyst_agent(openai_api_key, df, user_plot_query)
+                            st.info(f"**分析師結論:** {analyst_conclusion}")
+                        with st.spinner("視覺化專家正在生成程式碼..."):
+                            code = generate_plot_code(gemini_api_key, df_context, user_plot_query, analyst_conclusion)
+                            st.session_state.plot_code = code
+                else: # 直接下指令
+                    with st.spinner("視覺化專家正在根據您的指令生成程式碼..."):
+                        code = generate_plot_code(gemini_api_key, df_context, user_plot_query)
+                        st.session_state.plot_code = code
+            
+            if st.session_state.plot_code:
+                st.write("#### 最終圖表")
+                try:
+                    # 使用 exec 來執行程式碼，並將圖表物件 fig 傳遞出來
+                    exec_scope = {'df': df, 'px': px}
+                    exec(st.session_state.plot_code, exec_scope)
+                    fig = exec_scope.get('fig')
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.error("程式碼未成功生成名為 'fig' 的圖表物件。")
+                except Exception as e:
+                    st.error(f"執行生成的程式碼時出錯: {e}")
 
-                    st.subheader("📈 生成的圖表")
-                    if "error" in generated_code.lower() or "錯誤" in generated_code:
-                         st.error(f"程式碼生成失敗：{generated_code}")
-                    elif generated_code:
-                        try:
-                            local_vars = {}
-                            exec(generated_code, {'df': df, 'px': px}, local_vars)
-                            fig = local_vars.get('fig')
-                            if fig:
-                                st.plotly_chart(fig, use_container_width=True)
-                            else:
-                                st.error("程式碼執行成功，但未找到名為 'fig' 的圖表物件。")
-                        except Exception as e:
-                            st.error(f"執行生成程式碼時發生錯誤：\n{e}")
-            except Exception as e:
-                st.error(f"處理檔案或繪圖時發生錯誤: {e}")
+                with st.expander("查看/編輯生成的程式碼"):
+                    st.code(st.session_state.plot_code, language='python')
+
 
 if __name__ == "__main__":
     main()
