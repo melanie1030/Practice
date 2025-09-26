@@ -62,7 +62,6 @@ def create_lc_retriever(file_path: str, openai_api_key: str):
 def get_gemini_client(api_key):
     genai.configure(api_key=api_key)
     return genai.GenerativeModel("gemini-2.5-flash")
-
 def get_gemini_response_with_history(client, history, user_prompt):
     gemini_history = []
     # 確保 history 是一個 list
@@ -96,7 +95,7 @@ def get_gemini_executive_analysis(api_key, executive_role_name, full_prompt):
     if not api_key: return f"錯誤：專業經理人 ({executive_role_name}) 未能獲取 Gemini API Key。"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-pro-latest")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(full_prompt)
         return response.text
     except Exception as e: return f"錯誤: {e}"
@@ -207,7 +206,7 @@ def run_pandas_analyst_agent(api_key: str, df: pd.DataFrame, user_query: str) ->
 def generate_plot_code(api_key: str, df_context: str, user_query: str, analyst_conclusion: str = None) -> str:
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-pro-latest")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         if analyst_conclusion:
             prompt = f"""
 你是一位頂尖的 Python 數據視覺化專家，精通使用 Plotly Express 函式庫。
