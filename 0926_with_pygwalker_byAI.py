@@ -1,14 +1,22 @@
+import streamlit as st
 import pandas as pd
 import os
 import io
 import time
 import dotenv
-import json # 新增
+import json
 from PIL import Image
 import numpy as np
-import pygwalker as pyw # 新增
-from pygwalker.api.streamlit import StreamlitRenderer
-import streamlit as st
+
+# --- 【已修改】穩健的 Pygwalker 導入方式 ---
+# 嘗試導入，如果失敗則提供清晰的錯誤提示，而不是讓應用崩潰
+try:
+    from pygwalker.api.streamlit import StreamlitRenderer
+    PYGWALKER_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    PYGWALKER_AVAILABLE = False
+    # StreamlitRenderer 設為 None，以便後續程式碼可以檢查
+    StreamlitRenderer = None 
 
 # --- Plotly 和 Gemini/Langchain/OpenAI 等核心套件 ---
 import plotly.express as px
@@ -610,17 +618,35 @@ def main():
                 st.divider()
                 st.subheader("📊 互動式圖表探索介面 (Pygwalker)")
 
-                # 獲取 spec，如果 session 中沒有，就使用預設值 None
-                current_spec = st.session_state.get('pyg_spec', None)
+                # 【已修改】根據 PYGWALKER_AVAILABLE 旗標決定顯示內容
+                if PYGWALKER_AVAILABLE:
+                    # 獲取 spec，如果 session 中沒有，就使用預設值 None
+                    current_spec = st.session_state.get('pyg_spec', None)
 
-                if current_spec:
-                    st.success("AI 已為您設定好初始圖表！您現在可以繼續自由拖曳和探索。")
+                    if current_spec:
+                        st.success("AI 已為您設定好初始圖表！您現在可以繼續自由拖曳和探索。")
+                    else:
+                        st.info("請下達指令讓 AI 為您設定圖表，或直接在此介面中手動操作。")
+
+                    # 使用 StreamlitRenderer，這是 pygwalker 0.4.9.15 版本的推薦用法
+                    renderer = StreamlitRenderer(df, spec=current_spec, dark='dark', key="pygwalker_renderer")
+                    renderer.explorer()
                 else:
-                    st.info("請下達指令讓 AI 為您設定圖表，或直接在此介面中手動操作。")
+                    # 如果導入失敗，顯示清晰的錯誤和解決方案
+                    st.error(
+                        """
+                        **Pygwalker 載入失敗！**
 
-                # 3. 渲染 Pygwalker 元件
-                # key 參數是必要的，可以幫助 Streamlit 在 spec 變化時識別並更新元件
-                StreamlitRenderer(df, spec=current_spec, dark='dark', key="pygwalker_renderer").explorer()
+                        應用程式無法導入 Pygwalker 函式庫，這通常是環境設定問題。
+                        請確認您執行此 Streamlit 應用的 Python 環境中，已正確安裝 `pygwalker`。
+
+                        **請在您用來啟動此應用的終端機中，執行以下指令來安裝或更新：**
+                        ```bash
+                        pip install --upgrade pygwalker
+                        ```
+                        安裝完成後，請務必**完全重新啟動**您的 Streamlit 應用程式。
+                        """
+                    )
 
             except Exception as e:
                 st.error(f"處理檔案或繪圖時發生錯誤: {e}")
@@ -628,3 +654,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
