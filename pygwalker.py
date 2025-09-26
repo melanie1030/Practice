@@ -65,7 +65,7 @@ def create_lc_retriever(file_path: str, openai_api_key: str):
 # --- Gemini API 相關函式 ---
 def get_gemini_client(api_key):
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-1.5-flash") # 使用 gemini-1.5-flash 或 gemini-pro
+    return genai.GenerativeModel("gemini-2.5-flash") # 使用 gemini-1.5-flash 或 gemini-pro
 def get_gemini_response_with_history(client, history, user_prompt):
     gemini_history = []
     # 確保 history 是一個 list
