@@ -7,7 +7,7 @@ import dotenv
 import json # 新增
 from PIL import Image
 import numpy as np
-import pygwalker as pyw # 新增
+import pygwalker as pyg # 新增 (使用 pyg 作為別名以匹配範例)
 import streamlit.components.v1 as components # 新增：用於嵌入 HTML
 
 # --- Plotly 和 Gemini/Langchain/OpenAI 等核心套件 ---
@@ -618,9 +618,9 @@ def main():
                 else:
                     st.info("請下達指令讓 AI 為您設定圖表，或直接在此介面中手動操作。")
 
-                # 3. 【已修改】將 Pygwalker 渲染為 HTML 並嵌入
-                # 這種方法相容性最好，可以避免導入錯誤
-                pyg_html = pyw.to_html(df, spec=current_spec, dark='dark')
+                # 3. 【已修改】使用更穩健的 pyg.walk 生成 HTML
+                # 這種方法相容性最好，可以避免導入和屬性錯誤
+                pyg_html = pyg.walk(df, spec=current_spec, dark='dark', return_html=True)
                 
                 # 使用 streamlit.components.v1.html 將其嵌入
                 components.html(pyg_html, height=1000, scrolling=True)
