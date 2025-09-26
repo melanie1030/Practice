@@ -72,7 +72,7 @@ def create_lc_retriever(file_path: str, openai_api_key: str):
 # --- Gemini API 相關函式 ---
 def get_gemini_client(api_key):
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-1.5-flash")
+    return genai.GenerativeModel("gemini-2.5-flash")
 
 def get_gemini_response_with_history(client, history, user_prompt):
     gemini_history = []
@@ -90,7 +90,7 @@ def get_gemini_response_for_image(api_key, user_prompt, image_pil):
     if not api_key: return "錯誤：未設定 Gemini API Key。"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content([user_prompt, image_pil])
         st.session_state.pending_image_for_main_gemini = None
         return response.text
@@ -100,7 +100,7 @@ def get_gemini_executive_analysis(api_key, executive_role_name, full_prompt):
     if not api_key: return f"錯誤：專業經理人 ({executive_role_name}) 未能獲取 Gemini API Key。"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(full_prompt)
         return response.text
     except Exception as e: return f"錯誤: {e}"
@@ -220,7 +220,7 @@ def generate_plot_params(api_key: str, df_context: str, user_query: str, analyst
     """
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         allowed_plot_types = "['scatter', 'bar', 'histogram', 'line', 'box', 'pie', 'area']"
 
