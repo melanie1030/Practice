@@ -63,7 +63,7 @@ def create_lc_retriever(file_path: str, openai_api_key: str):
 # --- Gemini API 相關函式 ---
 def get_gemini_client(api_key):
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-2.5-flash")
+    return genai.GenerativeModel("gemini-1.5-flash")
 
 def get_gemini_response_with_history(client, history, user_prompt):
     gemini_history = []
@@ -81,7 +81,7 @@ def get_gemini_response_for_image(api_key, user_prompt, image_pil):
     if not api_key: return "錯誤：未設定 Gemini API Key。"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content([user_prompt, image_pil])
         st.session_state.pending_image_for_main_gemini = None
         return response.text
@@ -106,7 +106,7 @@ def get_gemini_executive_analysis(api_key, executive_role_name, full_prompt):
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         final_prompt = f"{full_prompt}\n\n{plotting_instruction}"
         response = model.generate_content(final_prompt)
         return response.text
@@ -294,7 +294,7 @@ def run_pandas_analyst_agent(api_key: str, df: pd.DataFrame, user_query: str) ->
 def generate_plot_code(api_key: str, df_context: str, user_query: str, analyst_conclusion: str = None) -> str:
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         if analyst_conclusion:
             prompt = f"""
 你是一位頂尖的 Python 數據視覺化專家，精通使用 Plotly Express 函式庫。
@@ -449,44 +449,60 @@ def main():
             user_query = st.text_input("請輸入您的分析目標：", key="executive_query", placeholder="例如：分析各產品線的銷售表現")
             
             if st.button("開始分析", key="start_executive_analysis"):
-                # 重置之前的分析結果
+                # 重置所有角色的分析結果
                 st.session_state.cfo_analysis_text = ""
                 st.session_state.cfo_plot_suggestion = None
-                # 在這裡可以添加其他角色的重置
+                st.session_state.coo_analysis_text = ""
+                st.session_state.coo_plot_suggestion = None
+                st.session_state.ceo_summary_text = ""
+                st.session_state.ceo_plot_suggestion = None
 
+                # 準備通用上下文
+                data_profile = generate_data_profile(df)
+                rag_context = ""
+                if st.session_state.use_rag and st.session_state.retriever_chain:
+                    rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(user_query)])
+                
+                # --- CFO 分析 ---
                 with st.spinner("CFO 正在分析中..."):
-                    # 準備 Prompt
-                    data_profile = generate_data_profile(df)
-                    rag_context = ""
-                    if st.session_state.use_rag and st.session_state.retriever_chain:
-                        rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(user_query)])
-                    
                     cfo_prompt = f"""
 作為一名專業的財務長 (CFO)，請根據以下提供的資料和上下文，對使用者的目標進行深入分析。
-
-**使用者目標:**
-{user_query}
-
-**資料摘要:**
-{data_profile}
-
-**相關知識庫上下文 (RAG):**
-{rag_context if rag_context else "無"}
-
-**你的任務:**
-1.  從財務角度，例如成本、收入、利潤、趨勢等，徹底分析資料。
-2.  提供簡潔、清晰、數據驅動的洞見。
-3.  根據你的分析，判斷是否需要一個圖表來更好地呈現你的觀點，並遵循指定的 JSON 格式提供建議。
-"""
+**使用者目標:** {user_query}
+**資料摘要:**\n{data_profile}
+**相關知識庫上下文 (RAG):** {rag_context if rag_context else "無"}
+**你的任務:** 從財務角度（如成本、收入、利潤、趨勢等）分析，提供數據驅動的洞見，並判斷是否需要圖表。"""
                     cfo_response = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
                     plot_suggestion, analysis_text = parse_plotting_suggestion(cfo_response)
                     st.session_state.cfo_analysis_text = analysis_text
                     st.session_state.cfo_plot_suggestion = plot_suggestion
                 
-                # 在這裡可以添加 COO 和 CEO 的分析邏輯
-                # 如果是多階段工作流，可以在此處觸發下一個角色的分析
-                
-            # 總是顯示最新的分析結果
+                # --- COO 分析 ---
+                with st.spinner("COO 正在分析中..."):
+                    coo_prompt = f"""
+作為一名專業的營運長 (COO)，請根據以下提供的資料和上下文，對使用者的目標進行深入分析。
+**使用者目標:** {user_query}
+**資料摘要:**\n{data_profile}
+**相關知識庫上下文 (RAG):** {rag_context if rag_context else "無"}
+**你的任務:** 從營運效率、流程、生產力等角度分析，找出可優化之處，並判斷是否需要圖表。"""
+                    coo_response = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
+                    plot_suggestion, analysis_text = parse_plotting_suggestion(coo_response)
+                    st.session_state.coo_analysis_text = analysis_text
+                    st.session_state.coo_plot_suggestion = plot_suggestion
+
+                # --- CEO 總結 ---
+                with st.spinner("CEO 正在總結中..."):
+                    ceo_prompt = f"""
+作為一名公司的執行長 (CEO)，你的任務是基於你的高階主管（CFO 和 COO）的分析報告，為整個業務提供一個全面、高層次的戰略總結。
+**原始使用者目標:** {user_query}
+**財務長 (CFO) 的分析報告:**\n---\n{st.session_state.cfo_analysis_text}\n---
+**營運長 (COO) 的分析報告:**\n---\n{st.session_state.coo_analysis_text}\n---
+**你的任務:** 整合 CFO 的財務觀點和 COO 的營運觀點，提供高層次的戰略總結，指出優勢、挑戰和機會，並提出 2-3 個明確建議。最後判斷是否需要一個最關鍵的圖表來總結整體情況。"""
+                    ceo_response = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt)
+                    plot_suggestion, analysis_text = parse_plotting_suggestion(ceo_response)
+                    st.session_state.ceo_summary_text = analysis_text
+                    st.session_state.ceo_plot_suggestion = plot_suggestion
+
+            # --- 顯示所有分析結果 ---
             if st.session_state.cfo_analysis_text:
                 with st.container(border=True):
                     st.subheader("CFO (財務長) 分析報告")
@@ -496,12 +512,39 @@ def main():
                         st.write(f"**建議圖表:** {st.session_state.cfo_plot_suggestion.get('title', '')}")
                         st.caption(st.session_state.cfo_plot_suggestion.get("explanation", ""))
                         fig = create_plot_from_suggestion(df, st.session_state.cfo_plot_suggestion)
-                        if fig:
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.warning("無法生成 CFO 建議的圖表。請檢查 AI 建議的欄位名稱是否正確。")
+                        if fig: st.plotly_chart(fig, use_container_width=True)
+                        else: st.warning("無法生成 CFO 建議的圖表。")
                     else:
                         st.info("CFO 認為當前分析無需圖表。")
+            
+            if st.session_state.coo_analysis_text:
+                with st.container(border=True):
+                    st.subheader("COO (營運長) 分析報告")
+                    st.markdown(st.session_state.coo_analysis_text)
+                    if st.session_state.coo_plot_suggestion:
+                        st.markdown("---")
+                        st.write(f"**建議圖表:** {st.session_state.coo_plot_suggestion.get('title', '')}")
+                        st.caption(st.session_state.coo_plot_suggestion.get("explanation", ""))
+                        fig = create_plot_from_suggestion(df, st.session_state.coo_plot_suggestion)
+                        if fig: st.plotly_chart(fig, use_container_width=True)
+                        else: st.warning("無法生成 COO 建議的圖表。")
+                    else:
+                        st.info("COO 認為當前分析無需圖表。")
+
+            if st.session_state.ceo_summary_text:
+                with st.container(border=True):
+                    st.subheader("CEO (執行長) 戰略總結")
+                    st.markdown(st.session_state.ceo_summary_text)
+                    if st.session_state.ceo_plot_suggestion:
+                        st.markdown("---")
+                        st.write(f"**建議圖表:** {st.session_state.ceo_plot_suggestion.get('title', '')}")
+                        st.caption(st.session_state.ceo_plot_suggestion.get("explanation", ""))
+                        fig = create_plot_from_suggestion(df, st.session_state.ceo_plot_suggestion)
+                        if fig: st.plotly_chart(fig, use_container_width=True)
+                        else: st.warning("無法生成 CEO 建議的圖表。")
+                    else:
+                        st.info("CEO 認為當前分析無需圖表。")
+
 
     with tabs[2]:
         st.header("📊 圖表生成 Agent")
@@ -557,3 +600,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
