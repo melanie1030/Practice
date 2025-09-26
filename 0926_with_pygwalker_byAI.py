@@ -8,7 +8,7 @@ import json # 新增
 from PIL import Image
 import numpy as np
 import pygwalker as pyw # 新增
-from pygwalker.api.streamlit import StreamlitRenderer # 新增
+from pygwalker.api.streamlit import StreamlitRenderer 
 
 # --- Plotly 和 Gemini/Langchain/OpenAI 等核心套件 ---
 import plotly.express as px
