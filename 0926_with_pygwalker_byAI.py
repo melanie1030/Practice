@@ -522,52 +522,52 @@ def main():
                             "role": "ai", "content": final_report, "plot_suggestion": plot_suggestion
                         })
 
-    with tabs[2]:
-        st.header("📊 圖表生成 Agent")
-        st.caption("這是一個使用 Agent 來生成圖表程式碼的範例。")
+    # with tabs[2]:
+    #     st.header("📊 圖表生成 Agent")
+    #     st.caption("這是一個使用 Agent 來生成圖表程式碼的範例。")
         
-        if df is None:
-            st.info("請先在側邊欄上傳 CSV 檔案以啟用此功能。")
-        else:
-            st.write("#### DataFrame 預覽")
-            st.dataframe(df.head())
+    #     if df is None:
+    #         st.info("請先在側邊欄上傳 CSV 檔案以啟用此功能。")
+    #     else:
+    #         st.write("#### DataFrame 預覽")
+    #         st.dataframe(df.head())
             
-            mode = st.radio("選擇模式：", ("AI 分析師建議", "直接下指令"), horizontal=True, key="agent_mode")
+    #         mode = st.radio("選擇模式：", ("AI 分析師建議", "直接下指令"), horizontal=True, key="agent_mode")
 
-            user_plot_query = st.text_input("請輸入您的繪圖目標：", key="agent_query", placeholder="例如：我想看各個城市的平均房價")
+    #         user_plot_query = st.text_input("請輸入您的繪圖目標：", key="agent_query", placeholder="例如：我想看各個城市的平均房價")
 
-            if st.button("生成圖表", key="agent_generate"):
-                df_context = get_df_context(df)
-                if mode == "AI 分析師建議":
-                    if not openai_api_key:
-                        st.error("此模式需要 OpenAI API Key，請在側邊欄輸入。")
-                    else:
-                        with st.spinner("AI 分析師正在思考最佳圖表..."):
-                            analyst_conclusion = run_pandas_analyst_agent(openai_api_key, df, user_plot_query)
-                            st.info(f"**分析師結論:** {analyst_conclusion}")
-                        with st.spinner("視覺化專家正在生成程式碼..."):
-                            code = generate_plot_code(gemini_api_key, df_context, user_plot_query, analyst_conclusion)
-                            st.session_state.plot_code = code
-                else: # 直接下指令
-                    with st.spinner("視覺化專家正在根據您的指令生成程式碼..."):
-                        code = generate_plot_code(gemini_api_key, df_context, user_plot_query)
-                        st.session_state.plot_code = code
+    #         if st.button("生成圖表", key="agent_generate"):
+    #             df_context = get_df_context(df)
+    #             if mode == "AI 分析師建議":
+    #                 if not openai_api_key:
+    #                     st.error("此模式需要 OpenAI API Key，請在側邊欄輸入。")
+    #                 else:
+    #                     with st.spinner("AI 分析師正在思考最佳圖表..."):
+    #                         analyst_conclusion = run_pandas_analyst_agent(openai_api_key, df, user_plot_query)
+    #                         st.info(f"**分析師結論:** {analyst_conclusion}")
+    #                     with st.spinner("視覺化專家正在生成程式碼..."):
+    #                         code = generate_plot_code(gemini_api_key, df_context, user_plot_query, analyst_conclusion)
+    #                         st.session_state.plot_code = code
+    #             else: # 直接下指令
+    #                 with st.spinner("視覺化專家正在根據您的指令生成程式碼..."):
+    #                     code = generate_plot_code(gemini_api_key, df_context, user_plot_query)
+    #                     st.session_state.plot_code = code
             
-            if st.session_state.plot_code:
-                st.write("#### 最終圖表")
-                try:
-                    exec_scope = {'df': df, 'px': px}
-                    exec(st.session_state.plot_code, exec_scope)
-                    fig = exec_scope.get('fig')
-                    if fig:
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.error("程式碼未成功生成名為 'fig' 的圖表物件。")
-                except Exception as e:
-                    st.error(f"執行生成的程式碼時出錯: {e}")
+    #         if st.session_state.plot_code:
+    #             st.write("#### 最終圖表")
+    #             try:
+    #                 exec_scope = {'df': df, 'px': px}
+    #                 exec(st.session_state.plot_code, exec_scope)
+    #                 fig = exec_scope.get('fig')
+    #                 if fig:
+    #                     st.plotly_chart(fig, use_container_width=True)
+    #                 else:
+    #                     st.error("程式碼未成功生成名為 'fig' 的圖表物件。")
+    #             except Exception as e:
+    #                 st.error(f"執行生成的程式碼時出錯: {e}")
 
-                with st.expander("查看/編輯生成的程式碼"):
-                    st.code(st.session_state.plot_code, language='python')
+    #             with st.expander("查看/編輯生成的程式碼"):
+    #                 st.code(st.session_state.plot_code, language='python')
 
 
 if __name__ == "__main__":
