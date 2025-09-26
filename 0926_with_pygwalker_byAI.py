@@ -378,7 +378,8 @@ def main():
             st.success("所有對話、Session 記憶和快取已清除！")
             st.rerun()
 
-    tab_titles = ["💬 主要聊天室", "💼 專業經理人", "📊 圖表生成 Agent"]
+    tab_titles = ["💬 主要聊天室", "💼 專業經理人"]
+    # tab_titles = ["💬 主要聊天室", "💼 專業經理人", "📊 圖表生成 Agent"]
     tabs = st.tabs(tab_titles)
 
     gemini_api_key = st.session_state.get("gemini_api_key_input") or os.environ.get("GOOGLE_API_KEY")
