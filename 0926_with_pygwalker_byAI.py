@@ -618,9 +618,12 @@ def main():
                 else:
                     st.info("請下達指令讓 AI 為您設定圖表，或直接在此介面中手動操作。")
 
-                # 3. 渲染 Pygwalker 元件
-                # key 參數是必要的，可以幫助 Streamlit 在 spec 變化時識別並更新元件
-                StreamlitRenderer(df, spec=current_spec, dark='dark', key="pygwalker_renderer").explorer()
+                # 3. 【已修改】將 Pygwalker 渲染為 HTML 並嵌入
+                # 這種方法相容性最好，可以避免導入錯誤
+                pyg_html = pyw.to_html(df, spec=current_spec, dark='dark')
+                
+                # 使用 streamlit.components.v1.html 將其嵌入
+                components.html(pyg_html, height=1000, scrolling=True)
 
             except Exception as e:
                 st.error(f"處理檔案或繪圖時發生錯誤: {e}")
