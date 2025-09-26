@@ -4,19 +4,8 @@ import os
 import io
 import time
 import dotenv
-import json
 from PIL import Image
 import numpy as np
-
-# --- 【已修改】穩健的 Pygwalker 導入方式 ---
-# 嘗試導入，如果失敗則提供清晰的錯誤提示，而不是讓應用崩潰
-try:
-    from pygwalker.api.streamlit import StreamlitRenderer
-    PYGWALKER_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    PYGWALKER_AVAILABLE = False
-    # StreamlitRenderer 設為 None，以便後續程式碼可以檢查
-    StreamlitRenderer = None 
 
 # --- Plotly 和 Gemini/Langchain/OpenAI 等核心套件 ---
 import plotly.express as px
@@ -73,15 +62,21 @@ def create_lc_retriever(file_path: str, openai_api_key: str):
 def get_gemini_client(api_key):
     genai.configure(api_key=api_key)
     return genai.GenerativeModel("gemini-2.5-flash")
-
 def get_gemini_response_with_history(client, history, user_prompt):
     gemini_history = []
-    if not isinstance(history, list): history = []
+    # 確保 history 是一個 list
+    if not isinstance(history, list):
+        history = []
+        
     for msg in history:
+        # 相容舊格式與 Langchain 格式
         role = "user" if msg.get("role") in ["human", "user"] else "model"
         content = msg.get("content", "")
-        if not isinstance(content, str): content = str(content)
+        # 確保 content 是 string
+        if not isinstance(content, str):
+            content = str(content)
         gemini_history.append({"role": role, "parts": [content]})
+
     chat = client.start_chat(history=gemini_history)
     response = chat.send_message(user_prompt)
     return response.text
@@ -170,10 +165,8 @@ def display_simple_data_explorer(df):
         else: st.info("無類別型欄位可供分析。")
     st.markdown("##### 數值欄位相關性熱力圖")
     if len(numeric_cols) > 1:
-        corr_matrix = df[numeric_cols].corr(numeric_only=True)
-        st.plotly_chart(px.imshow(corr_matrix, text_auto=True, aspect="auto", title="數值欄位相關性熱力圖", color_continuous_scale='RdBu_r'), use_container_width=True)
+        st.plotly_chart(px.imshow(df[numeric_cols].corr(numeric_only=True), text_auto=True, aspect="auto", title="數值欄位相關性熱力圖", color_continuous_scale='RdBu_r'), use_container_width=True)
     else: st.info("需要至少兩個數值型欄位才能計算相關性。")
-
 
 # --- 【新功能】圖表生成 Agent 核心函式 ---
 def get_df_context(df: pd.DataFrame) -> str:
@@ -186,10 +179,7 @@ def get_df_context(df: pd.DataFrame) -> str:
 DataFrame 變數名稱為 `df`。
 
 1. DataFrame 的基本資訊 (df.info()):
-{info_str}
-
 2. DataFrame 的前 5 筆資料 (df.head()):
-{head_str}
     """
     return context
 
@@ -213,91 +203,48 @@ def run_pandas_analyst_agent(api_key: str, df: pd.DataFrame, user_query: str) ->
     except Exception as e:
         return f"Pandas Agent 執行時發生錯誤: {e}"
 
-# 【已修改】generate_plot_code -> generate_plot_params
-def generate_plot_params(api_key: str, df_context: str, user_query: str, analyst_conclusion: str = None) -> str:
-    """
-    讓 AI 回傳一個包含繪圖參數的 JSON 字串，而不是 Python 程式碼。
-    """
+def generate_plot_code(api_key: str, df_context: str, user_query: str, analyst_conclusion: str = None) -> str:
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
-        
-        allowed_plot_types = "['scatter', 'bar', 'histogram', 'line', 'box', 'pie', 'area']"
-
         if analyst_conclusion:
-            prompt_core = f"""
-            根據以下數據分析師的結論和使用者目標，決定如何繪圖。
-            **數據分析師的結論:**
-            {analyst_conclusion}
-            **原始使用者目標:**
-            "{user_query}"
-            """
-        else:
-            prompt_core = f"""
-            根據以下使用者要求，決定如何繪圖。
-            **使用者的繪圖要求:**
-            "{user_query}"
-            """
-
-        full_prompt = f"""
-你是一位頂尖的 Python 數據視覺化專家。你的任務是根據要求，決定生成一個圖表所需的參數。
-
-{prompt_core}
-
+            prompt = f"""
+你是一位頂尖的 Python 數據視覺化專家，精通使用 Plotly Express 函式庫。
+你的任務是根據數據分析師的結論和使用者的原始目標，編寫一段 Python 程式碼來生成最合適的圖表。
+**數據分析師的結論:**
+{analyst_conclusion}
+**原始使用者目標:**
+"{user_query}"
 **DataFrame 的資訊:**
 {df_context}
-
 **嚴格遵守以下規則:**
-1.  你**絕對不能**生成 Python 程式碼。
-2.  你的最終輸出**必須是**一個格式嚴格的 JSON 物件，不包含任何 markdown 標籤如 ```json。
-3.  JSON 物件必須包含以下幾個鍵 (key):
-    - `plot_type`: (字串) 圖表類型，必須是以下列表中的一個: {allowed_plot_types}。
-    - `x`: (字串或 null) 對應 DataFrame 的欄位名作為 X 軸。
-    - `y`: (字串或 null) 對應 DataFrame 的欄位名作為 Y 軸。
-    - `color`: (字串或 null) 對應 DataFrame 的欄位名作為顏色分類。
-    - `title`: (字串) 為圖表取一個有意義的標題。
-4.  如果某個參數不適用（例如直方圖沒有 y 軸），請將其值設為 `null`。
-5.  欄位名稱必須與 DataFrame 資訊中提供的完全一致。
-
-現在，請只生成 JSON 物件：
+1.  你只能生成 Python 程式碼，絕對不能包含任何文字解釋、註解或 ```python 標籤。
+2.  程式碼必須基於上述**數據分析師的結論**來生成。
+3.  生成的程式碼必須使用 `plotly.express` (匯入為 `px`)。
+4.  DataFrame 的變數名稱固定為 `df`。
+5.  最終生成的圖表物件必須賦值給一個名為 `fig` 的變數。
+現在，請生成程式碼：
 """
-        response = model.generate_content(full_prompt)
-        clean_response = response.text.strip().replace("```json", "").replace("```", "").strip()
-        return clean_response
+        else:
+            prompt = f"""
+你是一位頂尖的 Python 數據視覺化專家，精通使用 Plotly Express 函式庫。
+你的任務是根據提供的 DataFrame 資訊和使用者的要求，編寫一段 Python 程式碼來生成一個圖表。
+**嚴格遵守以下規則:**
+1.  你只能生成 Python 程式碼，絕對不能包含任何文字解釋、註解或 ```python 標籤。
+2.  生成的程式碼必須使用 `plotly.express` (匯入為 `px`)。
+3.  DataFrame 的變數名稱固定為 `df`。
+4.  最終生成的圖表物件必須賦值給一個名為 `fig` 的變數。
+**DataFrame 的資訊:**
+{df_context}
+**使用者的繪圖要求:**
+"{user_query}"
+現在，請生成程式碼：
+"""
+        response = model.generate_content(prompt)
+        code = response.text.strip().replace("```python", "").replace("```", "").strip()
+        return code
     except Exception as e:
-        return json.dumps({"error": f"生成繪圖參數時發生錯誤: {e}"})
-
-# 【新函式】將 AI 參數轉換為 Pygwalker Spec
-def convert_params_to_pygwalker_spec(params: dict, df: pd.DataFrame) -> str:
-    """
-    將 AI 生成的簡單參數字典，轉換為 Pygwalker 需要的 spec JSON 字串。
-    """
-    mark_map = {
-        "bar": "bar", "line": "line", "scatter": "point", "area": "area",
-        "histogram": "bar", "box": "boxplot"
-    }
-    
-    plot_type = params.get("plot_type", "point")
-    vis_spec = {"mark": mark_map.get(plot_type, "point"), "encodings": {}}
-    
-    channels = {"x": params.get("x"), "y": params.get("y"), "color": params.get("color")}
-    
-    for channel, field_name in channels.items():
-        if field_name and field_name in df.columns:
-            dtype = "quantitative" if pd.api.types.is_numeric_dtype(df[field_name]) else "nominal"
-            vis_spec["encodings"][channel] = {"field": field_name, "type": dtype}
-
-    # 針對特殊圖表類型進行調整
-    if plot_type == "histogram":
-        vis_spec["encodings"]["x"]["bin"] = True # 對 x 軸進行分箱
-        if "y" not in vis_spec["encodings"]: # 如果 y 沒設定，則設為計數
-             vis_spec["encodings"]["y"] = {"aggregate": "count", "type": "quantitative"}
-
-    full_spec = {
-        "config": { "geoms": ["auto"], "stack": "stack", "showActions": True, "interactiveScale": True, "layoutMode": "auto" },
-        "visSpec": [vis_spec]
-    }
-    return json.dumps(full_spec)
+        return f"繪圖程式碼生成時發生錯誤: {e}"
 
 
 # --- 主應用入口 ---
@@ -314,6 +261,7 @@ def main():
         "executive_data_profile_str": "", "executive_rag_context": "", "cfo_analysis_text": "",
         "coo_analysis_text": "", "ceo_summary_text": "",
         "sp_workflow_stage": "idle", "sp_user_query": "", "sp_final_report": "",
+        # 移除舊的 follow_up 相關 key，統一使用 chat_histories
     }
     for key, default_value in keys_to_init.items():
         if key not in st.session_state: st.session_state[key] = default_value
@@ -443,7 +391,7 @@ def main():
                     st.session_state.chat_histories[executive_session_id].append({"role": "ai", "content": full_report})
                     st.rerun()
 
-        else: # 整合分析模式
+        else: # 整合分析模式 (已重構成穩定的狀態機模式)
             st.info("**方法說明**：此為預設流程。模擬一個全能的 AI 專業經理人團隊，只發送**一次**請求，AI 在一次生成中完成所有角色思考。")
             st.session_state.sp_user_query = st.text_area("請輸入商業問題以啟動分析:", value=st.session_state.get("sp_user_query", ""), height=100, key="sp_workflow_query")
             can_start_sp = bool(st.session_state.get("uploaded_file_path") and st.session_state.get("sp_user_query"))
@@ -515,11 +463,14 @@ def main():
             st.divider()
             st.subheader("分析報告與後續對話")
             
+            # 【已修正並補全】顯示報告與後續追問的邏輯
+            # 兩種模式都會將最終報告存入 executive_session_id 的歷史紀錄，所以這段程式碼對兩者都有效
             if executive_session_id in st.session_state.chat_histories:
                 for msg in st.session_state.chat_histories[executive_session_id]:
                     with st.chat_message(msg["role"]):
                         st.markdown(msg["content"])
             
+            # 【已新增】後續追問輸入框
             if st.session_state.executive_workflow_stage == "completed" or st.session_state.sp_workflow_stage == "completed":
                 if follow_up_query := st.chat_input("針對報告內容進行追問..."):
                     st.session_state.chat_histories[executive_session_id].append({"role": "user", "content": follow_up_query})
@@ -528,16 +479,17 @@ def main():
                     
                     with st.chat_message("ai"):
                         with st.spinner("AI 正在思考中..."):
+                            # 傳遞包含報告在內的完整歷史對話給 AI
                             history_for_follow_up = st.session_state.chat_histories[executive_session_id][:-1]
                             response = get_gemini_response_with_history(gemini_client, history_for_follow_up, follow_up_query)
                             st.markdown(response)
                             st.session_state.chat_histories[executive_session_id].append({"role": "ai", "content": response})
+                            # 使用 rerun 確保頁面狀態更新
                             st.rerun()
 
-    # --- 【 tabs[2] 已完全重構 】---
     with tabs[2]:
         st.header("📊 自然語言圖表生成 Agent")
-        st.markdown("上傳 CSV，AI 將為您推薦圖表並在下方互動介面中開啟，您也可以繼續自由探索！")
+        st.markdown("上傳 CSV，然後選擇模式：您可以直接命令 AI 畫圖，也可以讓 AI 先分析再畫圖！")
         
         if not st.session_state.get("uploaded_file_path"):
             st.warning("請先在側邊欄上傳一個 CSV 檔案以啟用此功能。")
@@ -576,9 +528,20 @@ def main():
                         key="plot_analysis_query"
                     )
 
-                if st.button("🚀 生成圖表並在互動介面中開啟", key="plot_generate_button", disabled=(not user_query)):
-                    analyst_conclusion = None
-                    if agent_mode == "分析與繪圖模式":
+                if st.button("🚀 生成圖表", key="plot_generate_button", disabled=(not user_query)):
+                    generated_code = ""
+                    analyst_conclusion = None # 確保變數被初始化
+                    if agent_mode == "直接繪圖模式":
+                        if not gemini_api_key:
+                            st.error("此模式需要您在側邊欄輸入 Google Gemini API Key！")
+                        else:
+                            with st.spinner("AI 正在為您撰寫繪圖程式碼..."):
+                                df_context = get_df_context(df)
+                                generated_code = generate_plot_code(gemini_api_key, df_context, user_query)
+                            st.subheader("🤖 AI 生成的繪圖程式碼 (直接模式)")
+                            st.code(generated_code, language='python')
+                    
+                    else: # 分析與繪圖模式
                         if not openai_api_key or not gemini_api_key:
                             st.error("分析模式需要同時在側邊欄輸入 Google Gemini 和 OpenAI 的 API Keys！")
                         else:
@@ -587,66 +550,32 @@ def main():
                                 analyst_conclusion = run_pandas_analyst_agent(openai_api_key, df, user_query)
                                 st.write("✅ 分析完成！")
                                 status.update(label="第一階段分析完成！")
-                                st.subheader("🧐 Pandas Agent 的分析結論")
-                                st.info(analyst_conclusion)
-                    
-                    with st.spinner("AI 正在分析並設定圖表..."):
-                        df_context = get_df_context(df)
-                        # 1. 呼叫 AI 生成簡單參數
-                        params_json_str = generate_plot_params(gemini_api_key, df_context, user_query, analyst_conclusion)
-                        
+
+                                st.write("第二階段：視覺化 Coder 正在根據分析結論生成程式碼...")
+                                df_context = get_df_context(df)
+                                generated_code = generate_plot_code(gemini_api_key, df_context, user_query, analyst_conclusion)
+                                st.write("✅ 程式碼生成完成！")
+                                status.update(label="工作流執行完畢！", state="complete")
+
+                            st.subheader("🧐 Pandas Agent 的分析結論")
+                            st.info(analyst_conclusion)
+                            st.subheader("🤖 AI 生成的繪圖程式碼 (分析模式)")
+                            st.code(generated_code, language='python')
+
+                    st.subheader("📈 生成的圖表")
+                    if "error" in generated_code.lower():
+                         st.error(f"程式碼生成失敗：{generated_code}")
+                    elif generated_code:
                         try:
-                            params = json.loads(params_json_str)
-                            if "error" in params:
-                                st.error(params["error"])
-                                st.session_state.pyg_spec = None # 出錯時清除 spec
+                            local_vars = {}
+                            exec(generated_code, {'df': df, 'px': px}, local_vars)
+                            fig = local_vars.get('fig')
+                            if fig:
+                                st.plotly_chart(fig, use_container_width=True)
                             else:
-                                st.info("🤖 AI 建議的圖表參數:")
-                                st.json(params)
-
-                                # 2. 將 AI 參數翻譯成 Pygwalker Spec
-                                st.session_state.pyg_spec = convert_params_to_pygwalker_spec(params, df)
-
-                        except json.JSONDecodeError:
-                            st.error(f"AI 回傳的內容不是有效的 JSON 格式: {params_json_str}")
-                            st.session_state.pyg_spec = None
+                                st.error("程式碼執行成功，但未找到名為 'fig' 的圖表物件。")
                         except Exception as e:
-                            st.error(f"轉換參數時發生錯誤: {e}")
-                            st.session_state.pyg_spec = None
-
-                # 將 Pygwalker 的渲染邏輯放在按鈕判斷之外，這樣它可以在 spec 更新後重新渲染
-                st.divider()
-                st.subheader("📊 互動式圖表探索介面 (Pygwalker)")
-
-                # 【已修改】根據 PYGWALKER_AVAILABLE 旗標決定顯示內容
-                if PYGWALKER_AVAILABLE:
-                    # 獲取 spec，如果 session 中沒有，就使用預設值 None
-                    current_spec = st.session_state.get('pyg_spec', None)
-
-                    if current_spec:
-                        st.success("AI 已為您設定好初始圖表！您現在可以繼續自由拖曳和探索。")
-                    else:
-                        st.info("請下達指令讓 AI 為您設定圖表，或直接在此介面中手動操作。")
-
-                    # 使用 StreamlitRenderer，這是 pygwalker 0.4.9.15 版本的推薦用法
-                    renderer = StreamlitRenderer(df, spec=current_spec, dark='dark', key="pygwalker_renderer")
-                    renderer.explorer()
-                else:
-                    # 如果導入失敗，顯示清晰的錯誤和解決方案
-                    st.error(
-                        """
-                        **Pygwalker 載入失敗！**
-
-                        應用程式無法導入 Pygwalker 函式庫，這通常是環境設定問題。
-                        請確認您執行此 Streamlit 應用的 Python 環境中，已正確安裝 `pygwalker`。
-
-                        **請在您用來啟動此應用的終端機中，執行以下指令來安裝或更新：**
-                        ```bash
-                        pip install --upgrade pygwalker
-                        ```
-                        安裝完成後，請務必**完全重新啟動**您的 Streamlit 應用程式。
-                        """
-                    )
+                            st.error(f"執行生成程式碼時發生錯誤：\n{e}")
 
             except Exception as e:
                 st.error(f"處理檔案或繪圖時發生錯誤: {e}")
@@ -654,4 +583,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
