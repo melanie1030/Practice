@@ -69,7 +69,7 @@ def create_lc_retriever(file_path: str, openai_api_key: str):
 def get_gemini_client(api_key):
     """取得 Gemini 客戶端"""
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-2.5-flash")
+    return genai.GenerativeModel("gemini-1.5-flash")
 
 def get_gemini_response_with_history(client, history, user_prompt):
     """帶有歷史紀錄的 Gemini 對話"""
@@ -90,7 +90,7 @@ def get_gemini_response_for_image(api_key, user_prompt, image_pil):
     if not api_key: return "錯誤：未設定 Gemini API Key。"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content([user_prompt, image_pil])
         st.session_state.pending_image_for_main_gemini = None
         return response.text
@@ -114,7 +114,7 @@ def get_gemini_executive_analysis(api_key, executive_role_name, full_prompt):
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         final_prompt = f"{full_prompt}\n\n{plotting_instruction}"
         response = model.generate_content(final_prompt)
         return response.text
@@ -252,7 +252,7 @@ def run_pandas_analyst_agent(api_key: str, df: pd.DataFrame, user_query: str) ->
 def generate_plot_code(api_key: str, df_context: str, user_query: str, analyst_conclusion: str = None) -> str:
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         if analyst_conclusion:
             prompt = f"""
 你是一位頂尖的 Python 數據視覺化專家，精通使用 Plotly Express 函式庫。
@@ -293,7 +293,7 @@ def generate_plot_code(api_key: str, df_context: str, user_query: str, analyst_c
 # --- 可重用的高管工作流函式 ---
 def run_executive_workflow(api_key: str, df: pd.DataFrame, user_query: str, rag_context: str, conversation_history: str = ""):
     """
-    執行完整的高管分析工作流 (整合式或階段式)。
+    執行完整的高管分析工作流 (僅限整合式)。
     - user_query: 使用者當前的問題或指令。
     - conversation_history: 格式化後的歷史對話紀錄。
     """
@@ -312,10 +312,9 @@ def run_executive_workflow(api_key: str, df: pd.DataFrame, user_query: str, rag_
     final_report = ""
     plot_suggestion = None
 
-    if not st.session_state.use_multi_stage_workflow:
-        # --- 整合式 (單一記憶) 工作流 ---
-        with st.spinner("AI 經理人團隊正在協作分析中..."):
-            single_stage_prompt = f"""
+    # 此函式現在只處理整合式工作流
+    with st.spinner("AI 經理人團隊正在協作分析中..."):
+        single_stage_prompt = f"""
 你將扮演一個由 CFO、COO 和 CEO 組成的高階主管團隊，對一份資料進行分析。
 {history_prompt_injection}
 **當前使用者目標/指令:** {user_query}
@@ -336,47 +335,9 @@ def run_executive_workflow(api_key: str, df: pd.DataFrame, user_query: str, rag_
 
 **最終圖表建議:**
 在所有分析結束後，由 CEO 決定並**提供一個最關鍵的圖表**來總結本次分析，並遵循指定的 JSON 格式。"""
-            full_response = get_gemini_executive_analysis(api_key, "Executive Team", single_stage_prompt)
-            plot_suggestion, final_report = parse_plotting_suggestion(full_response)
-    else:
-        # --- 階段式 (多重記憶) 工作流 ---
-        cfo_analysis_text, coo_analysis_text, ceo_summary_text = "", "", ""
-        with st.spinner("CFO 正在分析中..."):
-            cfo_prompt = f"""
-作為專業的財務長(CFO)，請根據以下資訊進行分析。
-{history_prompt_injection}
-**當前使用者目標/指令:** {user_query}
-**資料摘要:**\n{data_profile}
-**相關知識庫上下文 (RAG):** {rag_context if rag_context else "無"}
-**你的任務:** 從財務角度分析，提供數據驅動的洞見。**在此階段不需提供圖表建議。**"""
-            cfo_response = get_gemini_executive_analysis(api_key, "CFO", cfo_prompt)
-            _, cfo_analysis_text = parse_plotting_suggestion(cfo_response)
-
-        with st.spinner("COO 正在分析中..."):
-            coo_prompt = f"""
-作為專業的營運長(COO)，請根據以下資訊進行分析。
-{history_prompt_injection}
-**CFO 已完成的分析:**\n{cfo_analysis_text}
-**當前使用者目標/指令:** {user_query}
-**資料摘要:**\n{data_profile}
-**相關知識庫上下文 (RAG):** {rag_context if rag_context else "無"}
-**你的任務:** 從營運效率角度分析。**在此階段不需提供圖表建議。**"""
-            coo_response = get_gemini_executive_analysis(api_key, "COO", coo_prompt)
-            _, coo_analysis_text = parse_plotting_suggestion(coo_response)
-
-        with st.spinner("CEO 正在總結中..."):
-            ceo_prompt = f"""
-作為公司的執行長(CEO)，你的任務是基於你的團隊分析，提供全面的戰略總結。
-{history_prompt_injection}
-**財務長 (CFO) 的分析報告:**\n{cfo_analysis_text}
-**營運長 (COO) 的分析報告:**\n{coo_analysis_text}
-**當前使用者目標/指令:** {user_query}
-**你的任務:** 整合 CFO 和 COO 的觀點，針對**當前使用者目標/指令**提供高層次的戰略總結和建議。**最後，你必須提供一個最關鍵的圖表建議來總結本次分析。**"""
-            ceo_response = get_gemini_executive_analysis(api_key, "CEO", ceo_prompt)
-            plot_suggestion, ceo_summary_text = parse_plotting_suggestion(ceo_response)
-        
-        final_report = f"### CFO (財務長) 分析報告\n{cfo_analysis_text}\n\n---\n\n### COO (營運長) 分析報告\n{coo_analysis_text}\n\n---\n\n### CEO (執行長) 戰略總結\n{ceo_summary_text}"
-
+        full_response = get_gemini_executive_analysis(api_key, "Executive Team", single_stage_prompt)
+        plot_suggestion, final_report = parse_plotting_suggestion(full_response)
+    
     return final_report, plot_suggestion
 
 # --- 主應用入口 ---
@@ -486,46 +447,7 @@ def main():
         if df is None:
             st.info("請先在側邊欄上傳 CSV 檔案以啟用此功能。")
         else:
-            user_query = st.text_input("請輸入您的分析目標或追問：", key="executive_query", placeholder="例如：分析各產品線的銷售表現")
-
-            if st.button("提交分析 / 追問", key="start_executive_analysis"):
-                if not user_query:
-                    st.warning("請先輸入您的分析目標！")
-                else:
-                    is_first_run = not st.session_state.chat_histories[executive_session_id]
-                    
-                    if is_first_run:
-                        st.session_state.executive_user_query = user_query
-                        st.session_state.chat_histories[executive_session_id] = []
-                        st.session_state.chat_histories[executive_session_id].append({"role": "user", "content": user_query})
-                        history_str = ""
-                    else:
-                        st.session_state.chat_histories[executive_session_id].append({"role": "user", "content": user_query})
-                        history_list = []
-                        for msg in st.session_state.chat_histories[executive_session_id][:-1]:
-                           role = "使用者" if msg['role'] == 'user' else "AI經理人團隊"
-                           history_list.append(f"{role}:\n{msg['content']}")
-                        history_str = "\n\n".join(history_list)
-
-                    rag_context = ""
-                    if st.session_state.use_rag and st.session_state.retriever_chain:
-                        rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(user_query)])
-
-                    new_report, new_plot_suggestion = run_executive_workflow(
-                        api_key=gemini_api_key,
-                        df=df,
-                        user_query=user_query,
-                        rag_context=rag_context,
-                        conversation_history=history_str
-                    )
-
-                    st.session_state.chat_histories[executive_session_id].append({
-                        "role": "ai",
-                        "content": new_report,
-                        "plot_suggestion": new_plot_suggestion
-                    })
-                    st.rerun()
-
+            # --- 顯示歷史對話 ---
             for msg in st.session_state.chat_histories[executive_session_id]:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
@@ -538,7 +460,117 @@ def main():
                             fig = create_plot_from_suggestion(df, plot_suggestion)
                             if fig: st.plotly_chart(fig, use_container_width=True)
                             else: st.warning("無法生成建議的圖表。")
-                        # 移除 "無需圖表" 的 else 區塊，因為 AI 現在必須提供圖表
+
+            # --- 輸入與處理邏輯 ---
+            user_query = st.text_input("請輸入您的分析目標或追問：", key="executive_query", placeholder="例如：分析各產品線的銷售表現")
+
+            if st.button("提交分析 / 追問", key="start_executive_analysis"):
+                if not user_query:
+                    st.warning("請先輸入您的分析目標！")
+                else:
+                    # 立即將使用者問題加入歷史並顯示
+                    st.session_state.chat_histories[executive_session_id].append({"role": "user", "content": user_query})
+                    st.rerun() # 重新整理以顯示使用者最新訊息
+
+            # 檢查是否需要觸發新的 AI 回應 (避免重複執行)
+            # 只有當最後一則訊息是 user 時，才執行 AI 分析
+            if st.session_state.chat_histories[executive_session_id] and st.session_state.chat_histories[executive_session_id][-1]["role"] == "user":
+                last_user_query = st.session_state.chat_histories[executive_session_id][-1]["content"]
+                
+                # 準備上下文 (包含歷史紀錄和 RAG)
+                history_list = []
+                for msg in st.session_state.chat_histories[executive_session_id][:-1]:
+                   role = "使用者" if msg['role'] == 'user' else "AI經理人團隊"
+                   history_list.append(f"{role}:\n{msg['content']}")
+                history_str = "\n\n".join(history_list)
+
+                rag_context = ""
+                if st.session_state.use_rag and st.session_state.retriever_chain:
+                    rag_context = "\n---\n".join([doc.page_content for doc in st.session_state.retriever_chain.invoke(last_user_query)])
+
+                # --- 選擇並執行工作流 ---
+                if not st.session_state.use_multi_stage_workflow:
+                    # 整合式工作流
+                    new_report, new_plot_suggestion = run_executive_workflow(
+                        api_key=gemini_api_key, df=df, user_query=last_user_query,
+                        rag_context=rag_context, conversation_history=history_str
+                    )
+                    st.session_state.chat_histories[executive_session_id].append({
+                        "role": "ai", "content": new_report, "plot_suggestion": new_plot_suggestion
+                    })
+                    st.rerun()
+                else:
+                    # 階段式工作流 (漸進顯示)
+                    with st.chat_message("ai"):
+                        data_profile = generate_data_profile(df)
+                        history_prompt_injection = ""
+                        if history_str:
+                            history_prompt_injection = f"""
+**[先前對話的完整歷史紀錄]:**
+---
+{history_str}
+---
+請務必將上述歷史紀錄納入考量，以確保你的分析具有連續性，避免重複已經討論過的觀點，並根據最新的指示進行調整。"""
+                        
+                        # --- CFO 階段 ---
+                        with st.spinner("CFO 正在分析中..."):
+                            cfo_prompt = f"""
+作為專業的財務長(CFO)，請根據以下資訊進行分析。
+{history_prompt_injection}
+**當前使用者目標/指令:** {last_user_query}
+**資料摘要:**\n{data_profile}
+**相關知識庫上下文 (RAG):** {rag_context if rag_context else "無"}
+**你的任務:** 從財務角度分析，提供數據驅動的洞見。**在此階段不需提供圖表建議。**"""
+                            cfo_response = get_gemini_executive_analysis(gemini_api_key, "CFO", cfo_prompt)
+                            _, cfo_analysis_text = parse_plotting_suggestion(cfo_response)
+                        st.markdown("### CFO (財務長) 分析報告")
+                        st.markdown(cfo_analysis_text)
+                        st.markdown("---")
+
+                        # --- COO 階段 ---
+                        with st.spinner("COO 正在分析中..."):
+                            coo_prompt = f"""
+作為專業的營運長(COO)，請根據以下資訊進行分析。
+{history_prompt_injection}
+**CFO 已完成的分析:**\n{cfo_analysis_text}
+**當前使用者目標/指令:** {last_user_query}
+**資料摘要:**\n{data_profile}
+**相關知識庫上下文 (RAG):** {rag_context if rag_context else "無"}
+**你的任務:** 從營運效率角度分析。**在此階段不需提供圖表建議。**"""
+                            coo_response = get_gemini_executive_analysis(gemini_api_key, "COO", coo_prompt)
+                            _, coo_analysis_text = parse_plotting_suggestion(coo_response)
+                        st.markdown("### COO (營運長) 分析報告")
+                        st.markdown(coo_analysis_text)
+                        st.markdown("---")
+
+                        # --- CEO 階段 ---
+                        with st.spinner("CEO 正在總結中..."):
+                            ceo_prompt = f"""
+作為公司的執行長(CEO)，你的任務是基於你的團隊分析，提供全面的戰略總結。
+{history_prompt_injection}
+**財務長 (CFO) 的分析報告:**\n{cfo_analysis_text}
+**營運長 (COO) 的分析報告:**\n{coo_analysis_text}
+**當前使用者目標/指令:** {last_user_query}
+**你的任務:** 整合 CFO 和 COO 的觀點，針對**當前使用者目標/指令**提供高層次的戰略總結和建議。**最後，你必須提供一個最關鍵的圖表建議來總結本次分析。**"""
+                            ceo_response = get_gemini_executive_analysis(api_key, "CEO", ceo_prompt)
+                            plot_suggestion, ceo_summary_text = parse_plotting_suggestion(ceo_response)
+                        st.markdown("### CEO (執行長) 戰略總結")
+                        st.markdown(ceo_summary_text)
+
+                        if plot_suggestion:
+                            st.markdown("---")
+                            st.write(f"**建議圖表:** {plot_suggestion.get('title', '')}")
+                            st.caption(plot_suggestion.get("explanation", ""))
+                            fig = create_plot_from_suggestion(df, plot_suggestion)
+                            if fig: st.plotly_chart(fig, use_container_width=True)
+                            else: st.warning("無法生成建議的圖表。")
+
+                        # --- 儲存完整報告以供下次追問使用 ---
+                        final_report = f"### CFO (財務長) 分析報告\n{cfo_analysis_text}\n\n---\n\n### COO (營運長) 分析報告\n{coo_analysis_text}\n\n---\n\n### CEO (執行長) 戰略總結\n{ceo_summary_text}"
+                        st.session_state.chat_histories[executive_session_id].append({
+                            "role": "ai", "content": final_report, "plot_suggestion": plot_suggestion
+                        })
+
 
     with tabs[2]:
         st.header("📊 圖表生成 Agent")
@@ -590,3 +622,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
