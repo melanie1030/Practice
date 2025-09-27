@@ -506,7 +506,9 @@ def main():
 
                         # --- CEO 階段 ---
                         with st.spinner("CEO 正在總結中..."):
-                            ceo_prompt = f"作為公司的執行長(CEO)，你的任務是基於你的團隊分析，提供全面的戰略總結。\n{history_prompt_injection}\n**財務長 (CFO) 的分析報告:**\n{cfo_analysis_text}\n**營運長 (COO) 的分析報告:**\n{coo_analysis_text}\n**當前使用者目標/指令:** {last_user_query}\n**你的任務:** 整合 CFO 和 COO 的觀點，針對**當前使用者目標/指令**提供高層次的戰略總結和建議。"
+                            ceo_prompt = f"作為公司的執行長(CEO)，你的任務是基於你的團隊分析，提供全面的戰略總結。\n{history_prompt_injection}\n**財務長 (CFO) 的分析報告:**\n{cfo_analysis_text}\n**營運長 (COO) 的分析報告:**\n{coo_analysis_text}\n**當前使用者目標/指令:** {last_user_query}\n**你的任務:** 整合 CFO 和 COO 的觀點，針對**當前使用者目標/指令**提供高層次的戰略總結和建議。**[極其重要的繪圖指令]**:
+在你提供圖表建議的 JSON 物件時，**你絕對必須只使用上方「原始資料摘要」中 `Data columns` 區塊列出的欄位名稱**。
+**絕對不允許**發明、假設或使用任何未在資料摘要中明確列出的欄位名稱。"
                             ceo_response = get_gemini_executive_analysis(gemini_api_key, "CEO", ceo_prompt, require_plot_suggestion=True)
                             plot_suggestion, ceo_summary_text = parse_plotting_suggestion(ceo_response)
                         st.markdown("### CEO (執行長) 戰略總結")
