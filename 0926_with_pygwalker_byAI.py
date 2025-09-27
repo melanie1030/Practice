@@ -318,6 +318,9 @@ def run_executive_workflow(api_key: str, df: pd.DataFrame, user_query: str, rag_
 3.  **CEO 總結:**
     - 以 `### CEO (執行長) 戰略總結` 作為開頭。
     - **整合** CFO 和 COO 的觀點，並針對**當前使用者目標/指令**提出戰略總結與建議。
+**[極其重要的繪圖指令]**:
+在你提供圖表建議的 JSON 物件時，**你絕對必須只使用「資料摘要」中 `Data columns` 區塊列出的欄位名稱**。
+**絕對不允許**發明、假設或使用任何未在資料摘要中明確列出的欄位名稱。
 """
         full_response = get_gemini_executive_analysis(api_key, "Executive Team", single_stage_prompt, require_plot_suggestion=True)
         plot_suggestion, final_report = parse_plotting_suggestion(full_response)
